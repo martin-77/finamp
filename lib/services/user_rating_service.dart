@@ -43,7 +43,7 @@ class UserRatingService {
     return client.send<dynamic, dynamic>(
       request,
       requestConverter: JsonConverter.requestFactory,
-      responseConverter: JsonConverter.responseFactory,
+      responseConverter: JsonConverter.responseFactory<dynamic, dynamic>,
     );
   }
 
