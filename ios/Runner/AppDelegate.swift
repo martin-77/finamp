@@ -133,7 +133,7 @@ private var ratingChannel: FlutterMethodChannel?
 extension AppDelegate {
     func setupRatingCommandChannel() {
         ratingChannel = FlutterMethodChannel(
-            name: "\(Bundle.main.bundleIdentifier!)/rating",
+            name: "com.unicornsonlsd.finamp-ios/rating",
             binaryMessenger: flutterEngine.binaryMessenger
         )
 
