@@ -10,6 +10,9 @@ final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto
   (ref, item) => item.userData?.rating,
 );
 
+final userRatingUpdatingProvider =
+    StateProvider.autoDispose.family<bool, BaseItemId>((ref, itemId) => false);
+
 int ratingToStars(double? rating) {
   if (rating == null) return 0;
   return (rating / 2).round().clamp(0, 5).toInt();
@@ -31,10 +34,14 @@ Future<void> setUserRating(
     return;
   }
 
+  final updatingProvider = userRatingUpdatingProvider(item.id);
+  if (ref.read(updatingProvider)) return;
+
   final provider = userRatingProvider(item);
   final oldRating = ref.read(provider);
   final newRating = stars == null ? null : starsToRating(stars);
 
+  ref.read(updatingProvider.notifier).state = true;
   ref.read(provider.notifier).state = newRating;
 
   try {
@@ -49,5 +56,7 @@ Future<void> setUserRating(
     ref.read(provider.notifier).state = oldRating;
     FeedbackHelper.feedback(FeedbackType.error);
     GlobalSnackbar.error(error);
+  } finally {
+    ref.read(updatingProvider.notifier).state = false;
   }
 }
