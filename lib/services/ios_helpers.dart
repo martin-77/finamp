@@ -42,10 +42,14 @@ class IosPlaybackStateSync {
   }
 }
 
-/// Bridges Jellyfin's personal rating to iOS system media controls.
+/// Bridges a five-star Jellyfin rating to iOS's native feedback command.
+///
+/// iOS does not expose the detailed rating command on all Now Playing surfaces.
+/// The feedback command is therefore used as a Plexamp-style shortcut: active
+/// means five stars, inactive means anything else. Toggling it on sets five
+/// stars; toggling it off clears the rating.
 class IosRatingHandler {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/rating');
-  static StreamSubscription<FinampQueueItem?>? _trackSubscription;
   static bool _initialized = false;
 
   static Future<void> setup() async {
@@ -53,75 +57,80 @@ class IosRatingHandler {
     _initialized = true;
 
     _channel.setMethodCallHandler((call) async {
-      if (call.method != 'ratingChanged') {
+      if (call.method != 'starToggled') {
         _logger.warning('Unknown iOS rating method: ${call.method}');
         return;
       }
 
       final arguments = call.arguments as Map<dynamic, dynamic>?;
-      final value = (arguments?['rating'] as num?)?.toDouble();
-      if (value == null) return;
-      await _handleRatingChanged(value);
+      final starred = arguments?['starred'] as bool?;
+      if (starred == null) return;
+      await _handleStarToggled(starred);
     });
 
     final preferences = await SharedPreferences.getInstance();
     final enabled = preferences.getBool('showStarRatings') ?? false;
     await setEnabled(enabled);
 
-    _trackSubscription = GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
-      final rating = ratingToStarValue(track?.baseItem.userData?.rating);
-      unawaited(setCurrentRating(rating));
+    GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
+      final starred = _isFiveStars(track?.baseItem.userData?.rating);
+      unawaited(setStarred(starred));
     });
   }
+
+  static bool _isFiveStars(double? jellyfinRating) =>
+      jellyfinRating != null && jellyfinRating >= 10.0;
 
   static Future<void> setEnabled(bool enabled) async {
     if (!Platform.isIOS) return;
     try {
       await _channel.invokeMethod('setEnabled', {'enabled': enabled});
     } catch (error) {
-      _logger.warning('Failed to set iOS rating command state: $error');
+      _logger.warning('Failed to set iOS star command state: $error');
     }
   }
 
-  static Future<void> setCurrentRating(double rating) async {
+  static Future<void> setStarred(bool starred) async {
     if (!Platform.isIOS) return;
     try {
-      await _channel.invokeMethod('setCurrentRating', {'rating': rating});
+      await _channel.invokeMethod('setStarred', {'starred': starred});
     } catch (error) {
-      _logger.warning('Failed to set current iOS rating: $error');
+      _logger.warning('Failed to set current iOS star state: $error');
     }
   }
 
-  static Future<void> _handleRatingChanged(double rating) async {
+  static Future<void> _handleStarToggled(bool starred) async {
     final item = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
     if (item == null) {
-      _logger.warning('Ignoring iOS rating because no track is active');
+      _logger.warning('Ignoring iOS star toggle because no track is active');
       return;
     }
 
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final allowHalfStars = preferences.getBool('allowHalfStarRatings') ?? false;
-      final normalizedStars = rating <= 0
-          ? 0.0
-          : allowHalfStars
-          ? (rating * 2).round() / 2.0
-          : rating.roundToDouble();
+    final previousStarred = _isFiveStars(item.userData?.rating);
 
+    try {
       final service = UserRatingService();
-      final userData = normalizedStars <= 0
-          ? await service.clearRating(item.id)
-          : await service.setRating(item.id, starsToRating(normalizedStars));
+      final userData = starred
+          ? await service.setRating(item.id, starsToRating(5.0))
+          : await service.clearRating(item.id);
 
       if (GetIt.instance.isRegistered<ProviderContainer>()) {
         final container = GetIt.instance<ProviderContainer>();
         container.read(userRatingProvider(item).notifier).state = userData.rating;
       }
 
-      await setCurrentRating(ratingToStarValue(userData.rating));
-      _logger.fine('Updated rating from iOS system controls to $normalizedStars stars');
+      final confirmedStarred = _isFiveStars(userData.rating);
+      await setStarred(confirmedStarred);
+      _logger.fine(
+        'Updated rating from iOS system controls: ${confirmedStarred ? "five stars" : "not starred"}',
+      );
     } catch (error, stackTrace) {
-      _logger.warning('Failed to update rating from iOS system controls', error, stackTrace);
+      await setStarred(previousStarred);
+      _logger.warning(
+        'Failed to update rating from iOS system controls',
+        error,
+        stackTrace,
+      );
     }
   }
 }
