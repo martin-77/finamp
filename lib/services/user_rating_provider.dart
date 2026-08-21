@@ -13,17 +13,19 @@ final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto
 final userRatingUpdatingProvider =
     StateProvider.autoDispose.family<bool, BaseItemId>((ref, itemId) => false);
 
-int ratingToStars(double? rating) {
+double ratingToStarValue(double? rating) {
   if (rating == null) return 0;
-  return (rating / 2).round().clamp(0, 5).toInt();
+  return (rating / 2).clamp(0.0, 5.0);
 }
 
-double starsToRating(int stars) => stars.clamp(1, 5).toDouble() * 2.0;
+int ratingToStars(double? rating) => ratingToStarValue(rating).round();
+
+double starsToRating(num stars) => stars.clamp(0.5, 5.0).toDouble() * 2.0;
 
 Future<void> setUserRating(
   WidgetRef ref,
   BaseItemDto item,
-  int? stars,
+  num? stars,
 ) async {
   if (FinampSettingsHelper.finampSettings.isOffline) {
     FeedbackHelper.feedback(FeedbackType.error);
@@ -39,7 +41,7 @@ Future<void> setUserRating(
 
   final provider = userRatingProvider(item);
   final oldRating = ref.read(provider);
-  final newRating = stars == null ? null : starsToRating(stars);
+  final newRating = stars == null || stars <= 0 ? null : starsToRating(stars);
 
   ref.read(updatingProvider.notifier).state = true;
   ref.read(provider.notifier).state = newRating;
