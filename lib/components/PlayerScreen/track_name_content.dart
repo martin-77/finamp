@@ -30,7 +30,7 @@ class TrackNameContent extends ConsumerWidget {
 
     final jellyfin_models.BaseItemDto trackBaseItemDto = currentTrack.baseItem;
     final showStarRatings = ref.watch(showStarRatingsProvider).valueOrNull ?? false;
-    final chipBackgroundColor = IconTheme.of(context).color!.withOpacity(0.1);
+    final chipBackgroundColor = IconTheme.of(context).color!.withValues(alpha: 0.1);
 
     Widget getContent(BoxConstraints constraints, double padding) => Column(
       crossAxisAlignment: CrossAxisAlignment.center,
