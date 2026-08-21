@@ -23,6 +23,9 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         // Consider contributing a fix to audio_service to set MPNowPlayingInfoCenter.playbackState on iOS.
         setupPlaybackStateChannel()
 
+        // Set up native rating controls for the lock screen and other system media surfaces.
+        setupRatingCommandChannel()
+
         // Set up method channel for Siri media intent handling
         setupSiriIntentChannel()
 
@@ -116,6 +119,59 @@ extension AppDelegate {
                     let center = MPNowPlayingInfoCenter.default()
                     center.playbackState = isPlaying ? .playing : .paused
                 }
+                result(nil)
+
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+}
+
+private var ratingChannel: FlutterMethodChannel?
+
+extension AppDelegate {
+    func setupRatingCommandChannel() {
+        ratingChannel = FlutterMethodChannel(
+            name: "\(Bundle.main.bundleIdentifier!)/rating",
+            binaryMessenger: flutterEngine.binaryMessenger
+        )
+
+        let ratingCommand = MPRemoteCommandCenter.shared().ratingCommand
+        ratingCommand.minimumRating = 0
+        ratingCommand.maximumRating = 5
+        ratingCommand.isEnabled = false
+
+        ratingCommand.addTarget { event in
+            guard let ratingEvent = event as? MPRatingCommandEvent else {
+                return .commandFailed
+            }
+
+            ratingChannel?.invokeMethod("ratingChanged", arguments: ["rating": ratingEvent.rating])
+            return .success
+        }
+
+        ratingChannel?.setMethodCallHandler { call, result in
+            switch call.method {
+            case "setEnabled":
+                guard let args = call.arguments as? [String: Any],
+                      let enabled = args["enabled"] as? Bool else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Missing enabled argument", details: nil))
+                    return
+                }
+                ratingCommand.isEnabled = enabled
+                result(nil)
+
+            case "setCurrentRating":
+                guard let args = call.arguments as? [String: Any],
+                      let rating = args["rating"] as? NSNumber else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Missing rating argument", details: nil))
+                    return
+                }
+
+                var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                nowPlayingInfo[MPMediaItemPropertyRating] = rating.doubleValue
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
                 result(nil)
 
             default:
