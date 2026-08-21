@@ -1,14 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/finamp_models.dart';
 import 'android_auto_helper.dart';
 import 'audio_service_helper.dart';
+import 'queue_service.dart';
+import 'user_rating_provider.dart';
+import 'user_rating_service.dart';
 
-/// iOS-specific helpers for playback state sync and Siri media intents.
+/// iOS-specific helpers for playback state sync, system ratings, and Siri media intents.
 
 final _logger = Logger('IosHelpers');
 
@@ -32,6 +38,88 @@ class IosPlaybackStateSync {
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
+    }
+  }
+}
+
+/// Bridges Jellyfin's personal rating to iOS system media controls.
+class IosRatingHandler {
+  static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/rating');
+  static StreamSubscription<FinampQueueItem?>? _trackSubscription;
+
+  static Future<void> setup() async {
+    if (!Platform.isIOS) return;
+
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'ratingChanged') {
+        _logger.warning('Unknown iOS rating method: ${call.method}');
+        return;
+      }
+
+      final arguments = call.arguments as Map<dynamic, dynamic>?;
+      final value = (arguments?['rating'] as num?)?.toDouble();
+      if (value == null) return;
+      await _handleRatingChanged(value);
+    });
+
+    final preferences = await SharedPreferences.getInstance();
+    final enabled = preferences.getBool('showStarRatings') ?? false;
+    await setEnabled(enabled);
+
+    await _trackSubscription?.cancel();
+    _trackSubscription = GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
+      final rating = ratingToStarValue(track?.baseItem.userData?.rating);
+      unawaited(_setCurrentRating(rating));
+    });
+  }
+
+  static Future<void> setEnabled(bool enabled) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _channel.invokeMethod('setEnabled', {'enabled': enabled});
+    } catch (error) {
+      _logger.warning('Failed to set iOS rating command state: $error');
+    }
+  }
+
+  static Future<void> _setCurrentRating(double rating) async {
+    try {
+      await _channel.invokeMethod('setCurrentRating', {'rating': rating});
+    } catch (error) {
+      _logger.warning('Failed to set current iOS rating: $error');
+    }
+  }
+
+  static Future<void> _handleRatingChanged(double rating) async {
+    final item = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
+    if (item == null) {
+      _logger.warning('Ignoring iOS rating because no track is active');
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final allowHalfStars = preferences.getBool('allowHalfStarRatings') ?? false;
+      final normalizedStars = rating <= 0
+          ? 0.0
+          : allowHalfStars
+          ? (rating * 2).round() / 2.0
+          : rating.roundToDouble();
+
+      final service = UserRatingService();
+      final userData = normalizedStars <= 0
+          ? await service.clearRating(item.id)
+          : await service.setRating(item.id, starsToRating(normalizedStars));
+
+      if (GetIt.instance.isRegistered<ProviderContainer>()) {
+        final container = GetIt.instance<ProviderContainer>();
+        container.read(userRatingProvider(item).notifier).state = userData.rating;
+      }
+
+      await _setCurrentRating(ratingToStarValue(userData.rating));
+      _logger.fine('Updated rating from iOS system controls to $normalizedStars stars');
+    } catch (error, stackTrace) {
+      _logger.warning('Failed to update rating from iOS system controls', error, stackTrace);
     }
   }
 }
