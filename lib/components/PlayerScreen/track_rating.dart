@@ -64,7 +64,7 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
         : '${selectedStars % 1 == 0 ? selectedStars.toInt() : selectedStars} of 5 stars';
 
     ref.listen<double?>(ratingProvider, (_, next) {
-      unawaited(IosRatingHandler.setCurrentRating(ratingToStarValue(next)));
+      unawaited(IosRatingHandler.setStarred(next != null && next >= 10.0));
     });
 
     return Semantics(
