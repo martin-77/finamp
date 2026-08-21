@@ -23,11 +23,12 @@ class TrackRating extends ConsumerWidget {
           children: List.generate(5, (index) {
             final stars = index + 1;
             final selected = stars <= selectedStars;
+            final clearsRating = stars == selectedStars;
 
             return Semantics(
               button: true,
               label: '$stars of 5 stars',
-              selected: stars == selectedStars,
+              selected: clearsRating,
               excludeSemantics: true,
               child: SizedBox(
                 width: 34,
@@ -35,10 +36,16 @@ class TrackRating extends ConsumerWidget {
                 child: IconButton(
                   padding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
-                  tooltip: '$stars/5',
+                  tooltip: clearsRating ? 'Clear rating' : '$stars/5',
                   iconSize: 22,
-                  onPressed: () => updateUserRating(ref, baseItem, stars),
-                  icon: Icon(selected ? Icons.star_rounded : Icons.star_border_rounded),
+                  onPressed: () => setUserRating(
+                    ref,
+                    baseItem,
+                    clearsRating ? null : stars,
+                  ),
+                  icon: Icon(
+                    selected ? Icons.star_rounded : Icons.star_border_rounded,
+                  ),
                 ),
               ),
             );
