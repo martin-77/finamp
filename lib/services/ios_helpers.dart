@@ -46,9 +46,11 @@ class IosPlaybackStateSync {
 class IosRatingHandler {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/rating');
   static StreamSubscription<FinampQueueItem?>? _trackSubscription;
+  static bool _initialized = false;
 
   static Future<void> setup() async {
-    if (!Platform.isIOS) return;
+    if (!Platform.isIOS || _initialized) return;
+    _initialized = true;
 
     _channel.setMethodCallHandler((call) async {
       if (call.method != 'ratingChanged') {
@@ -66,10 +68,9 @@ class IosRatingHandler {
     final enabled = preferences.getBool('showStarRatings') ?? false;
     await setEnabled(enabled);
 
-    await _trackSubscription?.cancel();
     _trackSubscription = GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
       final rating = ratingToStarValue(track?.baseItem.userData?.rating);
-      unawaited(_setCurrentRating(rating));
+      unawaited(setCurrentRating(rating));
     });
   }
 
@@ -82,7 +83,8 @@ class IosRatingHandler {
     }
   }
 
-  static Future<void> _setCurrentRating(double rating) async {
+  static Future<void> setCurrentRating(double rating) async {
+    if (!Platform.isIOS) return;
     try {
       await _channel.invokeMethod('setCurrentRating', {'rating': rating});
     } catch (error) {
@@ -116,7 +118,7 @@ class IosRatingHandler {
         container.read(userRatingProvider(item).notifier).state = userData.rating;
       }
 
-      await _setCurrentRating(ratingToStarValue(userData.rating));
+      await setCurrentRating(ratingToStarValue(userData.rating));
       _logger.fine('Updated rating from iOS system controls to $normalizedStars stars');
     } catch (error, stackTrace) {
       _logger.warning('Failed to update rating from iOS system controls', error, stackTrace);
