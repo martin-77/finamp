@@ -19,10 +19,10 @@ int ratingToStars(double? rating) {
 
 double starsToRating(int stars) => stars.clamp(1, 5).toDouble() * 2.0;
 
-Future<void> updateUserRating(
+Future<void> setUserRating(
   WidgetRef ref,
   BaseItemDto item,
-  int stars,
+  int? stars,
 ) async {
   if (FinampSettingsHelper.finampSettings.isOffline) {
     FeedbackHelper.feedback(FeedbackType.error);
@@ -34,19 +34,29 @@ Future<void> updateUserRating(
 
   final provider = userRatingProvider(item);
   final oldRating = ref.read(provider);
-  final newRating = starsToRating(stars);
+  final newRating = stars == null ? null : starsToRating(stars);
 
   ref.read(provider.notifier).state = newRating;
 
   try {
     final jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
     final client = jellyfinApiHelper.jellyfinApi.client;
-    final request = Request(
-      'POST',
-      Uri.parse('/UserItems/${item.id.raw}/UserData'),
-      client.baseUrl,
-      body: <String, dynamic>{'Rating': newRating},
-    );
+    final Request request;
+
+    if (newRating == null) {
+      request = Request(
+        'DELETE',
+        Uri.parse('/UserItems/${item.id.raw}/Rating'),
+        client.baseUrl,
+      );
+    } else {
+      request = Request(
+        'POST',
+        Uri.parse('/UserItems/${item.id.raw}/UserData'),
+        client.baseUrl,
+        body: <String, dynamic>{'Rating': newRating},
+      );
+    }
 
     final response = await client.send<dynamic, dynamic>(
       request,
@@ -60,7 +70,7 @@ Future<void> updateUserRating(
     }
 
     final userData = UserItemDataDto.fromJson(Map<String, dynamic>.from(body));
-    ref.read(provider.notifier).state = userData.rating ?? newRating;
+    ref.read(provider.notifier).state = userData.rating;
     FeedbackHelper.feedback(FeedbackType.selection);
   } catch (error) {
     ref.read(provider.notifier).state = oldRating;
