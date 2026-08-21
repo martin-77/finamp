@@ -1,12 +1,10 @@
-import 'package:chopper/chopper.dart';
 import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/models/jellyfin_models.dart';
 import 'package:finamp/services/feedback_helper.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
-import 'package:finamp/services/jellyfin_api_helper.dart';
+import 'package:finamp/services/user_rating_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:get_it/get_it.dart';
 
 final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>(
   (ref, item) => item.userData?.rating,
@@ -27,7 +25,8 @@ Future<void> setUserRating(
   if (FinampSettingsHelper.finampSettings.isOffline) {
     FeedbackHelper.feedback(FeedbackType.error);
     GlobalSnackbar.message(
-      (context) => AppLocalizations.of(context)!.notAvailableInOfflineMode,
+      (context) =>
+          AppLocalizations.of(context)!.notAvailableInOfflineMode,
     );
     return;
   }
@@ -39,37 +38,11 @@ Future<void> setUserRating(
   ref.read(provider.notifier).state = newRating;
 
   try {
-    final jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
-    final client = jellyfinApiHelper.jellyfinApi.client;
-    final Request request;
+    final service = UserRatingService();
+    final userData = newRating == null
+        ? await service.clearRating(item.id)
+        : await service.setRating(item.id, newRating);
 
-    if (newRating == null) {
-      request = Request(
-        'DELETE',
-        Uri.parse('/UserItems/${item.id.raw}/Rating'),
-        client.baseUrl,
-      );
-    } else {
-      request = Request(
-        'POST',
-        Uri.parse('/UserItems/${item.id.raw}/UserData'),
-        client.baseUrl,
-        body: <String, dynamic>{'Rating': newRating},
-      );
-    }
-
-    final response = await client.send<dynamic, dynamic>(
-      request,
-      requestConverter: JsonConverter.requestFactory,
-      responseConverter: JsonConverter.responseFactory,
-    );
-    final body = response.bodyOrThrow;
-
-    if (body is! Map) {
-      throw StateError('Unexpected response while updating user rating');
-    }
-
-    final userData = UserItemDataDto.fromJson(Map<String, dynamic>.from(body));
     ref.read(provider.notifier).state = userData.rating;
     FeedbackHelper.feedback(FeedbackType.selection);
   } catch (error) {
