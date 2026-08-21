@@ -11,6 +11,7 @@ class TrackRating extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rating = ref.watch(userRatingProvider(baseItem));
+    final isUpdating = ref.watch(userRatingUpdatingProvider(baseItem.id));
     final selectedStars = ratingToStars(rating);
 
     return Semantics(
@@ -22,11 +23,12 @@ class TrackRating extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: List.generate(5, (index) {
             final stars = index + 1;
-            final selected = stars <= selectedStars;
+            final filled = stars <= selectedStars;
             final clearsRating = stars == selectedStars;
 
             return Semantics(
               button: true,
+              enabled: !isUpdating,
               label: '$stars of 5 stars',
               selected: clearsRating,
               excludeSemantics: true,
@@ -38,13 +40,15 @@ class TrackRating extends ConsumerWidget {
                   visualDensity: VisualDensity.compact,
                   tooltip: clearsRating ? 'Clear rating' : '$stars/5',
                   iconSize: 22,
-                  onPressed: () => setUserRating(
-                    ref,
-                    baseItem,
-                    clearsRating ? null : stars,
-                  ),
+                  onPressed: isUpdating
+                      ? null
+                      : () => setUserRating(
+                          ref,
+                          baseItem,
+                          clearsRating ? null : stars,
+                        ),
                   icon: Icon(
-                    selected ? Icons.star_rounded : Icons.star_border_rounded,
+                    filled ? Icons.star_rounded : Icons.star_border_rounded,
                   ),
                 ),
               ),
