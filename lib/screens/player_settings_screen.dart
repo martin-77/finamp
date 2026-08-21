@@ -27,6 +27,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
           FinampSettingsHelper.makeSettingsResetButtonWithDialog(context, () {
             FinampSettingsHelper.resetPlayerScreenSettings();
             unawaited(setShowStarRatings(ref, false));
+            unawaited(setAllowHalfStarRatings(ref, false));
           }),
         ],
       ),
@@ -66,6 +67,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
               },
             ),
           ShowStarRatingsToggle(),
+          if (ref.watch(showStarRatingsProvider).valueOrNull ?? false) AllowHalfStarRatingsToggle(),
           ShowAlbumReleaseDateOnPlayerScreenToggle(),
           PlayerScreenMinimumCoverPaddingEditor(),
           SuppressPlayerPaddingSwitch(),
@@ -86,9 +88,26 @@ class ShowStarRatingsToggle extends ConsumerWidget {
 
     return SwitchListTile.adaptive(
       title: const Text('Show star ratings'),
-      subtitle: const Text('Show your personal Jellyfin rating in the player and lyrics view.'),
+      subtitle: const Text('Show your personal Jellyfin rating in the player, lyrics view, and supported system media controls.'),
       value: setting.valueOrNull ?? false,
       onChanged: setting.isLoading ? null : (value) => unawaited(setShowStarRatings(ref, value)),
+    );
+  }
+}
+
+class AllowHalfStarRatingsToggle extends ConsumerWidget {
+  const AllowHalfStarRatingsToggle({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final setting = ref.watch(allowHalfStarRatingsProvider);
+
+    return SwitchListTile.adaptive(
+      contentPadding: const EdgeInsets.only(left: 32, right: 16),
+      title: const Text('Allow half-star ratings'),
+      subtitle: const Text('Swipe across the stars to choose ratings in half-star steps.'),
+      value: setting.valueOrNull ?? false,
+      onChanged: setting.isLoading ? null : (value) => unawaited(setAllowHalfStarRatings(ref, value)),
     );
   }
 }
