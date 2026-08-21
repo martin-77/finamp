@@ -47,11 +47,11 @@ Future<void> updateUserRating(WidgetRef ref, BaseItemDto item, int stars) async 
     );
     final body = response.bodyOrThrow;
 
-    if (body is! Map<String, dynamic>) {
+    if (body is! Map) {
       throw StateError('Unexpected response while updating user rating');
     }
 
-    final userData = UserItemDataDto.fromJson(body);
+    final userData = UserItemDataDto.fromJson(Map<String, dynamic>.from(body));
     ref.read(provider.notifier).state = userData.rating ?? newRating;
     FeedbackHelper.feedback(FeedbackType.selection);
   } catch (error) {
