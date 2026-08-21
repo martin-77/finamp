@@ -27,6 +27,7 @@ final _logger = Logger('IosHelpers');
 /// Consider contributing a fix upstream to audio_service.
 class IosPlaybackStateSync {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/playback_state');
+  static Timer? _ratingReassertTimer;
 
   /// Sets the playback state on iOS's MPNowPlayingInfoCenter.
   /// This is needed for CarPlay to show the correct play/pause state.
@@ -36,13 +37,16 @@ class IosPlaybackStateSync {
     try {
       await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
 
-      // audio_service disables rating/feedback commands when it first activates
-      // MPRemoteCommandCenter. _transformEvent() calls this method immediately
-      // before the new PlaybackState is published, so waiting for the native
-      // playback-state round trip and then reasserting our command makes our
-      // feedback command the final state without patching audio_service itself.
+      // audio_service receives Finamp's PlaybackState only after _transformEvent()
+      // returns. On its first playing state it activates MPRemoteCommandCenter and
+      // explicitly disables all feedback commands, including likeCommand. Our
+      // previous immediate reassert therefore happened too early. Reassert on a
+      // short debounced timer so audio_service has completed that native update.
+      _ratingReassertTimer?.cancel();
       if (isPlaying) {
-        await IosRatingHandler.reassertSystemCommand();
+        _ratingReassertTimer = Timer(const Duration(milliseconds: 250), () {
+          unawaited(IosRatingHandler.reassertSystemCommand());
+        });
       }
 
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
@@ -123,8 +127,6 @@ class IosRatingHandler {
       rating = GetIt.instance<ProviderContainer>().read(userRatingProvider(currentItem));
     }
 
-    // Enable last. This is intentional: audio_service has already applied its
-    // own command state by the time this continuation runs.
     await setStarred(_isFiveStars(rating));
     await setEnabled(true);
     _logger.fine('Reasserted iOS five-star feedback command after playback activation');
@@ -322,7 +324,7 @@ class IosSiriHandler {
     }
 
     final query = arguments['query'] as String?;
-    _logger.info("Siri searchMedia - query: $query");
+    _logger.info("Received Siri search request: $query");
 
     // TODO: Navigate to a search results screen instead of playing immediately.
     // This would require a Flutter method channel callback to trigger navigation.
