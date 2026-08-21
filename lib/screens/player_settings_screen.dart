@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:finamp/components/finamp_app_bar_back_button.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/screens/customization_settings_screen.dart';
+import 'package:finamp/services/star_rating_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,10 +24,10 @@ class PlayerSettingsScreen extends ConsumerWidget {
         title: Text(AppLocalizations.of(context)!.playerScreen),
         leading: FinampAppBarBackButton(),
         actions: [
-          FinampSettingsHelper.makeSettingsResetButtonWithDialog(
-            context,
-            FinampSettingsHelper.resetPlayerScreenSettings,
-          ),
+          FinampSettingsHelper.makeSettingsResetButtonWithDialog(context, () {
+            FinampSettingsHelper.resetPlayerScreenSettings();
+            unawaited(setShowStarRatings(ref, false));
+          }),
         ],
       ),
       body: ListView(
@@ -34,7 +37,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
           if (ref.watch(finampSettingsProvider.featureChipsConfiguration).enabled)
             ReorderableListView(
               shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(), // Disable scrolling on inner list
+              physics: NeverScrollableScrollPhysics(),
               buildDefaultDragHandles: false,
               children:
                   Set.of(
@@ -56,14 +59,13 @@ class PlayerSettingsScreen extends ConsumerWidget {
               onReorderItem: (oldIndex, newIndex) {
                 final oldFeatureChipsConfig = ref.read(finampSettingsProvider.featureChipsConfiguration);
                 final oldFeatures = List.of(oldFeatureChipsConfig.features);
-
-                // move all values below newIndex down by one
                 final oldFeature = oldFeatures[oldIndex];
                 oldFeatures.removeAt(oldIndex);
                 oldFeatures.insert(newIndex, oldFeature);
                 FinampSetters.setFeatureChipsConfiguration(oldFeatureChipsConfig.copyWith(features: oldFeatures));
               },
             ),
+          ShowStarRatingsToggle(),
           ShowAlbumReleaseDateOnPlayerScreenToggle(),
           PlayerScreenMinimumCoverPaddingEditor(),
           SuppressPlayerPaddingSwitch(),
@@ -71,6 +73,22 @@ class PlayerSettingsScreen extends ConsumerWidget {
           HidePlayerBottomActionsSwitch(),
         ],
       ),
+    );
+  }
+}
+
+class ShowStarRatingsToggle extends ConsumerWidget {
+  const ShowStarRatingsToggle({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final setting = ref.watch(showStarRatingsProvider);
+
+    return SwitchListTile.adaptive(
+      title: const Text('Show star ratings'),
+      subtitle: const Text('Show your personal Jellyfin rating in the player and lyrics view.'),
+      value: setting.valueOrNull ?? false,
+      onChanged: setting.isLoading ? null : (value) => unawaited(setShowStarRatings(ref, value)),
     );
   }
 }
