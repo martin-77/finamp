@@ -8,19 +8,27 @@ import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 
-final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>((ref, item) => item.userData?.rating);
+final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>(
+  (ref, item) => item.userData?.rating,
+);
 
 int ratingToStars(double? rating) {
   if (rating == null) return 0;
-  return (rating / 2).round().clamp(0, 5);
+  return (rating / 2).round().clamp(0, 5).toInt();
 }
 
-double starsToRating(int stars) => stars.clamp(1, 5) * 2.0;
+double starsToRating(int stars) => stars.clamp(1, 5).toDouble() * 2.0;
 
-Future<void> updateUserRating(WidgetRef ref, BaseItemDto item, int stars) async {
+Future<void> updateUserRating(
+  WidgetRef ref,
+  BaseItemDto item,
+  int stars,
+) async {
   if (FinampSettingsHelper.finampSettings.isOffline) {
     FeedbackHelper.feedback(FeedbackType.error);
-    GlobalSnackbar.message((context) => AppLocalizations.of(context)!.notAvailableInOfflineMode);
+    GlobalSnackbar.message(
+      (context) => AppLocalizations.of(context)!.notAvailableInOfflineMode,
+    );
     return;
   }
 
