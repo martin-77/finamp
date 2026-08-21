@@ -50,6 +50,7 @@ class IosPlaybackStateSync {
 /// stars; toggling it off clears the rating.
 class IosRatingHandler {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/rating');
+  static ProviderSubscription<double?>? _ratingSubscription;
   static bool _initialized = false;
 
   static Future<void> setup() async {
@@ -72,9 +73,21 @@ class IosRatingHandler {
     final enabled = preferences.getBool('showStarRatings') ?? false;
     await setEnabled(enabled);
 
+    final container = GetIt.instance<ProviderContainer>();
     GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
-      final starred = _isFiveStars(track?.baseItem.userData?.rating);
-      unawaited(setStarred(starred));
+      _ratingSubscription?.close();
+      _ratingSubscription = null;
+
+      if (track == null) {
+        unawaited(setStarred(false));
+        return;
+      }
+
+      _ratingSubscription = container.listen<double?>(
+        userRatingProvider(track.baseItem),
+        (_, rating) => unawaited(setStarred(_isFiveStars(rating))),
+        fireImmediately: true,
+      );
     });
   }
 
@@ -106,7 +119,10 @@ class IosRatingHandler {
       return;
     }
 
-    final previousStarred = _isFiveStars(item.userData?.rating);
+    final provider = userRatingProvider(item);
+    final container = GetIt.instance<ProviderContainer>();
+    final previousRating = container.read(provider);
+    final previousStarred = _isFiveStars(previousRating);
 
     try {
       final service = UserRatingService();
@@ -114,10 +130,7 @@ class IosRatingHandler {
           ? await service.setRating(item.id, starsToRating(5.0))
           : await service.clearRating(item.id);
 
-      if (GetIt.instance.isRegistered<ProviderContainer>()) {
-        final container = GetIt.instance<ProviderContainer>();
-        container.read(userRatingProvider(item).notifier).state = userData.rating;
-      }
+      container.read(provider.notifier).state = userData.rating;
 
       final confirmedStarred = _isFiveStars(userData.rating);
       await setStarred(confirmedStarred);
@@ -214,7 +227,7 @@ class IosSiriHandler {
     await androidAutoHelper.playFromSearch(AndroidAutoSearchQuery(rawQuery, extras));
   }
 
-  /// Translates Siri metadata fields into Android Auto intent extras format.
+  /// Translates Siri metadata fields from Siri into Android Auto intent extras format.
   ///
   /// This mapping allows AA's decision tree to correctly identify the search type:
   /// - artist + query → track search filtered by artist
