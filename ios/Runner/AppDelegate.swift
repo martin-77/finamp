@@ -23,7 +23,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         // Consider contributing a fix to audio_service to set MPNowPlayingInfoCenter.playbackState on iOS.
         setupPlaybackStateChannel()
 
-        // Set up native rating controls for the lock screen and other system media surfaces.
+        // Set up a Plexamp-style five-star toggle for lock screen/system media controls.
         setupRatingCommandChannel()
 
         // Set up method channel for Siri media intent handling
@@ -94,7 +94,7 @@ private func setExcludeFromiCloudBackup(_ dir: URL, isExcluded: Bool) throws {
     try mutableDir.setResourceValues(values)
 }
 
-// TODO: This is a workaround because audio_service doesn't set MPNowPlayingInfoCenter.playbackState on iOS.
+// TODO: This is a workaround because audio_service doesn't set playbackState on iOS.
 // The audio_service plugin only sets playbackState on macOS (see AudioServicePlugin.m line 293-295).
 // This causes CarPlay's Now Playing screen to not reflect the correct play/pause state when
 // playback is started from the phone. Consider contributing a fix upstream to audio_service.
@@ -137,19 +137,25 @@ extension AppDelegate {
             binaryMessenger: flutterEngine.binaryMessenger
         )
 
-        let ratingCommand = MPRemoteCommandCenter.shared().ratingCommand
-        ratingCommand.minimumRating = 0
-        ratingCommand.maximumRating = 5
-        ratingCommand.isEnabled = false
+        // The detailed MPRatingCommand isn't rendered on every iOS Now Playing
+        // surface. Use the native feedback command as a five-star shortcut, like
+        // Plexamp: inactive = not five stars, active = five stars.
+        let starCommand = MPRemoteCommandCenter.shared().likeCommand
+        starCommand.localizedTitle = "Five stars"
+        starCommand.localizedShortTitle = "5 Stars"
+        starCommand.isActive = false
+        starCommand.isEnabled = false
 
-        ratingCommand.addTarget { event in
-            guard let ratingEvent = event as? MPRatingCommandEvent else {
-                return .commandFailed
-            }
-
-            ratingChannel?.invokeMethod("ratingChanged", arguments: ["rating": ratingEvent.rating])
+        starCommand.addTarget { _ in
+            let starred = !starCommand.isActive
+            starCommand.isActive = starred
+            ratingChannel?.invokeMethod("starToggled", arguments: ["starred": starred])
             return .success
         }
+
+        // Make sure the unused detailed rating command cannot compete for space
+        // with the single feedback button on the lock screen/control center.
+        MPRemoteCommandCenter.shared().ratingCommand.isEnabled = false
 
         ratingChannel?.setMethodCallHandler { call, result in
             switch call.method {
@@ -159,19 +165,16 @@ extension AppDelegate {
                     result(FlutterError(code: "INVALID_ARGS", message: "Missing enabled argument", details: nil))
                     return
                 }
-                ratingCommand.isEnabled = enabled
+                starCommand.isEnabled = enabled
                 result(nil)
 
-            case "setCurrentRating":
+            case "setStarred":
                 guard let args = call.arguments as? [String: Any],
-                      let rating = args["rating"] as? NSNumber else {
-                    result(FlutterError(code: "INVALID_ARGS", message: "Missing rating argument", details: nil))
+                      let starred = args["starred"] as? Bool else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Missing starred argument", details: nil))
                     return
                 }
-
-                var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                nowPlayingInfo[MPMediaItemPropertyRating] = rating.doubleValue
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+                starCommand.isActive = starred
                 result(nil)
 
             default:
@@ -334,7 +337,7 @@ extension AppDelegate {
         }
         searchData["searchOnly"] = true
 
-        NSLog("[FINAMP] Search media intent - query: \(searchData["query"] ?? "nil")")
+        NSLog("[FINAMP] Search media intent - query: \(searchData["query"] ?? "nil"), artist: \(searchData["artist"] ?? "nil"), album: \(searchData["album"] ?? "nil")")
 
         siriIntentChannel?.invokeMethod("searchMedia", arguments: searchData)
 
