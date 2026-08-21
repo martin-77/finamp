@@ -35,6 +35,16 @@ class IosPlaybackStateSync {
 
     try {
       await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
+
+      // audio_service disables rating/feedback commands when it first activates
+      // MPRemoteCommandCenter. _transformEvent() calls this method immediately
+      // before the new PlaybackState is published, so waiting for the native
+      // playback-state round trip and then reasserting our command makes our
+      // feedback command the final state without patching audio_service itself.
+      if (isPlaying) {
+        await IosRatingHandler.reassertSystemCommand();
+      }
+
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
@@ -93,6 +103,32 @@ class IosRatingHandler {
 
   static bool _isFiveStars(double? jellyfinRating) =>
       jellyfinRating != null && jellyfinRating >= 10.0;
+
+  /// Re-enables the native feedback command after audio_service has activated
+  /// MPRemoteCommandCenter and reset all feedback commands to disabled.
+  static Future<void> reassertSystemCommand() async {
+    if (!Platform.isIOS || !_initialized) return;
+
+    final preferences = await SharedPreferences.getInstance();
+    final enabled = preferences.getBool('showStarRatings') ?? false;
+    if (!enabled) {
+      await setEnabled(false);
+      return;
+    }
+
+    final currentItem = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
+    double? rating = currentItem?.userData?.rating;
+
+    if (currentItem != null && GetIt.instance.isRegistered<ProviderContainer>()) {
+      rating = GetIt.instance<ProviderContainer>().read(userRatingProvider(currentItem));
+    }
+
+    // Enable last. This is intentional: audio_service has already applied its
+    // own command state by the time this continuation runs.
+    await setStarred(_isFiveStars(rating));
+    await setEnabled(true);
+    _logger.fine('Reasserted iOS five-star feedback command after playback activation');
+  }
 
   static Future<void> setEnabled(bool enabled) async {
     if (!Platform.isIOS) return;
