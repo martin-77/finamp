@@ -8,7 +8,7 @@ import '../models/finamp_models.dart';
 import 'android_auto_helper.dart';
 import 'audio_service_helper.dart';
 
-/// iOS-specific helpers for playback state sync, system ratings, and Siri media intents.
+/// iOS-specific helpers for playback state sync and Siri media intents.
 
 final _logger = Logger('IosHelpers');
 
@@ -29,7 +29,6 @@ class IosPlaybackStateSync {
 
     try {
       await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
-
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
@@ -116,7 +115,7 @@ class IosSiriHandler {
     await androidAutoHelper.playFromSearch(AndroidAutoSearchQuery(rawQuery, extras));
   }
 
-  /// Translates Siri metadata fields from Siri into Android Auto intent extras format.
+  /// Translates Siri metadata fields into Android Auto intent extras format.
   ///
   /// This mapping allows AA's decision tree to correctly identify the search type:
   /// - artist + query → track search filtered by artist
@@ -175,7 +174,7 @@ class IosSiriHandler {
     }
 
     final query = arguments['query'] as String?;
-    _logger.info("Received Siri search request: $query");
+    _logger.info("Siri searchMedia - query: $query");
 
     // TODO: Navigate to a search results screen instead of playing immediately.
     // This would require a Flutter method channel callback to trigger navigation.

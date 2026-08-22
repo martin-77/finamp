@@ -38,7 +38,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
           if (ref.watch(finampSettingsProvider.featureChipsConfiguration).enabled)
             ReorderableListView(
               shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
+              physics: NeverScrollableScrollPhysics(), // Disable scrolling on inner list
               buildDefaultDragHandles: false,
               children:
                   Set.of(
@@ -60,6 +60,8 @@ class PlayerSettingsScreen extends ConsumerWidget {
               onReorderItem: (oldIndex, newIndex) {
                 final oldFeatureChipsConfig = ref.read(finampSettingsProvider.featureChipsConfiguration);
                 final oldFeatures = List.of(oldFeatureChipsConfig.features);
+
+                // move all values below newIndex down by one
                 final oldFeature = oldFeatures[oldIndex];
                 oldFeatures.removeAt(oldIndex);
                 oldFeatures.insert(newIndex, oldFeature);

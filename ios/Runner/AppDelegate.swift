@@ -91,7 +91,7 @@ private func setExcludeFromiCloudBackup(_ dir: URL, isExcluded: Bool) throws {
     try mutableDir.setResourceValues(values)
 }
 
-// TODO: This is a workaround because audio_service doesn't set playbackState on iOS.
+// TODO: This is a workaround because audio_service doesn't set MPNowPlayingInfoCenter.playbackState on iOS.
 // The audio_service plugin only sets playbackState on macOS (see AudioServicePlugin.m line 293-295).
 // This causes CarPlay's Now Playing screen to not reflect the correct play/pause state when
 // playback is started from the phone. Consider contributing a fix upstream to audio_service.
@@ -278,7 +278,7 @@ extension AppDelegate {
         }
         searchData["searchOnly"] = true
 
-        NSLog("[FINAMP] Search media intent - query: \(searchData["query"] ?? "nil"), artist: \(searchData["artist"] ?? "nil"), album: \(searchData["album"] ?? "nil")")
+        NSLog("[FINAMP] Search media intent - query: \(searchData["query"] ?? "nil")")
 
         siriIntentChannel?.invokeMethod("searchMedia", arguments: searchData)
 
