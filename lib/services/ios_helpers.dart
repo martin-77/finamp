@@ -1,18 +1,12 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/finamp_models.dart';
 import 'android_auto_helper.dart';
 import 'audio_service_helper.dart';
-import 'queue_service.dart';
-import 'user_rating_provider.dart';
-import 'user_rating_service.dart';
 
 /// iOS-specific helpers for playback state sync, system ratings, and Siri media intents.
 
@@ -27,7 +21,6 @@ final _logger = Logger('IosHelpers');
 /// Consider contributing a fix upstream to audio_service.
 class IosPlaybackStateSync {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/playback_state');
-  static Timer? _ratingReassertTimer;
 
   /// Sets the playback state on iOS's MPNowPlayingInfoCenter.
   /// This is needed for CarPlay to show the correct play/pause state.
@@ -37,151 +30,9 @@ class IosPlaybackStateSync {
     try {
       await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
 
-      // audio_service receives Finamp's PlaybackState only after _transformEvent()
-      // returns. On its first playing state it activates MPRemoteCommandCenter and
-      // explicitly disables all feedback commands, including likeCommand. Our
-      // previous immediate reassert therefore happened too early. Reassert on a
-      // short debounced timer so audio_service has completed that native update.
-      _ratingReassertTimer?.cancel();
-      if (isPlaying) {
-        _ratingReassertTimer = Timer(const Duration(milliseconds: 250), () {
-          unawaited(IosRatingHandler.reassertSystemCommand());
-        });
-      }
-
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
-    }
-  }
-}
-
-/// Bridges a five-star Jellyfin rating to iOS's native feedback command.
-///
-/// iOS does not expose the detailed rating command on all Now Playing surfaces.
-/// The feedback command is therefore used as a Plexamp-style shortcut: active
-/// means five stars, inactive means anything else. Toggling it on sets five
-/// stars; toggling it off clears the rating.
-class IosRatingHandler {
-  static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/rating');
-  static ProviderSubscription<double?>? _ratingSubscription;
-  static bool _initialized = false;
-
-  static Future<void> setup() async {
-    if (!Platform.isIOS || _initialized) return;
-    _initialized = true;
-
-    _channel.setMethodCallHandler((call) async {
-      if (call.method != 'starToggled') {
-        _logger.warning('Unknown iOS rating method: ${call.method}');
-        return;
-      }
-
-      final arguments = call.arguments as Map<dynamic, dynamic>?;
-      final starred = arguments?['starred'] as bool?;
-      if (starred == null) return;
-      await _handleStarToggled(starred);
-    });
-
-    final preferences = await SharedPreferences.getInstance();
-    final enabled = preferences.getBool('showStarRatings') ?? false;
-    await setEnabled(enabled);
-
-    final container = GetIt.instance<ProviderContainer>();
-    GetIt.instance<QueueService>().getCurrentTrackStream().listen((track) {
-      _ratingSubscription?.close();
-      _ratingSubscription = null;
-
-      if (track == null) {
-        unawaited(setStarred(false));
-        return;
-      }
-
-      _ratingSubscription = container.listen<double?>(
-        userRatingProvider(track.baseItem),
-        (_, rating) => unawaited(setStarred(_isFiveStars(rating))),
-        fireImmediately: true,
-      );
-    });
-  }
-
-  static bool _isFiveStars(double? jellyfinRating) =>
-      jellyfinRating != null && jellyfinRating >= 10.0;
-
-  /// Re-enables the native feedback command after audio_service has activated
-  /// MPRemoteCommandCenter and reset all feedback commands to disabled.
-  static Future<void> reassertSystemCommand() async {
-    if (!Platform.isIOS || !_initialized) return;
-
-    final preferences = await SharedPreferences.getInstance();
-    final enabled = preferences.getBool('showStarRatings') ?? false;
-    if (!enabled) {
-      await setEnabled(false);
-      return;
-    }
-
-    final currentItem = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
-    double? rating = currentItem?.userData?.rating;
-
-    if (currentItem != null && GetIt.instance.isRegistered<ProviderContainer>()) {
-      rating = GetIt.instance<ProviderContainer>().read(userRatingProvider(currentItem));
-    }
-
-    await setStarred(_isFiveStars(rating));
-    await setEnabled(true);
-    _logger.fine('Reasserted iOS five-star feedback command after playback activation');
-  }
-
-  static Future<void> setEnabled(bool enabled) async {
-    if (!Platform.isIOS) return;
-    try {
-      await _channel.invokeMethod('setEnabled', {'enabled': enabled});
-    } catch (error) {
-      _logger.warning('Failed to set iOS star command state: $error');
-    }
-  }
-
-  static Future<void> setStarred(bool starred) async {
-    if (!Platform.isIOS) return;
-    try {
-      await _channel.invokeMethod('setStarred', {'starred': starred});
-    } catch (error) {
-      _logger.warning('Failed to set current iOS star state: $error');
-    }
-  }
-
-  static Future<void> _handleStarToggled(bool starred) async {
-    final item = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
-    if (item == null) {
-      _logger.warning('Ignoring iOS star toggle because no track is active');
-      return;
-    }
-
-    final provider = userRatingProvider(item);
-    final container = GetIt.instance<ProviderContainer>();
-    final previousRating = container.read(provider);
-    final previousStarred = _isFiveStars(previousRating);
-
-    try {
-      final service = UserRatingService();
-      final userData = starred
-          ? await service.setRating(item.id, starsToRating(5.0))
-          : await service.clearRating(item.id);
-
-      container.read(provider.notifier).state = userData.rating;
-
-      final confirmedStarred = _isFiveStars(userData.rating);
-      await setStarred(confirmedStarred);
-      _logger.fine(
-        'Updated rating from iOS system controls: ${confirmedStarred ? "five stars" : "not starred"}',
-      );
-    } catch (error, stackTrace) {
-      await setStarred(previousStarred);
-      _logger.warning(
-        'Failed to update rating from iOS system controls',
-        error,
-        stackTrace,
-      );
     }
   }
 }

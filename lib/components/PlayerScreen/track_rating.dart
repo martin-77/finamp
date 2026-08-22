@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:finamp/models/jellyfin_models.dart';
-import 'package:finamp/services/ios_helpers.dart';
 import 'package:finamp/services/star_rating_settings.dart';
 import 'package:finamp/services/user_rating_provider.dart';
 import 'package:flutter/material.dart';
@@ -21,12 +20,6 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
   static const _starCount = 5;
 
   double? _dragRating;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(IosRatingHandler.setup());
-  }
 
   double _ratingForPosition(double dx, {required bool allowHalfStars}) {
     if (dx <= 0) return 0;
@@ -62,10 +55,6 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
     final ratingLabel = selectedStars == 0
         ? 'Not rated'
         : '${selectedStars % 1 == 0 ? selectedStars.toInt() : selectedStars} of 5 stars';
-
-    ref.listen<double?>(ratingProvider, (_, next) {
-      unawaited(IosRatingHandler.setStarred(next != null && next >= 10.0));
-    });
 
     return Semantics(
       container: true,
@@ -111,13 +100,7 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
                     iconSize: 22,
                     onPressed: isUpdating
                         ? null
-                        : () => unawaited(
-                            setUserRating(
-                              ref,
-                              widget.baseItem,
-                              clearsRating ? null : stars,
-                            ),
-                          ),
+                        : () => unawaited(setUserRating(ref, widget.baseItem, clearsRating ? null : stars)),
                     icon: Icon(icon),
                   ),
                 ),

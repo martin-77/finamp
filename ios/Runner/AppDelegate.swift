@@ -23,9 +23,6 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         // Consider contributing a fix to audio_service to set MPNowPlayingInfoCenter.playbackState on iOS.
         setupPlaybackStateChannel()
 
-        // Set up a Plexamp-style five-star toggle for lock screen/system media controls.
-        setupRatingCommandChannel()
-
         // Set up method channel for Siri media intent handling
         setupSiriIntentChannel()
 
@@ -119,62 +116,6 @@ extension AppDelegate {
                     let center = MPNowPlayingInfoCenter.default()
                     center.playbackState = isPlaying ? .playing : .paused
                 }
-                result(nil)
-
-            default:
-                result(FlutterMethodNotImplemented)
-            }
-        }
-    }
-}
-
-private var ratingChannel: FlutterMethodChannel?
-
-extension AppDelegate {
-    func setupRatingCommandChannel() {
-        ratingChannel = FlutterMethodChannel(
-            name: "com.unicornsonlsd.finamp-ios/rating",
-            binaryMessenger: flutterEngine.binaryMessenger
-        )
-
-        // The detailed MPRatingCommand isn't rendered on every iOS Now Playing
-        // surface. Use the native feedback command as a five-star shortcut, like
-        // Plexamp: inactive = not five stars, active = five stars.
-        let starCommand = MPRemoteCommandCenter.shared().likeCommand
-        starCommand.localizedTitle = "Five stars"
-        starCommand.localizedShortTitle = "5 Stars"
-        starCommand.isActive = false
-        starCommand.isEnabled = false
-
-        starCommand.addTarget { _ in
-            let starred = !starCommand.isActive
-            starCommand.isActive = starred
-            ratingChannel?.invokeMethod("starToggled", arguments: ["starred": starred])
-            return .success
-        }
-
-        // Make sure the unused detailed rating command cannot compete for space
-        // with the single feedback button on the lock screen/control center.
-        MPRemoteCommandCenter.shared().ratingCommand.isEnabled = false
-
-        ratingChannel?.setMethodCallHandler { call, result in
-            switch call.method {
-            case "setEnabled":
-                guard let args = call.arguments as? [String: Any],
-                      let enabled = args["enabled"] as? Bool else {
-                    result(FlutterError(code: "INVALID_ARGS", message: "Missing enabled argument", details: nil))
-                    return
-                }
-                starCommand.isEnabled = enabled
-                result(nil)
-
-            case "setStarred":
-                guard let args = call.arguments as? [String: Any],
-                      let starred = args["starred"] as? Bool else {
-                    result(FlutterError(code: "INVALID_ARGS", message: "Missing starred argument", details: nil))
-                    return
-                }
-                starCommand.isActive = starred
                 result(nil)
 
             default:

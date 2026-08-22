@@ -88,7 +88,9 @@ class ShowStarRatingsToggle extends ConsumerWidget {
 
     return SwitchListTile.adaptive(
       title: const Text('Show star ratings'),
-      subtitle: const Text('Show your personal Jellyfin rating in the player, lyrics view, and supported system media controls.'),
+      subtitle: const Text(
+        'Show your personal Jellyfin rating in the player, lyrics view, and supported system media controls.',
+      ),
       value: setting.valueOrNull ?? false,
       onChanged: setting.isLoading ? null : (value) => unawaited(setShowStarRatings(ref, value)),
     );

@@ -55,6 +55,7 @@ import 'package:finamp/services/offline_listen_helper.dart';
 import 'package:finamp/services/playback_history_service.dart';
 import 'package:finamp/services/playon_service.dart';
 import 'package:finamp/services/queue_service.dart';
+import 'package:finamp/services/star_rating_settings.dart';
 import 'package:finamp/services/theme_provider.dart';
 import 'package:finamp/services/ui_overlay_setter_observer.dart';
 import 'package:finamp/services/widget_bindings_observer_provider.dart';
@@ -137,6 +138,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     await _setupEdgeToEdgeOverlayStyle();
     _mainLog.info("Setup edge-to-edge overlay");
     await setupHive();
+    await initializeStarRatingSettings();
     _mainLog.info("Setup hive and isar");
     // Apply the persisted verbose logging preference now that settings exist.
     applyLogLevel();

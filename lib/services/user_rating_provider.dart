@@ -6,12 +6,9 @@ import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/user_rating_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>(
-  (ref, item) => item.userData?.rating,
-);
+final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>((ref, item) => item.userData?.rating);
 
-final userRatingUpdatingProvider =
-    StateProvider.autoDispose.family<bool, BaseItemId>((ref, itemId) => false);
+final userRatingUpdatingProvider = StateProvider.autoDispose.family<bool, BaseItemId>((ref, itemId) => false);
 
 double ratingToStarValue(double? rating) {
   if (rating == null) return 0;
@@ -22,17 +19,10 @@ int ratingToStars(double? rating) => ratingToStarValue(rating).round();
 
 double starsToRating(num stars) => stars.clamp(0.5, 5.0).toDouble() * 2.0;
 
-Future<void> setUserRating(
-  WidgetRef ref,
-  BaseItemDto item,
-  num? stars,
-) async {
+Future<void> setUserRating(WidgetRef ref, BaseItemDto item, num? stars) async {
   if (FinampSettingsHelper.finampSettings.isOffline) {
     FeedbackHelper.feedback(FeedbackType.error);
-    GlobalSnackbar.message(
-      (context) =>
-          AppLocalizations.of(context)!.notAvailableInOfflineMode,
-    );
+    GlobalSnackbar.message((context) => AppLocalizations.of(context)!.notAvailableInOfflineMode);
     return;
   }
 
