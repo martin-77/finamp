@@ -21,7 +21,6 @@ import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/music_player_background_task.dart';
 import 'package:finamp/services/playback_history_service.dart';
 import 'package:finamp/services/radio_service_helper.dart';
-import 'package:finamp/services/star_rating_settings.dart';
 import 'package:finamp/services/user_rating_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -292,7 +291,9 @@ class QueueService {
 
       void updateRating(double? rating) {
         currentMediaItem = currentMediaItem?.copyWith(
-          rating: showStarRatingsEnabled ? Rating.newHeartRating((rating ?? 0) >= 10.0) : null,
+          rating: FinampSettingsHelper.finampSettings.showStarRatings
+              ? Rating.newHeartRating((rating ?? 0) >= 10.0)
+              : null,
         );
         _audioHandler.mediaItem.add(currentMediaItem);
       }
@@ -1525,7 +1526,9 @@ class QueueService {
       album: item.album,
       artist: item.artists?.sortedBy((e) => e).join(", ") ?? item.albumArtist,
       title: item.name ?? "unknown",
-      rating: showStarRatingsEnabled ? Rating.newHeartRating((item.userData?.rating ?? 0) >= 10.0) : null,
+      rating: FinampSettingsHelper.finampSettings.showStarRatings
+          ? Rating.newHeartRating((item.userData?.rating ?? 0) >= 10.0)
+          : null,
       extras: {
         //!!! this ID has to be consistent across the transcoding URL and the playback reporting status, otherwise the server won't show that we're transcoding
         "playSessionId": uuid.v4(),

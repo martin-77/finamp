@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:finamp/components/finamp_app_bar_back_button.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/screens/customization_settings_screen.dart';
-import 'package:finamp/services/star_rating_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,11 +21,10 @@ class PlayerSettingsScreen extends ConsumerWidget {
         title: Text(AppLocalizations.of(context)!.playerScreen),
         leading: FinampAppBarBackButton(),
         actions: [
-          FinampSettingsHelper.makeSettingsResetButtonWithDialog(context, () {
-            FinampSettingsHelper.resetPlayerScreenSettings();
-            unawaited(setShowStarRatings(ref, false));
-            unawaited(setAllowHalfStarRatings(ref, false));
-          }),
+          FinampSettingsHelper.makeSettingsResetButtonWithDialog(
+            context,
+            FinampSettingsHelper.resetPlayerScreenSettings,
+          ),
         ],
       ),
       body: ListView(
@@ -69,7 +65,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
               },
             ),
           ShowStarRatingsToggle(),
-          if (ref.watch(showStarRatingsProvider).valueOrNull ?? false) AllowHalfStarRatingsToggle(),
+          if (ref.watch(finampSettingsProvider.showStarRatings)) AllowHalfStarRatingsToggle(),
           ShowAlbumReleaseDateOnPlayerScreenToggle(),
           PlayerScreenMinimumCoverPaddingEditor(),
           SuppressPlayerPaddingSwitch(),
@@ -86,15 +82,11 @@ class ShowStarRatingsToggle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final setting = ref.watch(showStarRatingsProvider);
-
     return SwitchListTile.adaptive(
-      title: const Text('Show star ratings'),
-      subtitle: const Text(
-        'Show your personal Jellyfin rating in the player, lyrics view, and supported system media controls.',
-      ),
-      value: setting.valueOrNull ?? false,
-      onChanged: setting.isLoading ? null : (value) => unawaited(setShowStarRatings(ref, value)),
+      title: Text(AppLocalizations.of(context)!.showStarRatingsTitle),
+      subtitle: Text(AppLocalizations.of(context)!.showStarRatingsSubtitle),
+      value: ref.watch(finampSettingsProvider.showStarRatings),
+      onChanged: FinampSetters.setShowStarRatings,
     );
   }
 }
@@ -104,14 +96,12 @@ class AllowHalfStarRatingsToggle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final setting = ref.watch(allowHalfStarRatingsProvider);
-
     return SwitchListTile.adaptive(
       contentPadding: const EdgeInsets.only(left: 32, right: 16),
-      title: const Text('Allow half-star ratings'),
-      subtitle: const Text('Swipe across the stars to choose ratings in half-star steps.'),
-      value: setting.valueOrNull ?? false,
-      onChanged: setting.isLoading ? null : (value) => unawaited(setAllowHalfStarRatings(ref, value)),
+      title: Text(AppLocalizations.of(context)!.allowHalfStarRatingsTitle),
+      subtitle: Text(AppLocalizations.of(context)!.allowHalfStarRatingsSubtitle),
+      value: ref.watch(finampSettingsProvider.allowHalfStarRatings),
+      onChanged: FinampSetters.setAllowHalfStarRatings,
     );
   }
 }

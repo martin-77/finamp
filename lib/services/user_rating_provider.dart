@@ -3,8 +3,9 @@ import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/models/jellyfin_models.dart';
 import 'package:finamp/services/feedback_helper.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
-import 'package:finamp/services/user_rating_service.dart';
+import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:get_it/get_it.dart';
 
 final userRatingProvider = StateProvider.autoDispose.family<double?, BaseItemDto>((ref, item) => item.userData?.rating);
 
@@ -37,10 +38,10 @@ Future<void> setUserRating(WidgetRef ref, BaseItemDto item, num? stars) async {
   ref.read(provider.notifier).state = newRating;
 
   try {
-    final service = UserRatingService();
+    final jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
     final userData = newRating == null
-        ? await service.clearRating(item.id)
-        : await service.setRating(item.id, newRating);
+        ? await jellyfinApiHelper.clearUserRating(item.id)
+        : await jellyfinApiHelper.setUserRating(item.id, newRating);
 
     ref.read(provider.notifier).state = userData.rating;
     FeedbackHelper.feedback(FeedbackType.selection);

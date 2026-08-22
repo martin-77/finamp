@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/models/jellyfin_models.dart';
-import 'package:finamp/services/star_rating_settings.dart';
+import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/user_rating_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,7 +17,7 @@ class TrackRating extends ConsumerStatefulWidget {
 }
 
 class _TrackRatingState extends ConsumerState<TrackRating> {
-  static const _starWidth = 34.0;
+  static const _starWidth = 44.0;
   static const _starCount = 5;
 
   double? _dragRating;
@@ -24,8 +25,9 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
   double _ratingForPosition(double dx, {required bool allowHalfStars}) {
     if (dx <= 0) return 0;
 
-    final raw = (dx / (_starWidth * _starCount) * _starCount).clamp(0.0, _starCount.toDouble());
+    final raw = (dx / _starWidth).clamp(0.0, _starCount.toDouble());
     final steps = allowHalfStars ? 2.0 : 1.0;
+
     return ((raw * steps).ceil() / steps).clamp(allowHalfStars ? 0.5 : 1.0, _starCount.toDouble());
   }
 
@@ -48,13 +50,15 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
     final ratingProvider = userRatingProvider(widget.baseItem);
     final rating = ref.watch(ratingProvider);
     final isUpdating = ref.watch(userRatingUpdatingProvider(widget.baseItem.id));
-    final halfStarSetting = ref.watch(allowHalfStarRatingsProvider);
-    final allowHalfStars = halfStarSetting.valueOrNull ?? false;
+    final allowHalfStars = ref.watch(finampSettingsProvider.allowHalfStarRatings);
+
     final storedStars = ratingToStarValue(rating);
     final selectedStars = _dragRating ?? (allowHalfStars ? storedStars : storedStars.roundToDouble());
-    final ratingLabel = selectedStars == 0
-        ? 'Not rated'
-        : '${selectedStars % 1 == 0 ? selectedStars.toInt() : selectedStars} of 5 stars';
+
+    final displayRating = selectedStars % 1 == 0 ? selectedStars.toInt().toString() : selectedStars.toString();
+
+    final l10n = AppLocalizations.of(context)!;
+    final ratingLabel = selectedStars == 0 ? l10n.starRatingNotRated : l10n.starRatingValueLabel(displayRating);
 
     return Semantics(
       container: true,
@@ -71,33 +75,35 @@ class _TrackRatingState extends ConsumerState<TrackRating> {
         onHorizontalDragCancel: isUpdating ? null : _finishDrag,
         child: SizedBox(
           width: _starWidth * _starCount,
-          height: 40,
+          height: _starWidth,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: List.generate(_starCount, (index) {
               final stars = index + 1;
               final remaining = selectedStars - index;
+
               final icon = remaining >= 1
                   ? Icons.star_rounded
                   : remaining >= 0.5
                   ? Icons.star_half_rounded
                   : Icons.star_border_rounded;
+
               final clearsRating = selectedStars == stars;
+              final starLabel = l10n.starRatingValueLabel(stars.toString());
 
               return Semantics(
                 button: true,
                 enabled: !isUpdating,
-                label: '$stars of 5 stars',
+                label: starLabel,
                 selected: clearsRating,
                 excludeSemantics: true,
                 child: SizedBox(
                   width: _starWidth,
-                  height: 40,
+                  height: _starWidth,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: clearsRating ? 'Clear rating' : '$stars/5',
-                    iconSize: 22,
+                    tooltip: clearsRating ? l10n.clearStarRating : starLabel,
+                    iconSize: 24,
                     onPressed: isUpdating
                         ? null
                         : () => unawaited(setUserRating(ref, widget.baseItem, clearsRating ? null : stars)),

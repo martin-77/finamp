@@ -12,11 +12,10 @@ import 'package:finamp/models/jellyfin_models.dart' as jellyfin_models;
 import 'package:finamp/services/current_track_metadata_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
+import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/playback_history_service.dart';
 import 'package:finamp/services/queue_service.dart';
-import 'package:finamp/services/star_rating_settings.dart';
 import 'package:finamp/services/user_rating_provider.dart';
-import 'package:finamp/services/user_rating_service.dart';
 import 'package:finamp/services/radio_service_helper.dart' as RadioServiceHelper;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -304,7 +303,10 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
   MusicPlayerBackgroundTask() {
     _audioServiceBackgroundTaskLogger.info("Starting audio service");
 
-    showStarRatingsNotifier.addListener(_handleStarRatingSettingChanged);
+    GetIt.instance<ProviderContainer>().listen<bool>(
+      finampSettingsProvider.showStarRatings,
+      (_, _) => _handleStarRatingSettingChanged(),
+    );
 
     if (Platform.isWindows || Platform.isLinux) {
       _audioServiceBackgroundTaskLogger.info("Initializing media-kit for Windows/Linux");
@@ -1165,7 +1167,9 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
       mediaItem.add(
         currentMediaItem.copyWith(
-          rating: showStarRatingsEnabled ? Rating.newHeartRating((currentRating ?? 0) >= 10.0) : null,
+          rating: FinampSettingsHelper.finampSettings.showStarRatings
+              ? Rating.newHeartRating((currentRating ?? 0) >= 10.0)
+              : null,
         ),
       );
     }
@@ -1304,7 +1308,8 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
           MediaAction.seekForward,
           MediaAction.seekBackward,
         },
-        if (showStarRatingsEnabled && !FinampSettingsHelper.finampSettings.isOffline) MediaAction.setRating,
+        if (FinampSettingsHelper.finampSettings.showStarRatings && !FinampSettingsHelper.finampSettings.isOffline)
+          MediaAction.setRating,
       },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: const {
@@ -1483,10 +1488,6 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
     "Don't use this method, we're using methods based on FinampQueueItem. This implementation is just for best-effort platform compatibility.",
   )
   Future<void> setRating(Rating rating, [Map<String, dynamic>? extras]) async {
-    if (!showStarRatingsEnabled || FinampSettingsHelper.finampSettings.isOffline) {
-      return;
-    }
-
     jellyfin_models.BaseItemDto? currentItem;
 
     if (mediaItem.valueOrNull?.extras?["itemJson"] != null) {
@@ -1499,14 +1500,19 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
     bool isFavorite = currentItem.userData?.isFavorite ?? false;
     switch (rating.getRatingStyle()) {
       case RatingStyle.heart:
+        if (!FinampSettingsHelper.finampSettings.showStarRatings || FinampSettingsHelper.finampSettings.isOffline) {
+          return;
+        }
+
         final container = GetIt.instance<ProviderContainer>();
         final provider = userRatingProvider(currentItem);
         final previousRating = container.read(provider);
 
         try {
+          final jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
           final userData = rating.hasHeart()
-              ? await UserRatingService().setRating(currentItem.id, 10.0)
-              : await UserRatingService().clearRating(currentItem.id);
+              ? await jellyfinApiHelper.setUserRating(currentItem.id, 10.0)
+              : await jellyfinApiHelper.clearUserRating(currentItem.id);
 
           container.read(provider.notifier).state = userData.rating;
 
@@ -1523,7 +1529,6 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
             error,
             stackTrace,
           );
-          rethrow;
         }
         break;
       case RatingStyle.thumbUpDown:
