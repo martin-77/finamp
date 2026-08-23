@@ -41,8 +41,11 @@ class IosWidgetService {
 
   Future<void> _syncTail = Future<void>.value();
   int _artworkGeneration = 0;
+  int _widgetActionDepth = 0;
   bool _queueServiceBound = false;
   bool _initialized = false;
+
+  bool get _isHandlingWidgetAction => _widgetActionDepth > 0;
 
   Future<void> initialize({required AudioHandler audioHandler}) async {
     if (!Platform.isIOS || _initialized) return;
@@ -57,9 +60,8 @@ class IosWidgetService {
       unawaited(_handleMediaItemUpdate(mediaItem, generation));
     });
 
-    // PlaybackState remains useful as an event source, but the widget never
-    // caches it as a second source of truth. syncNow() reads the current value
-    // directly from AudioHandler.playbackState.
+    // PlaybackState is Finamp's published playback truth. It is only used as
+    // an event source here; snapshots read its current value directly.
     _playbackStateSubscription = audioHandler.playbackState.listen((_) {
       _bindQueueServiceIfAvailable();
       unawaited(syncNow());
@@ -102,7 +104,10 @@ class IosWidgetService {
 
     // QueueService in redesign deliberately publishes the MediaItem twice:
     // first with Finamp's placeholder artwork, then again once the full-quality
-    // albumImageProvider has resolved to a local cached file.
+    // albumImageProvider has resolved to a local cached file. Persist the
+    // current track state before artwork so the native writer can validate the
+    // matching item ID. During an AppIntent this write intentionally does not
+    // invalidate the timeline; WidgetKit reloads after perform() returns.
     await syncNow();
 
     if (mediaItem == null || generation != _artworkGeneration) return;
@@ -133,6 +138,7 @@ class IosWidgetService {
       await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
         'itemID': item.id.raw,
         'bytes': bytes,
+        'reload': !_isHandlingWidgetAction,
       });
     } catch (error, stackTrace) {
       _log.warning(
@@ -194,7 +200,7 @@ class IosWidgetService {
     );
   }
 
-  Future<void> _handleNativeCall(MethodCall call) async {
+  Future<Object?> _handleNativeCall(MethodCall call) async {
     if (call.method != 'performAction') {
       throw MissingPluginException('Unknown iOS widget method: ${call.method}');
     }
@@ -211,57 +217,67 @@ class IosWidgetService {
       throw StateError('iOS widget bridge is not initialized');
     }
 
-    switch (action) {
-      case 'togglePlayback':
-        final expectedPlaying = !handler.playbackState.value.playing;
-        final confirmation = _waitForPlaybackState(expectedPlaying);
-        if (expectedPlaying) {
-          await handler.play();
-        } else {
-          await handler.pause();
-        }
-        await confirmation;
-      case 'previous':
-        final previousItemID = _liveCurrentQueueItem()?.baseItem.id.raw;
-        final confirmation = _waitForTrackChange(previousItemID);
-        await handler.skipToPrevious();
-        final confirmedItem = await confirmation;
-        if (confirmedItem != null) {
-          _bindItemProviders(confirmedItem.baseItem);
-        }
-      case 'next':
-        final previousItemID = _liveCurrentQueueItem()?.baseItem.id.raw;
-        final confirmation = _waitForTrackChange(previousItemID);
-        await handler.skipToNext();
-        final confirmedItem = await confirmation;
-        if (confirmedItem != null) {
-          _bindItemProviders(confirmedItem.baseItem);
-        }
-      case 'toggleFavorite':
-        await _toggleFavorite();
-      case 'setRating':
-        final stars = (arguments['rating'] as num?)?.toDouble();
-        if (stars == null || stars < 1 || stars > 5) {
+    _widgetActionDepth++;
+    try {
+      switch (action) {
+        case 'togglePlayback':
+          final expectedPlaying = !handler.playbackState.value.playing;
+          final confirmation = _waitForPlaybackState(expectedPlaying);
+          if (expectedPlaying) {
+            await handler.play();
+          } else {
+            await handler.pause();
+          }
+          await confirmation;
+        case 'previous':
+          final previousItemID = _liveCurrentQueueItem()?.baseItem.id.raw;
+          final confirmation = _waitForTrackChange(previousItemID);
+          await handler.skipToPrevious();
+          final confirmedItem = await confirmation;
+          if (confirmedItem != null) {
+            _bindItemProviders(confirmedItem.baseItem);
+          }
+        case 'next':
+          final previousItemID = _liveCurrentQueueItem()?.baseItem.id.raw;
+          final confirmation = _waitForTrackChange(previousItemID);
+          await handler.skipToNext();
+          final confirmedItem = await confirmation;
+          if (confirmedItem != null) {
+            _bindItemProviders(confirmedItem.baseItem);
+          }
+        case 'toggleFavorite':
+          await _toggleFavorite();
+        case 'setRating':
+          final stars = (arguments['rating'] as num?)?.toDouble();
+          if (stars == null || stars < 1 || stars > 5) {
+            throw ArgumentError.value(
+              stars,
+              'rating',
+              'Widget rating must be between 1 and 5 stars',
+            );
+          }
+          await _writeRating(stars);
+        case 'clearRating':
+          await _writeRating(null);
+        default:
           throw ArgumentError.value(
-            stars,
-            'rating',
-            'Widget rating must be between 1 and 5 stars',
+            action,
+            'action',
+            'Unknown iOS widget action',
           );
-        }
-        await _writeRating(stars);
-      case 'clearRating':
-        await _writeRating(null);
-      default:
-        throw ArgumentError.value(
-          action,
-          'action',
-          'Unknown iOS widget action',
-        );
-    }
+      }
 
-    // WidgetKit reloads after AppIntent.perform returns. Persist a single
-    // coherent snapshot from Finamp's canonical sources before that happens.
-    await syncNow();
+      // Stream callbacks triggered by the action are allowed to persist state
+      // (and artwork) while the intent is running, but they are serialized and
+      // suppress WidgetCenter reloads. Wait for all already-enqueued writes,
+      // then return one final coherent snapshot to Swift. Swift persists that
+      // snapshot before AppIntent.perform() returns; WidgetKit performs the
+      // single timeline reload afterwards.
+      await _syncTail;
+      return _buildState();
+    } finally {
+      _widgetActionDepth--;
+    }
   }
 
   Future<PlaybackState?> _waitForPlaybackState(bool expectedPlaying) async {
@@ -339,10 +355,11 @@ class IosWidgetService {
     }
   }
 
-  Future<void> syncNow() {
+  Future<void> syncNow({bool? reload}) {
     if (!Platform.isIOS) return Future<void>.value();
 
-    final sync = _syncTail.then((_) => _syncNow());
+    final shouldReload = reload ?? !_isHandlingWidgetAction;
+    final sync = _syncTail.then((_) => _syncNow(reload: shouldReload));
     _syncTail = sync.catchError((Object error, StackTrace stackTrace) {
       _log.warning(
         'Failed to synchronize iOS widget state',
@@ -353,7 +370,7 @@ class IosWidgetService {
     return sync;
   }
 
-  Future<void> _syncNow() async {
+  Map<String, Object?> _buildState() {
     final queueItem = _liveCurrentQueueItem();
     final item = queueItem?.baseItem;
     final currentMediaItem = queueItem?.item;
@@ -367,7 +384,7 @@ class IosWidgetService {
         ? null
         : container.read(userRatingProvider(item));
 
-    final state = <String, Object?>{
+    return <String, Object?>{
       'itemID': item?.id.raw,
       'title': currentMediaItem?.title ?? 'Finamp',
       'artist': currentMediaItem?.artist ?? '',
@@ -379,9 +396,16 @@ class IosWidgetService {
           ? null
           : ratingToStarValue(jellyfinRating),
     };
+  }
+
+  Future<void> _syncNow({required bool reload}) async {
+    final state = _buildState();
 
     try {
-      await _channel.invokeMethod<void>('updateState', state);
+      await _channel.invokeMethod<void>('updateState', <String, Object?>{
+        ...state,
+        'reload': reload,
+      });
     } on PlatformException catch (error, stackTrace) {
       _log.warning(
         'Failed to update iOS widget state',
@@ -406,6 +430,7 @@ class IosWidgetService {
     _audioHandler = null;
     _mediaItem = null;
     _queueServiceBound = false;
+    _widgetActionDepth = 0;
     ++_artworkGeneration;
   }
 }
