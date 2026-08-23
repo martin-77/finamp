@@ -26,6 +26,7 @@ class IosWidgetService {
   static final instance = IosWidgetService._();
 
   static const _channel = MethodChannel('finamp/ios_widget');
+  static const _intentStateTimeout = Duration(seconds: 2);
   final _log = Logger('IosWidgetService');
 
   StreamSubscription<MediaItem?>? _mediaItemSubscription;
@@ -165,15 +166,24 @@ class IosWidgetService {
 
     switch (action) {
       case 'togglePlayback':
-        if (_playbackState?.playing ?? false) {
-          await handler.pause();
-        } else {
+        final expectedPlaying = !(_playbackState?.playing ?? false);
+        final confirmation = _waitForPlaybackState(expectedPlaying);
+        if (expectedPlaying) {
           await handler.play();
+        } else {
+          await handler.pause();
         }
+        await confirmation;
       case 'previous':
+        final previousItemID = _currentItem?.id.raw;
+        final confirmation = _waitForTrackChange(previousItemID);
         await handler.skipToPrevious();
+        await confirmation;
       case 'next':
+        final previousItemID = _currentItem?.id.raw;
+        final confirmation = _waitForTrackChange(previousItemID);
         await handler.skipToNext();
+        await confirmation;
       case 'toggleFavorite':
         await _toggleFavorite();
       case 'setRating':
@@ -196,7 +206,50 @@ class IosWidgetService {
         );
     }
 
+    // WidgetKit reloads an interactive widget after AppIntent.perform returns.
+    // Make sure the shared widget state already contains the confirmed Finamp
+    // state before the native AppIntent is allowed to finish.
     await syncNow();
+  }
+
+  Future<void> _waitForPlaybackState(bool expectedPlaying) async {
+    if (_playbackState?.playing == expectedPlaying) return;
+
+    final handler = _audioHandler;
+    if (handler == null) return;
+
+    try {
+      await handler.playbackState
+          .firstWhere((state) => state.playing == expectedPlaying)
+          .timeout(_intentStateTimeout);
+    } on TimeoutException {
+      _log.warning(
+        'Timed out waiting for iOS widget playback state: '
+        'playing=$expectedPlaying',
+      );
+    }
+  }
+
+  Future<void> _waitForTrackChange(String? previousItemID) async {
+    if (previousItemID == null) return;
+
+    try {
+      await GetIt.instance<QueueService>()
+          .getCurrentTrackStream()
+          .firstWhere((queueItem) {
+            final itemID = queueItem?.baseItem?.id.raw;
+            return itemID != null && itemID != previousItemID;
+          })
+          .timeout(_intentStateTimeout);
+    } on TimeoutException {
+      // Previous may intentionally seek to the beginning of the current track
+      // instead of changing tracks, and next may stay put at the end of a queue.
+      // In either case the current metadata is still the correct widget state.
+      _log.fine(
+        'No track change confirmed for iOS widget action within '
+        '${_intentStateTimeout.inMilliseconds} ms',
+      );
+    }
   }
 
   Future<void> _toggleFavorite() async {
