@@ -62,8 +62,28 @@ struct FinampWidgetState: Codable, Equatable {
                 from: data
             )
         else {
+            NSLog("[FINAMP-WIDGET-DIAG] extension load state=empty")
             return .empty
         }
+
+        let coverExists: Bool
+        if let itemID = state.itemID, let container = FinampWidgetShared.containerURL {
+            let coverURL = container
+                .appendingPathComponent("\(FinampWidgetShared.coverFileName)-\(itemID)")
+                .appendingPathExtension("jpg")
+            coverExists = FileManager.default.fileExists(atPath: coverURL.path)
+        } else {
+            coverExists = false
+        }
+
+        NSLog(
+            "[FINAMP-WIDGET-DIAG] extension load item=%@ title=%@ playing=%@ revision=%d coverExists=%@",
+            state.itemID ?? "nil",
+            state.title,
+            String(state.isPlaying),
+            state.coverRevision,
+            String(coverExists)
+        )
 
         return state
     }
