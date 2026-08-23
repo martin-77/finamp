@@ -53,13 +53,21 @@ class IosWidgetService {
 
     _mediaItemSubscription = audioHandler.mediaItem.listen((mediaItem) {
       _bindQueueServiceIfAvailable();
+      _log.info(
+        '[WIDGET-DIAG] mediaItem title=${mediaItem?.title} '
+        'id=${mediaItem?.id} artUri=${mediaItem?.artUri}',
+      );
       unawaited(_handleMediaItemUpdate(mediaItem));
     });
 
     // PlaybackState is Finamp's published playback truth. It is only used as
     // an event source here; snapshots read its current value directly.
-    _playbackStateSubscription = audioHandler.playbackState.listen((_) {
+    _playbackStateSubscription = audioHandler.playbackState.listen((state) {
       _bindQueueServiceIfAvailable();
+      _log.info(
+        '[WIDGET-DIAG] playbackState playing=${state.playing} '
+        'queueIndex=${state.queueIndex}',
+      );
       unawaited(syncNow());
     });
 
@@ -75,6 +83,7 @@ class IosWidgetService {
     // bind it lazily as soon as Finamp makes it available.
     _bindQueueServiceIfAvailable();
     _initialized = true;
+    _log.info('[WIDGET-DIAG] initialized');
   }
 
   void _bindQueueServiceIfAvailable() {
@@ -87,6 +96,10 @@ class IosWidgetService {
     _bindItemProviders(queueService.getCurrentTrack()?.baseItem);
 
     _currentTrackSubscription = queueService.getCurrentTrackStream().listen((queueItem) {
+      _log.info(
+        '[WIDGET-DIAG] currentTrack id=${queueItem?.baseItem.id.raw} '
+        'title=${queueItem?.item.title}',
+      );
       _bindItemProviders(queueItem?.baseItem);
       unawaited(syncNow());
     });
@@ -102,7 +115,10 @@ class IosWidgetService {
     // the native writer can validate the matching item ID.
     await syncNow();
 
-    if (mediaItem == null) return;
+    if (mediaItem == null) {
+      _log.info('[WIDGET-DIAG] artwork skip reason=null-media-item');
+      return;
+    }
 
     // Artwork ownership is defined by this MediaItem snapshot itself. A newer
     // MediaItem for the same track does not make a valid local artwork file
@@ -111,28 +127,73 @@ class IosWidgetService {
     // full-quality image is being prepared.
     final item = _itemFromMediaItem(mediaItem);
     final artUri = mediaItem.artUri;
-    if (item == null || artUri == null || !artUri.isScheme('file')) return;
+    _log.info(
+      '[WIDGET-DIAG] artwork candidate item=${item?.id.raw} '
+      'title=${mediaItem.title} artUri=$artUri',
+    );
+    if (item == null) {
+      _log.info('[WIDGET-DIAG] artwork skip reason=no-item');
+      return;
+    }
+    if (artUri == null) {
+      _log.info('[WIDGET-DIAG] artwork skip item=${item.id.raw} reason=no-art-uri');
+      return;
+    }
+    if (!artUri.isScheme('file')) {
+      _log.info(
+        '[WIDGET-DIAG] artwork skip item=${item.id.raw} '
+        'reason=non-file-uri uri=$artUri',
+      );
+      return;
+    }
 
-    if (_isPlaceholderArtwork(artUri)) return;
+    if (_isPlaceholderArtwork(artUri)) {
+      _log.info(
+        '[WIDGET-DIAG] artwork skip item=${item.id.raw} reason=placeholder',
+      );
+      return;
+    }
 
     final liveItem = _liveCurrentQueueItem()?.baseItem;
-    if (liveItem != null && liveItem.id != item.id) return;
+    if (liveItem != null && liveItem.id != item.id) {
+      _log.info(
+        '[WIDGET-DIAG] artwork skip item=${item.id.raw} '
+        'reason=track-mismatch live=${liveItem.id.raw}',
+      );
+      return;
+    }
 
     try {
       final bytes = await File.fromUri(artUri).readAsBytes();
-      if (bytes.isEmpty) return;
+      if (bytes.isEmpty) {
+        _log.info(
+          '[WIDGET-DIAG] artwork skip item=${item.id.raw} reason=empty-file',
+        );
+        return;
+      }
 
       // File I/O is asynchronous. Re-check only track identity afterwards;
       // another MediaItem event for the same track is harmless and must not
       // cancel this valid artwork publication.
       final currentItem = _liveCurrentQueueItem()?.baseItem;
-      if (currentItem != null && currentItem.id != item.id) return;
+      if (currentItem != null && currentItem.id != item.id) {
+        _log.info(
+          '[WIDGET-DIAG] artwork skip item=${item.id.raw} '
+          'reason=track-changed-after-read live=${currentItem.id.raw}',
+        );
+        return;
+      }
 
+      _log.info(
+        '[WIDGET-DIAG] artwork send item=${item.id.raw} bytes=${bytes.length} '
+        'reload=${!_isHandlingWidgetAction}',
+      );
       await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
         'itemID': item.id.raw,
         'bytes': bytes,
         'reload': !_isHandlingWidgetAction,
       });
+      _log.info('[WIDGET-DIAG] artwork sent item=${item.id.raw}');
     } catch (error, stackTrace) {
       _log.warning(
         'Failed to publish iOS widget artwork from $artUri',
@@ -210,6 +271,11 @@ class IosWidgetService {
       throw StateError('iOS widget bridge is not initialized');
     }
 
+    _log.info(
+      '[WIDGET-DIAG] action start action=$action '
+      'playing=${handler.playbackState.value.playing} '
+      'item=${_liveCurrentQueueItem()?.baseItem.id.raw}',
+    );
     _widgetActionDepth++;
     try {
       switch (action) {
@@ -267,7 +333,13 @@ class IosWidgetService {
       // snapshot before AppIntent.perform() returns; WidgetKit performs the
       // single timeline reload afterwards.
       await _syncTail;
-      return _buildState();
+      final state = _buildState();
+      _log.info(
+        '[WIDGET-DIAG] action final action=$action '
+        'item=${state['itemID']} title=${state['title']} '
+        'playing=${state['isPlaying']}',
+      );
+      return state;
     } finally {
       _widgetActionDepth--;
     }
@@ -393,12 +465,20 @@ class IosWidgetService {
 
   Future<void> _syncNow({required bool reload}) async {
     final state = _buildState();
+    _log.info(
+      '[WIDGET-DIAG] state send item=${state['itemID']} '
+      'title=${state['title']} playing=${state['isPlaying']} reload=$reload',
+    );
 
     try {
       await _channel.invokeMethod<void>('updateState', <String, Object?>{
         ...state,
         'reload': reload,
       });
+      _log.info(
+        '[WIDGET-DIAG] state sent item=${state['itemID']} '
+        'title=${state['title']} playing=${state['isPlaying']} reload=$reload',
+      );
     } on PlatformException catch (error, stackTrace) {
       _log.warning(
         'Failed to update iOS widget state',
