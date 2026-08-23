@@ -54,7 +54,7 @@ struct FinampWidgetState: Codable, Equatable {
         coverRevision: 0
     )
 
-    static func load() -> FinampWidgetState {
+    static func load(source: String = "unknown") -> FinampWidgetState {
         guard
             let stateURL = FinampWidgetShared.stateURL,
             let data = try? Data(contentsOf: stateURL),
@@ -63,8 +63,15 @@ struct FinampWidgetState: Codable, Equatable {
                 from: data
             )
         else {
-            recordDiagnosticRead(state: .empty, coverExists: false)
-            NSLog("[FINAMP-WIDGET-DIAG] extension load state=empty")
+            recordDiagnosticRead(
+                state: .empty,
+                coverExists: false,
+                source: source
+            )
+            NSLog(
+                "[FINAMP-WIDGET-DIAG] extension load source=%@ state=empty",
+                source
+            )
             return .empty
         }
 
@@ -78,9 +85,14 @@ struct FinampWidgetState: Codable, Equatable {
             coverExists = false
         }
 
-        recordDiagnosticRead(state: state, coverExists: coverExists)
+        recordDiagnosticRead(
+            state: state,
+            coverExists: coverExists,
+            source: source
+        )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] extension load item=%@ title=%@ playing=%@ revision=%d coverExists=%@",
+            "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ playing=%@ revision=%d coverExists=%@",
+            source,
             state.itemID ?? "nil",
             state.title,
             String(state.isPlaying),
@@ -106,12 +118,14 @@ struct FinampWidgetState: Codable, Equatable {
 
     private static func recordDiagnosticRead(
         state: FinampWidgetState,
-        coverExists: Bool
+        coverExists: Bool,
+        source: String
     ) {
         guard let url = FinampWidgetShared.diagnosticReadURL else { return }
 
         let payload: [String: Any] = [
             "timestamp": Date().timeIntervalSince1970,
+            "source": source,
             "itemID": state.itemID as Any,
             "title": state.title,
             "isPlaying": state.isPlaying,
