@@ -1,5 +1,7 @@
 import Flutter
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import WidgetKit
 
 extension AppDelegate {
@@ -163,6 +165,9 @@ private final class FinampWidgetActionState: @unchecked Sendable {
 }
 
 private enum FinampWidgetStateWriter {
+    private static let maxCoverPixelSize = 1280
+    private static let jpegCompressionQuality = 0.9
+
     private static var appGroup: String {
         "group.\(Bundle.main.bundleIdentifier ?? "com.unicornsonlsd.finamp-ios").widget"
     }
@@ -237,17 +242,77 @@ private enum FinampWidgetStateWriter {
             )
         }
 
+        let normalizedData = try normalizeCoverData(data)
+
         if let existingData = try? Data(contentsOf: destination),
-           existingData == data {
+           existingData == normalizedData {
             return
         }
 
-        try data.write(to: destination, options: .atomic)
+        try normalizedData.write(to: destination, options: .atomic)
         state.coverRevision &+= 1
         try save(state, to: defaults)
         if reload {
             reloadWidget()
         }
+    }
+
+    private static func normalizeCoverData(_ data: Data) throws -> Data {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 12,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to decode widget artwork"]
+            )
+        }
+
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxCoverPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            thumbnailOptions as CFDictionary
+        ) else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 13,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to downsample widget artwork"]
+            )
+        }
+
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 14,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create widget artwork encoder"]
+            )
+        }
+
+        let properties: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: jpegCompressionQuality
+        ]
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+
+        guard CGImageDestinationFinalize(destination) else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 15,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to encode widget artwork"]
+            )
+        }
+
+        return output as Data
     }
 
     private static func save(
