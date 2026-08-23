@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:finamp/gen/assets.gen.dart';
 import 'package:finamp/models/jellyfin_models.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
@@ -36,6 +37,7 @@ class IosWidgetService {
   PlaybackState? _playbackState;
   BaseItemDto? _currentItem;
 
+  Future<void> _syncTail = Future<void>.value();
   bool _initialized = false;
 
   Future<void> initialize({required AudioHandler audioHandler}) async {
@@ -165,9 +167,17 @@ class IosWidgetService {
     }
   }
 
-  Future<void> syncNow() async {
-    if (!Platform.isIOS) return;
+  Future<void> syncNow() {
+    if (!Platform.isIOS) return Future<void>.value();
 
+    final sync = _syncTail.then((_) => _syncNow());
+    _syncTail = sync.catchError((Object error, StackTrace stackTrace) {
+      _log.warning('Failed to synchronize iOS widget state', error, stackTrace);
+    });
+    return sync;
+  }
+
+  Future<void> _syncNow() async {
     final item = _currentItem;
     final container = GetIt.instance<ProviderContainer>();
 
@@ -183,7 +193,7 @@ class IosWidgetService {
       'showStarRatings': FinampSettingsHelper.finampSettings.showStarRatings,
       'isFavorite': isFavorite,
       'starRating': jellyfinRating == null ? null : ratingToStarValue(jellyfinRating),
-      'artURI': _mediaItem?.artUri?.toString(),
+      'artURI': _widgetArtUri(_mediaItem?.artUri)?.toString(),
     };
 
     try {
@@ -191,6 +201,20 @@ class IosWidgetService {
     } on PlatformException catch (error, stackTrace) {
       _log.warning('Failed to update iOS widget state', error, stackTrace);
     }
+  }
+
+  Uri? _widgetArtUri(Uri? artUri) {
+    if (artUri == null) return null;
+
+    // QueueService temporarily publishes Finamp's album placeholder while the
+    // full-quality artwork is being loaded into the player image cache. The
+    // same MediaItem is published again with the real file URI once loading
+    // completes. Never persist that transient placeholder as widget artwork.
+    if (artUri.isScheme('file') && artUri.path.endsWith(Assets.images.albumWhite.path)) {
+      return null;
+    }
+
+    return artUri;
   }
 
   BaseItemDto? _baseItemFrom(MediaItem? mediaItem) {
