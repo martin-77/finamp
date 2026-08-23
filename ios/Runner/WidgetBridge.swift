@@ -16,6 +16,8 @@ extension AppDelegate {
             actionState.begin()
             defer { actionState.end() }
 
+            NSLog("[FINAMP-WIDGET-DIAG] action start action=%@", action.rawValue)
+
             let arguments: [String: Any] = [
                 "action": action.rawValue,
                 "rating": rating as Any
@@ -29,6 +31,12 @@ extension AppDelegate {
                     arguments: arguments
                 ) { result in
                     if let error = result as? FlutterError {
+                        NSLog(
+                            "[FINAMP-WIDGET-DIAG] action error action=%@ code=%@ message=%@",
+                            action.rawValue,
+                            error.code,
+                            error.message ?? "nil"
+                        )
                         continuation.resume(
                             throwing: NSError(
                                 domain: "FinampWidget",
@@ -43,6 +51,7 @@ extension AppDelegate {
                     }
 
                     guard let state = result as? [String: Any] else {
+                        NSLog("[FINAMP-WIDGET-DIAG] action missing final state action=%@", action.rawValue)
                         continuation.resume(
                             throwing: NSError(
                                 domain: "FinampWidget",
@@ -57,6 +66,13 @@ extension AppDelegate {
                     }
 
                     do {
+                        NSLog(
+                            "[FINAMP-WIDGET-DIAG] action final state action=%@ item=%@ title=%@ playing=%@",
+                            action.rawValue,
+                            state["itemID"] as? String ?? "nil",
+                            state["title"] as? String ?? "nil",
+                            String(describing: state["isPlaying"] as? Bool)
+                        )
                         // WidgetKit reloads automatically when the AppIntent
                         // returns. Persist the final confirmed snapshot first,
                         // but do not invalidate the timeline from inside the
@@ -65,8 +81,14 @@ extension AppDelegate {
                             state,
                             reload: false
                         )
+                        NSLog("[FINAMP-WIDGET-DIAG] action end action=%@", action.rawValue)
                         continuation.resume()
                     } catch {
+                        NSLog(
+                            "[FINAMP-WIDGET-DIAG] action state write failed action=%@ error=%@",
+                            action.rawValue,
+                            error.localizedDescription
+                        )
                         continuation.resume(throwing: error)
                     }
                 }
@@ -89,12 +111,22 @@ extension AppDelegate {
                     let reload =
                         (arguments["reload"] as? Bool ?? true) &&
                         !actionState.isActive
+                    NSLog(
+                        "[FINAMP-WIDGET-DIAG] updateState item=%@ title=%@ playing=%@ requestedReload=%@ effectiveReload=%@ actionActive=%@",
+                        arguments["itemID"] as? String ?? "nil",
+                        arguments["title"] as? String ?? "nil",
+                        String(describing: arguments["isPlaying"] as? Bool),
+                        String(describing: arguments["reload"] as? Bool),
+                        String(reload),
+                        String(actionState.isActive)
+                    )
                     try FinampWidgetStateWriter.writeState(
                         arguments,
                         reload: reload
                     )
                     result(nil)
                 } catch {
+                    NSLog("[FINAMP-WIDGET-DIAG] updateState failed error=%@", error.localizedDescription)
                     result(FlutterError(
                         code: "WIDGET_STATE_WRITE_FAILED",
                         message: error.localizedDescription,
@@ -120,6 +152,14 @@ extension AppDelegate {
                     let reload =
                         (arguments["reload"] as? Bool ?? true) &&
                         !actionState.isActive
+                    NSLog(
+                        "[FINAMP-WIDGET-DIAG] updateArtwork item=%@ bytes=%d requestedReload=%@ effectiveReload=%@ actionActive=%@",
+                        itemID,
+                        typedData.data.count,
+                        String(describing: arguments["reload"] as? Bool),
+                        String(reload),
+                        String(actionState.isActive)
+                    )
                     try FinampWidgetStateWriter.writeArtwork(
                         typedData.data,
                         itemID: itemID,
@@ -127,6 +167,11 @@ extension AppDelegate {
                     )
                     result(nil)
                 } catch {
+                    NSLog(
+                        "[FINAMP-WIDGET-DIAG] updateArtwork failed item=%@ error=%@",
+                        itemID,
+                        error.localizedDescription
+                    )
                     result(FlutterError(
                         code: "WIDGET_ARTWORK_WRITE_FAILED",
                         message: error.localizedDescription,
@@ -208,6 +253,13 @@ private enum FinampWidgetStateWriter {
         }
 
         try save(state, to: defaults)
+        NSLog(
+            "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ reload=%@",
+            state.itemID ?? "nil",
+            state.title,
+            String(state.isPlaying),
+            String(reload)
+        )
         if reload {
             reloadWidget()
         }
@@ -231,6 +283,18 @@ private enum FinampWidgetStateWriter {
             var state = try? JSONDecoder().decode(FinampWidgetState.self, from: existing),
             state.itemID == itemID
         else {
+            let storedItemID: String
+            if let existing = defaults.data(forKey: FinampWidgetShared.stateKey),
+               let state = try? JSONDecoder().decode(FinampWidgetState.self, from: existing) {
+                storedItemID = state.itemID ?? "nil"
+            } else {
+                storedItemID = "unreadable"
+            }
+            NSLog(
+                "[FINAMP-WIDGET-DIAG] writeArtwork rejected item=%@ storedItem=%@",
+                itemID,
+                storedItemID
+            )
             return
         }
 
@@ -246,12 +310,27 @@ private enum FinampWidgetStateWriter {
 
         if let existingData = try? Data(contentsOf: destination),
            existingData == normalizedData {
+            NSLog(
+                "[FINAMP-WIDGET-DIAG] writeArtwork unchanged item=%@ path=%@ bytes=%d",
+                itemID,
+                destination.path,
+                normalizedData.count
+            )
             return
         }
 
         try normalizedData.write(to: destination, options: .atomic)
         state.coverRevision &+= 1
         try save(state, to: defaults)
+        NSLog(
+            "[FINAMP-WIDGET-DIAG] writeArtwork saved item=%@ path=%@ inputBytes=%d outputBytes=%d revision=%d reload=%@",
+            itemID,
+            destination.path,
+            data.count,
+            normalizedData.count,
+            state.coverRevision,
+            String(reload)
+        )
         if reload {
             reloadWidget()
         }
@@ -324,6 +403,7 @@ private enum FinampWidgetStateWriter {
     }
 
     private static func reloadWidget() {
+        NSLog("[FINAMP-WIDGET-DIAG] reloadTimelines kind=%@", FinampWidgetShared.kind)
         WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 
