@@ -37,10 +37,8 @@ class IosWidgetService {
   ProviderSubscription<double?>? _ratingSubscription;
 
   AudioHandler? _audioHandler;
-  MediaItem? _mediaItem;
 
   Future<void> _syncTail = Future<void>.value();
-  int _artworkGeneration = 0;
   int _widgetActionDepth = 0;
   bool _queueServiceBound = false;
   bool _initialized = false;
@@ -55,9 +53,7 @@ class IosWidgetService {
 
     _mediaItemSubscription = audioHandler.mediaItem.listen((mediaItem) {
       _bindQueueServiceIfAvailable();
-      _mediaItem = mediaItem;
-      final generation = ++_artworkGeneration;
-      unawaited(_handleMediaItemUpdate(mediaItem, generation));
+      unawaited(_handleMediaItemUpdate(mediaItem));
     });
 
     // PlaybackState is Finamp's published playback truth. It is only used as
@@ -96,24 +92,23 @@ class IosWidgetService {
     });
   }
 
-  Future<void> _handleMediaItemUpdate(
-    MediaItem? mediaItem,
-    int generation,
-  ) async {
+  Future<void> _handleMediaItemUpdate(MediaItem? mediaItem) async {
     _bindQueueServiceIfAvailable();
 
-    // QueueService in redesign deliberately publishes the MediaItem twice:
-    // first with Finamp's placeholder artwork, then again once the full-quality
-    // albumImageProvider has resolved to a local cached file. Persist the
-    // current track state before artwork so the native writer can validate the
-    // matching item ID. During an AppIntent this write intentionally does not
-    // invalidate the timeline; WidgetKit reloads after perform() returns.
+    // QueueService in redesign deliberately publishes the MediaItem more than
+    // once for the same track: metadata may be updated independently, and the
+    // full-quality albumImageProvider later replaces placeholder artwork with
+    // a local cached file. Persist the current track state before artwork so
+    // the native writer can validate the matching item ID.
     await syncNow();
 
-    if (mediaItem == null || generation != _artworkGeneration) return;
+    if (mediaItem == null) return;
 
-    // Keep artwork identity atomic: both the item ID and artUri come from the
-    // same MediaItem snapshot. QueueService is only a staleness guard.
+    // Artwork ownership is defined by this MediaItem snapshot itself. A newer
+    // MediaItem for the same track does not make a valid local artwork file
+    // stale; only a real track change does. This matters for cold image-cache
+    // loads where Finamp may publish several same-track MediaItems while the
+    // full-quality image is being prepared.
     final item = _itemFromMediaItem(mediaItem);
     final artUri = mediaItem.artUri;
     if (item == null || artUri == null || !artUri.isScheme('file')) return;
@@ -125,13 +120,11 @@ class IosWidgetService {
 
     try {
       final bytes = await File.fromUri(artUri).readAsBytes();
-      if (bytes.isEmpty ||
-          generation != _artworkGeneration ||
-          _itemFromMediaItem(_mediaItem)?.id != item.id ||
-          _mediaItem?.artUri != artUri) {
-        return;
-      }
+      if (bytes.isEmpty) return;
 
+      // File I/O is asynchronous. Re-check only track identity afterwards;
+      // another MediaItem event for the same track is harmless and must not
+      // cancel this valid artwork publication.
       final currentItem = _liveCurrentQueueItem()?.baseItem;
       if (currentItem != null && currentItem.id != item.id) return;
 
@@ -428,9 +421,7 @@ class IosWidgetService {
     _ratingSubscription?.close();
 
     _audioHandler = null;
-    _mediaItem = null;
     _queueServiceBound = false;
     _widgetActionDepth = 0;
-    ++_artworkGeneration;
   }
 }
