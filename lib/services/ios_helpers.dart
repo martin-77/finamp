@@ -136,8 +136,14 @@ class IosSiriHandler {
     await androidAutoHelper.playFromSearch(AndroidAutoSearchQuery(rawQuery, extras));
   }
 
-  /// Translates Siri metadata fields from an INPlayMediaIntent into the
-  /// Android Auto-style extras expected by AndroidAutoHelper.playFromSearch.
+  /// Translates Siri metadata fields into Android Auto intent extras format.
+  ///
+  /// This mapping allows AA's decision tree to correctly identify the search type:
+  /// - artist + query → track search filtered by artist
+  /// - album + query → track search
+  /// - artist only → artist search (instant mix)
+  /// - mediaType hint on bare query → maps query to the appropriate extra
+  /// - bare query with no hints → null extras (AA does generic: playlists first, then tracks)
   static Map<String, dynamic>? _buildExtrasFromSiriData({
     String? query,
     String? artist,
