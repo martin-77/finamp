@@ -41,6 +41,7 @@ struct FinampWidgetState: Codable, Equatable {
     var isFavorite: Bool
     var starRating: Double?
     var coverRevision: Int
+    var diagnosticTrackSequence: Int?
 
     static let empty = FinampWidgetState(
         itemID: nil,
@@ -51,7 +52,8 @@ struct FinampWidgetState: Codable, Equatable {
         showStarRatings: false,
         isFavorite: false,
         starRating: nil,
-        coverRevision: 0
+        coverRevision: 0,
+        diagnosticTrackSequence: nil
     )
 
     static func load(source: String = "unknown") -> FinampWidgetState {
@@ -83,12 +85,13 @@ struct FinampWidgetState: Codable, Equatable {
             source: source
         )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ playing=%@ revision=%d coverExists=%@",
+            "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ playing=%@ revision=%d trackSeq=%@ coverExists=%@",
             source,
             state.itemID ?? "nil",
             state.title,
             String(state.isPlaying),
             state.coverRevision,
+            String(describing: state.diagnosticTrackSequence),
             String(coverExists)
         )
 
@@ -109,6 +112,7 @@ struct FinampWidgetState: Codable, Equatable {
             "title": state.title,
             "isPlaying": state.isPlaying,
             "coverRevision": state.coverRevision,
+            "trackSequence": state.diagnosticTrackSequence as Any,
             "coverExists": explicitCoverExists ?? coverExists(for: state)
         ]
 
