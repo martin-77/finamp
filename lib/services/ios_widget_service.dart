@@ -135,6 +135,15 @@ class IosWidgetService {
         return;
       }
 
+      // A cached AlbumImageProvider can fire immediately when the current track
+      // changes. Ensure the matching widget state has reached the native side
+      // before sending artwork; WidgetBridge deliberately rejects artwork for
+      // an itemID that is not current yet.
+      await syncNow();
+      if (generation != _artworkGeneration || _currentItem?.id.raw != itemID) {
+        return;
+      }
+
       await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
         'itemID': itemID,
         'bytes': bytes,
