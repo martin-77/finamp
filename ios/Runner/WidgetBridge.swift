@@ -106,9 +106,18 @@ private enum FinampWidgetStateWriter {
             removeCover(itemID: oldID, appGroup: appGroup)
         }
 
-        if let itemID = state.itemID,
-           let artURIString = arguments["artURI"] as? String,
-           let artURL = URL(string: artURIString) {
+        // Persist metadata first. Artwork is an optional enhancement and must
+        // never prevent title/artist/playback state from reaching the widget.
+        try save(state, to: defaults)
+        await reloadWidget()
+
+        guard let itemID = state.itemID,
+              let artURIString = arguments["artURI"] as? String,
+              let artURL = URL(string: artURIString) else {
+            return
+        }
+
+        do {
             let changed = try await persistCover(
                 from: artURL,
                 itemID: itemID,
@@ -116,16 +125,28 @@ private enum FinampWidgetStateWriter {
             )
             if changed {
                 state.coverRevision &+= 1
+                try save(state, to: defaults)
+                await reloadWidget()
             }
+        } catch {
+            // Keep the already-persisted metadata and let the widget show its
+            // normal artwork placeholder. A failed cover must not make the
+            // complete now-playing state stale.
+            NSLog("FinampWidget: cover update failed: %@", error.localizedDescription)
         }
+    }
 
+    private static func save(
+        _ state: FinampWidgetState,
+        to defaults: UserDefaults
+    ) throws {
         let data = try JSONEncoder().encode(state)
         defaults.set(data, forKey: FinampWidgetShared.stateKey)
+    }
 
-
-        await MainActor.run {
-            WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
-        }
+    @MainActor
+    private static func reloadWidget() {
+        WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 
     private static func coverURL(itemID: String, appGroup: String) -> URL? {
