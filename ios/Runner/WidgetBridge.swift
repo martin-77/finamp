@@ -248,12 +248,20 @@ private enum FinampWidgetStateWriter {
         state.isFavorite = arguments["isFavorite"] as? Bool ?? false
         state.starRating = (arguments["starRating"] as? NSNumber)?.doubleValue
 
+        if let newItemID = state.itemID, newItemID != oldState.itemID {
+            state.diagnosticTrackSequence =
+                (oldState.diagnosticTrackSequence ?? 0) + 1
+        } else {
+            state.diagnosticTrackSequence = oldState.diagnosticTrackSequence
+        }
+
         if state == oldState {
             NSLog(
-                "[FINAMP-WIDGET-DIAG] writeState unchanged item=%@ title=%@ playing=%@",
+                "[FINAMP-WIDGET-DIAG] writeState unchanged item=%@ title=%@ playing=%@ trackSeq=%@",
                 state.itemID ?? "nil",
                 state.title,
-                String(state.isPlaying)
+                String(state.isPlaying),
+                String(describing: state.diagnosticTrackSequence)
             )
             return
         }
@@ -264,10 +272,11 @@ private enum FinampWidgetStateWriter {
 
         try save(state)
         NSLog(
-            "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ reload=%@",
+            "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ trackSeq=%@ reload=%@",
             state.itemID ?? "nil",
             state.title,
             String(state.isPlaying),
+            String(describing: state.diagnosticTrackSequence),
             String(reload)
         )
         if reload {
