@@ -4,6 +4,7 @@ enum FinampWidgetShared {
     static let kind = "FinampNowPlayingWidget"
     static let stateFileName = "now-playing-state.json"
     static let coverFileName = "now-playing-cover"
+    static let diagnosticReadFileName = "widget-last-read.json"
 
     static var appGroupIdentifier: String {
         guard
@@ -23,6 +24,10 @@ enum FinampWidgetShared {
 
     static var stateURL: URL? {
         containerURL?.appendingPathComponent(stateFileName)
+    }
+
+    static var diagnosticReadURL: URL? {
+        containerURL?.appendingPathComponent(diagnosticReadFileName)
     }
 }
 
@@ -58,6 +63,7 @@ struct FinampWidgetState: Codable, Equatable {
                 from: data
             )
         else {
+            recordDiagnosticRead(state: .empty, coverExists: false)
             NSLog("[FINAMP-WIDGET-DIAG] extension load state=empty")
             return .empty
         }
@@ -72,6 +78,7 @@ struct FinampWidgetState: Codable, Equatable {
             coverExists = false
         }
 
+        recordDiagnosticRead(state: state, coverExists: coverExists)
         NSLog(
             "[FINAMP-WIDGET-DIAG] extension load item=%@ title=%@ playing=%@ revision=%d coverExists=%@",
             state.itemID ?? "nil",
@@ -95,5 +102,26 @@ struct FinampWidgetState: Codable, Equatable {
 
         let data = try JSONEncoder().encode(self)
         try data.write(to: stateURL, options: .atomic)
+    }
+
+    private static func recordDiagnosticRead(
+        state: FinampWidgetState,
+        coverExists: Bool
+    ) {
+        guard let url = FinampWidgetShared.diagnosticReadURL else { return }
+
+        let payload: [String: Any] = [
+            "timestamp": Date().timeIntervalSince1970,
+            "itemID": state.itemID as Any,
+            "title": state.title,
+            "isPlaying": state.isPlaying,
+            "coverRevision": state.coverRevision,
+            "coverExists": coverExists
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            return
+        }
+        try? data.write(to: url, options: .atomic)
     }
 }
