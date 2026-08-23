@@ -283,7 +283,15 @@ class IosWidgetService {
           final expectedPlaying = !handler.playbackState.value.playing;
           final confirmation = _waitForPlaybackState(expectedPlaying);
           if (expectedPlaying) {
-            await handler.play();
+            unawaited(
+              handler.play().catchError((Object error, StackTrace stackTrace) {
+                _log.warning(
+                  'Failed to start playback from iOS widget',
+                  error,
+                  stackTrace,
+                );
+              }),
+            );
           } else {
             await handler.pause();
           }
