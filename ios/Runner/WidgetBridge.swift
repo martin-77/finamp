@@ -184,9 +184,11 @@ private enum FinampWidgetStateWriter {
     }
 
     private static func reloadWidget() {
-        DispatchQueue.main.async {
-            WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
-        }
+        // WidgetKit reloads an interactive widget after AppIntent.perform()
+        // returns. Keep explicit app-driven updates too, but don't enqueue the
+        // reload for later: callers must only return once the shared state and
+        // its matching timeline invalidation have both been submitted.
+        WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 
     private static func coverURL(itemID: String) -> URL? {
