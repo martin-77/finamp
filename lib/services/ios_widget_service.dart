@@ -43,33 +43,27 @@ class IosWidgetService {
 
   Future<void> _syncTail = Future<void>.value();
   int _artworkGeneration = 0;
+  bool _queueServiceBound = false;
   bool _initialized = false;
 
   Future<void> initialize({required AudioHandler audioHandler}) async {
     if (!Platform.isIOS || _initialized) return;
 
-    _initialized = true;
     _audioHandler = audioHandler;
     _channel.setMethodCallHandler(_handleNativeCall);
 
     _mediaItemSubscription = audioHandler.mediaItem.listen((mediaItem) {
+      _bindQueueServiceIfAvailable();
       _mediaItem = mediaItem;
       final generation = ++_artworkGeneration;
       unawaited(_handleMediaItemUpdate(mediaItem, generation));
     });
 
     _playbackStateSubscription = audioHandler.playbackState.listen((state) {
+      _bindQueueServiceIfAvailable();
       _playbackState = state;
       unawaited(syncNow());
     });
-
-    _currentTrackSubscription = GetIt.instance<QueueService>()
-        .getCurrentTrackStream()
-        .listen((queueItem) {
-          _currentItem = queueItem?.baseItem;
-          _bindItemProviders();
-          unawaited(syncNow());
-        });
 
     final container = GetIt.instance<ProviderContainer>();
     _showRatingsSubscription = container.listen<bool>(
@@ -77,12 +71,39 @@ class IosWidgetService {
       (_, __) => unawaited(syncNow()),
       fireImmediately: true,
     );
+
+    // MusicPlayerBackgroundTask is constructed inside AudioService.init().
+    // QueueService is registered only after AudioService.init() completes, so
+    // it is not safe to resolve QueueService unconditionally here. Bind it as
+    // soon as it becomes available instead of leaving this service partially
+    // initialized forever.
+    _bindQueueServiceIfAvailable();
+    _initialized = true;
+  }
+
+  void _bindQueueServiceIfAvailable() {
+    if (_queueServiceBound || !GetIt.instance.isRegistered<QueueService>()) {
+      return;
+    }
+
+    final queueService = GetIt.instance<QueueService>();
+    _queueServiceBound = true;
+    _currentItem = queueService.getCurrentTrack()?.baseItem;
+    _bindItemProviders();
+
+    _currentTrackSubscription = queueService.getCurrentTrackStream().listen((queueItem) {
+      _currentItem = queueItem?.baseItem;
+      _bindItemProviders();
+      unawaited(syncNow());
+    });
   }
 
   Future<void> _handleMediaItemUpdate(
     MediaItem? mediaItem,
     int generation,
   ) async {
+    _bindQueueServiceIfAvailable();
+
     // QueueService in redesign deliberately publishes the MediaItem twice:
     // first with Finamp's placeholder artwork, then again once the full-quality
     // albumImageProvider has resolved to a local cached file. Mirror that
@@ -91,7 +112,7 @@ class IosWidgetService {
 
     if (mediaItem == null || generation != _artworkGeneration) return;
 
-    final item = _currentItem;
+    final item = _liveCurrentItem();
     final artUri = mediaItem.artUri;
     if (item == null || artUri == null || !artUri.isScheme('file')) return;
 
@@ -101,7 +122,7 @@ class IosWidgetService {
       final bytes = await File.fromUri(artUri).readAsBytes();
       if (bytes.isEmpty ||
           generation != _artworkGeneration ||
-          _currentItem?.id != item.id ||
+          _liveCurrentItem()?.id != item.id ||
           _mediaItem?.artUri != artUri) {
         return;
       }
@@ -117,6 +138,14 @@ class IosWidgetService {
         stackTrace,
       );
     }
+  }
+
+  BaseItemDto? _liveCurrentItem() {
+    _bindQueueServiceIfAvailable();
+    if (GetIt.instance.isRegistered<QueueService>()) {
+      _currentItem = GetIt.instance<QueueService>().getCurrentTrack()?.baseItem;
+    }
+    return _currentItem;
   }
 
   bool _isPlaceholderArtwork(Uri artUri) {
@@ -154,6 +183,8 @@ class IosWidgetService {
       throw MissingPluginException('Unknown iOS widget method: ${call.method}');
     }
 
+    _bindQueueServiceIfAvailable();
+
     final arguments = Map<String, dynamic>.from(
       (call.arguments as Map?) ?? const <String, dynamic>{},
     );
@@ -173,17 +204,28 @@ class IosWidgetService {
         } else {
           await handler.pause();
         }
-        await confirmation;
+        final confirmedState = await confirmation;
+        if (confirmedState != null) {
+          _playbackState = confirmedState;
+        }
       case 'previous':
-        final previousItemID = _currentItem?.id.raw;
+        final previousItemID = _liveCurrentItem()?.id.raw;
         final confirmation = _waitForTrackChange(previousItemID);
         await handler.skipToPrevious();
-        await confirmation;
+        final confirmedItem = await confirmation;
+        if (confirmedItem != null) {
+          _currentItem = confirmedItem.baseItem;
+          _bindItemProviders();
+        }
       case 'next':
-        final previousItemID = _currentItem?.id.raw;
+        final previousItemID = _liveCurrentItem()?.id.raw;
         final confirmation = _waitForTrackChange(previousItemID);
         await handler.skipToNext();
-        await confirmation;
+        final confirmedItem = await confirmation;
+        if (confirmedItem != null) {
+          _currentItem = confirmedItem.baseItem;
+          _bindItemProviders();
+        }
       case 'toggleFavorite':
         await _toggleFavorite();
       case 'setRating':
@@ -206,20 +248,19 @@ class IosWidgetService {
         );
     }
 
-    // WidgetKit reloads an interactive widget after AppIntent.perform returns.
-    // Make sure the shared widget state already contains the confirmed Finamp
-    // state before the native AppIntent is allowed to finish.
+    // WidgetKit guarantees a timeline reload after AppIntent.perform returns.
+    // Persist the confirmed Finamp state before allowing the intent to finish.
     await syncNow();
   }
 
-  Future<void> _waitForPlaybackState(bool expectedPlaying) async {
-    if (_playbackState?.playing == expectedPlaying) return;
+  Future<PlaybackState?> _waitForPlaybackState(bool expectedPlaying) async {
+    if (_playbackState?.playing == expectedPlaying) return _playbackState;
 
     final handler = _audioHandler;
-    if (handler == null) return;
+    if (handler == null) return null;
 
     try {
-      await handler.playbackState
+      return await handler.playbackState
           .firstWhere((state) => state.playing == expectedPlaying)
           .timeout(_intentStateTimeout);
     } on TimeoutException {
@@ -227,14 +268,17 @@ class IosWidgetService {
         'Timed out waiting for iOS widget playback state: '
         'playing=$expectedPlaying',
       );
+      return null;
     }
   }
 
-  Future<void> _waitForTrackChange(String? previousItemID) async {
-    if (previousItemID == null) return;
+  Future<FinampQueueItem?> _waitForTrackChange(String? previousItemID) async {
+    if (previousItemID == null || !GetIt.instance.isRegistered<QueueService>()) {
+      return null;
+    }
 
     try {
-      await GetIt.instance<QueueService>()
+      return await GetIt.instance<QueueService>()
           .getCurrentTrackStream()
           .firstWhere((queueItem) {
             final itemID = queueItem?.baseItem?.id.raw;
@@ -244,16 +288,12 @@ class IosWidgetService {
     } on TimeoutException {
       // Previous may intentionally seek to the beginning of the current track
       // instead of changing tracks, and next may stay put at the end of a queue.
-      // In either case the current metadata is still the correct widget state.
-      _log.fine(
-        'No track change confirmed for iOS widget action within '
-        '${_intentStateTimeout.inMilliseconds} ms',
-      );
+      return GetIt.instance<QueueService>().getCurrentTrack();
     }
   }
 
   Future<void> _toggleFavorite() async {
-    final item = _currentItem;
+    final item = _liveCurrentItem();
     if (item == null) return;
 
     final container = GetIt.instance<ProviderContainer>();
@@ -264,7 +304,7 @@ class IosWidgetService {
   }
 
   Future<void> _writeRating(double? stars) async {
-    final item = _currentItem;
+    final item = _liveCurrentItem();
     if (item == null) return;
 
     if (FinampSettingsHelper.finampSettings.isOffline) {
@@ -302,7 +342,7 @@ class IosWidgetService {
   }
 
   Future<void> _syncNow() async {
-    final item = _currentItem;
+    final item = _liveCurrentItem();
     final container = GetIt.instance<ProviderContainer>();
 
     final isFavorite = item == null
@@ -352,6 +392,7 @@ class IosWidgetService {
     _mediaItem = null;
     _playbackState = null;
     _currentItem = null;
+    _queueServiceBound = false;
     ++_artworkGeneration;
   }
 }
