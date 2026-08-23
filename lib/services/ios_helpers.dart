@@ -159,8 +159,9 @@ class IosSiriHandler {
     }
     if (genre != null) extras['android.intent.extra.genre'] = genre;
 
-    // For a bare query with a mediaType hint, map the query to the right key
-    if (extras.isEmpty && query != null && mediaType != null) {
+    // Use Siri's mediaType hint for bare queries (no artist/album fields)
+    // e.g. "Play the artist Taylor Swift" → mediaType='artist', query='Taylor Swift'
+    if (artist == null && album == null && query != null && mediaType != null) {
       switch (mediaType) {
         case 'artist':
           extras['android.intent.extra.artist'] = query;
@@ -168,22 +169,34 @@ class IosSiriHandler {
           extras['android.intent.extra.album'] = query;
         case 'song':
           extras['android.intent.extra.title'] = query;
+        case 'playlist':
+          extras['android.intent.extra.playlist'] = query;
+        case 'genre':
+          extras['android.intent.extra.genre'] = query;
       }
     }
 
     return extras.isEmpty ? null : extras;
   }
 
-  /// Handles Siri search requests (for resolution/confirmation before playing).
-  /// Currently acknowledges the search; actual playback happens via playFromSearch.
-  static Future<void> _handleSearchMedia(Map<dynamic, dynamic>? arguments) async {
-    if (arguments == null) return;
-    _logger.fine("Siri searchMedia: $arguments");
+  /// Shuffles all tracks using the shared shuffle handler.
+  static Future<void> _shuffleAll() async {
+    final audioServiceHelper = GetIt.instance<AudioServiceHelper>();
+    await audioServiceHelper.shuffleAll(onlyShowFavorites: false, itemCount: DefaultSettings.quickShuffleItemCount);
   }
 
-  /// Shuffles the full music library using the existing queue service.
-  static Future<void> _shuffleAll() async {
-    final audioHandler = await GetIt.instance<AudioServiceHelper>().audioHandler;
-    await audioHandler.customAction('shuffleAll');
+  /// Handles Siri "Search for X on Finamp" voice commands
+  static Future<void> _handleSearchMedia(Map<dynamic, dynamic>? arguments) async {
+    if (arguments == null) {
+      _logger.warning("Siri searchMedia called with null arguments");
+      return;
+    }
+
+    final query = arguments['query'] as String?;
+    _logger.info("Siri searchMedia - query: $query");
+
+    // TODO: Navigate to a search results screen instead of playing immediately.
+    // This would require a Flutter method channel callback to trigger navigation.
+    await _handlePlayFromSearch(arguments);
   }
 }
