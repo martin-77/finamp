@@ -5,27 +5,37 @@ import WidgetKit
 struct FinampNowPlayingEntry: TimelineEntry {
     let date: Date
     let state: FinampWidgetState
+    let generationID: String
 }
 
 struct FinampNowPlayingProvider: TimelineProvider {
     func placeholder(in context: Context) -> FinampNowPlayingEntry {
-        .init(date: .now, state: .empty)
+        .init(date: .now, state: .empty, generationID: "placeholder")
     }
 
     func getSnapshot(
         in context: Context,
         completion: @escaping (FinampNowPlayingEntry) -> Void
     ) {
-        completion(.init(date: .now, state: .load(source: "snapshot")))
+        let generationID = UUID().uuidString
+        completion(
+            .init(
+                date: .now,
+                state: .load(source: "snapshot:\(generationID)"),
+                generationID: generationID
+            )
+        )
     }
 
     func getTimeline(
         in context: Context,
         completion: @escaping (Timeline<FinampNowPlayingEntry>) -> Void
     ) {
+        let generationID = UUID().uuidString
         let entry = FinampNowPlayingEntry(
             date: .now,
-            state: .load(source: "timeline")
+            state: .load(source: "timeline:\(generationID)"),
+            generationID: generationID
         )
         completion(Timeline(entries: [entry], policy: .never))
     }
@@ -36,7 +46,7 @@ struct FinampNowPlayingWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: FinampNowPlayingProvider()) { entry in
-            FinampWidgetRootView(state: entry.state)
+            FinampWidgetRootView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Finamp Now Playing")
@@ -48,6 +58,16 @@ struct FinampNowPlayingWidget: Widget {
 private struct FinampWidgetRootView: View {
     @Environment(\.widgetFamily) private var family
     let state: FinampWidgetState
+    let generationID: String
+
+    init(entry: FinampNowPlayingEntry) {
+        state = entry.state
+        generationID = entry.generationID
+        FinampWidgetState.recordDiagnostic(
+            state: entry.state,
+            source: "render:\(entry.generationID)"
+        )
+    }
 
     var body: some View {
         switch family {
