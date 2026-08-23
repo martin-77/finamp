@@ -67,8 +67,8 @@ struct FinampWidgetState: Codable, Equatable {
         else {
             recordDiagnostic(
                 state: .empty,
-                coverExists: false,
-                source: source
+                source: source,
+                coverExists: false
             )
             NSLog(
                 "[FINAMP-WIDGET-DIAG] extension load source=%@ state=empty",
@@ -81,8 +81,8 @@ struct FinampWidgetState: Codable, Equatable {
 
         recordDiagnostic(
             state: state,
-            coverExists: coverExists,
-            source: source
+            source: source,
+            coverExists: coverExists
         )
         NSLog(
             "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ playing=%@ revision=%d trackSeq=%@ coverExists=%@",
