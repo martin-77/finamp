@@ -16,14 +16,17 @@ struct FinampNowPlayingProvider: TimelineProvider {
         in context: Context,
         completion: @escaping (FinampNowPlayingEntry) -> Void
     ) {
-        completion(.init(date: .now, state: .load()))
+        completion(.init(date: .now, state: .load(source: "snapshot")))
     }
 
     func getTimeline(
         in context: Context,
         completion: @escaping (Timeline<FinampNowPlayingEntry>) -> Void
     ) {
-        let entry = FinampNowPlayingEntry(date: .now, state: .load())
+        let entry = FinampNowPlayingEntry(
+            date: .now,
+            state: .load(source: "timeline")
+        )
         completion(Timeline(entries: [entry], policy: .never))
     }
 }
