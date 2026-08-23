@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/jellyfin_models.dart';
-import 'package:finamp/services/album_image_provider.dart';
+import 'package:finamp/services/current_album_image_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
+import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/user_rating_provider.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -28,10 +31,11 @@ class IosWidgetService {
 
   StreamSubscription<MediaItem?>? _mediaItemSubscription;
   StreamSubscription<PlaybackState>? _playbackStateSubscription;
+  StreamSubscription<FinampQueueItem?>? _currentTrackSubscription;
   ProviderSubscription<bool>? _showRatingsSubscription;
   ProviderSubscription<bool>? _favoriteSubscription;
   ProviderSubscription<double?>? _ratingSubscription;
-  ProviderSubscription<AlbumImageInfo>? _artworkSubscription;
+  ProviderSubscription<FinampImage>? _artworkSubscription;
 
   AudioHandler? _audioHandler;
   MediaItem? _mediaItem;
@@ -51,8 +55,6 @@ class IosWidgetService {
 
     _mediaItemSubscription = audioHandler.mediaItem.listen((mediaItem) {
       _mediaItem = mediaItem;
-      _currentItem = _baseItemFrom(mediaItem);
-      _bindItemProviders();
       unawaited(syncNow());
     });
 
@@ -61,10 +63,32 @@ class IosWidgetService {
       unawaited(syncNow());
     });
 
+    _currentTrackSubscription = GetIt.instance<QueueService>()
+        .getCurrentTrackStream()
+        .listen((queueItem) {
+          _currentItem = queueItem?.baseItem;
+          _bindItemProviders();
+          unawaited(syncNow());
+        });
+
     final container = GetIt.instance<ProviderContainer>();
     _showRatingsSubscription = container.listen<bool>(
       finampSettingsProvider.showStarRatings,
       (_, __) => unawaited(syncNow()),
+      fireImmediately: true,
+    );
+
+    // Use the exact artwork provider consumed by PlayerScreenAlbumImage. This
+    // avoids maintaining a second image request path and guarantees that once
+    // the player can render its cached full-quality FileImage, the widget sees
+    // the same file.
+    _artworkSubscription = container.listen<FinampImage>(
+      currentAlbumImageProvider,
+      (_, latest) {
+        final image = latest.image;
+        _artUri = image is FileImage ? image.file.uri : null;
+        unawaited(syncNow());
+      },
       fireImmediately: true,
     );
   }
@@ -74,9 +98,6 @@ class IosWidgetService {
     _favoriteSubscription = null;
     _ratingSubscription?.close();
     _ratingSubscription = null;
-    _artworkSubscription?.close();
-    _artworkSubscription = null;
-    _artUri = null;
 
     final item = _currentItem;
     if (item == null) return;
@@ -94,16 +115,6 @@ class IosWidgetService {
       (_, __) => unawaited(syncNow()),
       fireImmediately: true,
     );
-
-    final artRequest = AlbumImageRequest(item: item);
-    _artworkSubscription = container.listen<AlbumImageInfo>(
-      albumImageProvider(artRequest),
-      (_, latest) {
-        _artUri = latest.uri;
-        unawaited(syncNow());
-      },
-      fireImmediately: true,
-    );
   }
 
   Future<void> _handleNativeCall(MethodCall call) async {
@@ -111,7 +122,9 @@ class IosWidgetService {
       throw MissingPluginException('Unknown iOS widget method: ${call.method}');
     }
 
-    final arguments = Map<String, dynamic>.from((call.arguments as Map?) ?? const <String, dynamic>{});
+    final arguments = Map<String, dynamic>.from(
+      (call.arguments as Map?) ?? const <String, dynamic>{},
+    );
     final action = arguments['action'] as String?;
     final handler = _audioHandler;
 
@@ -135,13 +148,21 @@ class IosWidgetService {
       case 'setRating':
         final stars = (arguments['rating'] as num?)?.toDouble();
         if (stars == null || stars < 1 || stars > 5) {
-          throw ArgumentError.value(stars, 'rating', 'Widget rating must be between 1 and 5 stars');
+          throw ArgumentError.value(
+            stars,
+            'rating',
+            'Widget rating must be between 1 and 5 stars',
+          );
         }
         await _writeRating(stars);
       case 'clearRating':
         await _writeRating(null);
       default:
-        throw ArgumentError.value(action, 'action', 'Unknown iOS widget action');
+        throw ArgumentError.value(
+          action,
+          'action',
+          'Unknown iOS widget action',
+        );
     }
 
     await syncNow();
@@ -187,7 +208,11 @@ class IosWidgetService {
 
     final sync = _syncTail.then((_) => _syncNow());
     _syncTail = sync.catchError((Object error, StackTrace stackTrace) {
-      _log.warning('Failed to synchronize iOS widget state', error, stackTrace);
+      _log.warning(
+        'Failed to synchronize iOS widget state',
+        error,
+        stackTrace,
+      );
     });
     return sync;
   }
@@ -196,8 +221,12 @@ class IosWidgetService {
     final item = _currentItem;
     final container = GetIt.instance<ProviderContainer>();
 
-    final isFavorite = item == null ? false : container.read(isFavoriteProvider(item));
-    final jellyfinRating = item == null ? null : container.read(userRatingProvider(item));
+    final isFavorite = item == null
+        ? false
+        : container.read(isFavoriteProvider(item));
+    final jellyfinRating = item == null
+        ? null
+        : container.read(userRatingProvider(item));
 
     final state = <String, Object?>{
       'itemID': item?.id,
@@ -207,26 +236,20 @@ class IosWidgetService {
       'isPlaying': _playbackState?.playing ?? false,
       'showStarRatings': FinampSettingsHelper.finampSettings.showStarRatings,
       'isFavorite': isFavorite,
-      'starRating': jellyfinRating == null ? null : ratingToStarValue(jellyfinRating),
+      'starRating': jellyfinRating == null
+          ? null
+          : ratingToStarValue(jellyfinRating),
       'artURI': _artUri?.toString(),
     };
 
     try {
       await _channel.invokeMethod<void>('updateState', state);
     } on PlatformException catch (error, stackTrace) {
-      _log.warning('Failed to update iOS widget state', error, stackTrace);
-    }
-  }
-
-  BaseItemDto? _baseItemFrom(MediaItem? mediaItem) {
-    final json = mediaItem?.extras?['itemJson'];
-    if (json is! Map) return null;
-
-    try {
-      return BaseItemDto.fromJson(Map<String, dynamic>.from(json));
-    } catch (error, stackTrace) {
-      _log.warning('Failed to decode current item for iOS widget', error, stackTrace);
-      return null;
+      _log.warning(
+        'Failed to update iOS widget state',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -237,6 +260,7 @@ class IosWidgetService {
     _channel.setMethodCallHandler(null);
     await _mediaItemSubscription?.cancel();
     await _playbackStateSubscription?.cancel();
+    await _currentTrackSubscription?.cancel();
     _showRatingsSubscription?.close();
     _favoriteSubscription?.close();
     _ratingSubscription?.close();
