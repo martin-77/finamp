@@ -112,20 +112,32 @@ class IosWidgetService {
 
     if (mediaItem == null || generation != _artworkGeneration) return;
 
-    final item = _liveCurrentItem();
+    // Keep artwork identity atomic: both the item ID and artUri must come from
+    // the same MediaItem snapshot. QueueService and mediaItem are independent
+    // asynchronous streams, so combining artUri from one with the current item
+    // from the other can assign an old track's artwork to a new track.
+    final item = _itemFromMediaItem(mediaItem);
     final artUri = mediaItem.artUri;
     if (item == null || artUri == null || !artUri.isScheme('file')) return;
 
     if (_isPlaceholderArtwork(artUri)) return;
 
+    // QueueService is only a staleness guard here. It must never be used to
+    // decide which item owns this MediaItem's artwork.
+    final liveItem = _liveCurrentItem();
+    if (liveItem != null && liveItem.id != item.id) return;
+
     try {
       final bytes = await File.fromUri(artUri).readAsBytes();
       if (bytes.isEmpty ||
           generation != _artworkGeneration ||
-          _liveCurrentItem()?.id != item.id ||
+          _itemFromMediaItem(_mediaItem)?.id != item.id ||
           _mediaItem?.artUri != artUri) {
         return;
       }
+
+      final currentItem = _liveCurrentItem();
+      if (currentItem != null && currentItem.id != item.id) return;
 
       await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
         'itemID': item.id.raw,
@@ -137,6 +149,22 @@ class IosWidgetService {
         error,
         stackTrace,
       );
+    }
+  }
+
+  BaseItemDto? _itemFromMediaItem(MediaItem? mediaItem) {
+    final itemJson = mediaItem?.extras?['itemJson'];
+    if (itemJson is! Map) return null;
+
+    try {
+      return BaseItemDto.fromJson(Map<String, dynamic>.from(itemJson));
+    } catch (error, stackTrace) {
+      _log.warning(
+        'Failed to decode iOS widget item from MediaItem extras',
+        error,
+        stackTrace,
+      );
+      return null;
     }
   }
 
