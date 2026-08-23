@@ -248,6 +248,16 @@ private enum FinampWidgetStateWriter {
         state.isFavorite = arguments["isFavorite"] as? Bool ?? false
         state.starRating = (arguments["starRating"] as? NSNumber)?.doubleValue
 
+        if state == oldState {
+            NSLog(
+                "[FINAMP-WIDGET-DIAG] writeState unchanged item=%@ title=%@ playing=%@",
+                state.itemID ?? "nil",
+                state.title,
+                String(state.isPlaying)
+            )
+            return
+        }
+
         if oldState.itemID != state.itemID, let oldID = oldState.itemID {
             removeCover(itemID: oldID)
         }
