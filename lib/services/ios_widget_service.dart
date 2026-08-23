@@ -4,13 +4,11 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/jellyfin_models.dart';
-import 'package:finamp/services/current_album_image_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/user_rating_provider.dart';
-import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -35,7 +33,6 @@ class IosWidgetService {
   ProviderSubscription<bool>? _showRatingsSubscription;
   ProviderSubscription<bool>? _favoriteSubscription;
   ProviderSubscription<double?>? _ratingSubscription;
-  ProviderSubscription<FinampImage>? _artworkSubscription;
 
   AudioHandler? _audioHandler;
   MediaItem? _mediaItem;
@@ -67,6 +64,7 @@ class IosWidgetService {
         .getCurrentTrackStream()
         .listen((queueItem) {
           _currentItem = queueItem?.baseItem;
+          _artUri = _resolveArtworkUri(_currentItem);
           _bindItemProviders();
           unawaited(syncNow());
         });
@@ -77,19 +75,21 @@ class IosWidgetService {
       (_, __) => unawaited(syncNow()),
       fireImmediately: true,
     );
+  }
 
-    // Use the exact artwork provider consumed by PlayerScreenAlbumImage. This
-    // avoids maintaining a second image request path and guarantees that once
-    // the player can render its cached full-quality FileImage, the widget sees
-    // the same file.
-    _artworkSubscription = container.listen<FinampImage>(
-      currentAlbumImageProvider,
-      (_, latest) {
-        final image = latest.image;
-        _artUri = image is FileImage ? image.file.uri : null;
-        unawaited(syncNow());
-      },
-      fireImmediately: true,
+  Uri? _resolveArtworkUri(BaseItemDto? item) {
+    if (item == null || item.imageId == null) return null;
+
+    // Let Finamp/Jellyfin resolve whether the artwork belongs to the track,
+    // its parent, or its album. Requesting JPEG here also normalizes embedded
+    // artwork from formats such as FLAC/M4A before it is copied into the App
+    // Group by the native Runner bridge.
+    return GetIt.instance<JellyfinApiHelper>().getImageUrl(
+      item: item,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      quality: 90,
+      format: 'jpg',
     );
   }
 
@@ -264,7 +264,6 @@ class IosWidgetService {
     _showRatingsSubscription?.close();
     _favoriteSubscription?.close();
     _ratingSubscription?.close();
-    _artworkSubscription?.close();
 
     _audioHandler = null;
     _mediaItem = null;
