@@ -102,7 +102,7 @@ private func setExcludeFromiCloudBackup(_ dir: URL, isExcluded: Bool) throws {
 extension AppDelegate {
     func setupPlaybackStateChannel() {
         let channel = FlutterMethodChannel(
-            name: "\(Bundle.main.bundleIdentifier!)/playback_state",
+            name: "com.unicornsonlsd.finamp-ios/playback_state",
             binaryMessenger: flutterEngine.binaryMessenger
         )
 
@@ -135,7 +135,7 @@ private var siriIntentChannel: FlutterMethodChannel?
 extension AppDelegate {
     func setupSiriIntentChannel() {
         siriIntentChannel = FlutterMethodChannel(
-            name: "\(Bundle.main.bundleIdentifier!)/siri_intent",
+            name: "com.unicornsonlsd.finamp-ios/siri_intent",
             binaryMessenger: flutterEngine.binaryMessenger
         )
     }
