@@ -33,8 +33,35 @@ extension AppDelegate {
                                 ]
                             )
                         )
-                    } else {
+                        return
+                    }
+
+                    guard let state = result as? [String: Any] else {
+                        continuation.resume(
+                            throwing: NSError(
+                                domain: "FinampWidget",
+                                code: 4,
+                                userInfo: [
+                                    NSLocalizedDescriptionKey:
+                                        "Widget action did not return a state snapshot"
+                                ]
+                            )
+                        )
+                        return
+                    }
+
+                    do {
+                        // WidgetKit reloads automatically when the AppIntent
+                        // returns. Persist the final confirmed snapshot first,
+                        // but do not invalidate the timeline from inside the
+                        // still-running intent.
+                        try FinampWidgetStateWriter.writeState(
+                            state,
+                            reload: false
+                        )
                         continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
                     }
                 }
             }
@@ -53,7 +80,10 @@ extension AppDelegate {
                 }
 
                 do {
-                    try FinampWidgetStateWriter.writeState(arguments)
+                    try FinampWidgetStateWriter.writeState(
+                        arguments,
+                        reload: arguments["reload"] as? Bool ?? true
+                    )
                     result(nil)
                 } catch {
                     result(FlutterError(
@@ -80,7 +110,8 @@ extension AppDelegate {
                 do {
                     try FinampWidgetStateWriter.writeArtwork(
                         typedData.data,
-                        itemID: itemID
+                        itemID: itemID,
+                        reload: arguments["reload"] as? Bool ?? true
                     )
                     result(nil)
                 } catch {
@@ -103,7 +134,10 @@ private enum FinampWidgetStateWriter {
         "group.\(Bundle.main.bundleIdentifier ?? "com.unicornsonlsd.finamp-ios").widget"
     }
 
-    static func writeState(_ arguments: [String: Any]) throws {
+    static func writeState(
+        _ arguments: [String: Any],
+        reload: Bool
+    ) throws {
         guard let defaults = UserDefaults(suiteName: appGroup) else {
             throw NSError(
                 domain: "FinampWidget",
@@ -136,10 +170,16 @@ private enum FinampWidgetStateWriter {
         }
 
         try save(state, to: defaults)
-        reloadWidget()
+        if reload {
+            reloadWidget()
+        }
     }
 
-    static func writeArtwork(_ data: Data, itemID: String) throws {
+    static func writeArtwork(
+        _ data: Data,
+        itemID: String,
+        reload: Bool
+    ) throws {
         guard let defaults = UserDefaults(suiteName: appGroup) else {
             throw NSError(
                 domain: "FinampWidget",
@@ -172,7 +212,9 @@ private enum FinampWidgetStateWriter {
         try data.write(to: destination, options: .atomic)
         state.coverRevision &+= 1
         try save(state, to: defaults)
-        reloadWidget()
+        if reload {
+            reloadWidget()
+        }
     }
 
     private static func save(
@@ -184,10 +226,6 @@ private enum FinampWidgetStateWriter {
     }
 
     private static func reloadWidget() {
-        // WidgetKit reloads an interactive widget after AppIntent.perform()
-        // returns. Keep explicit app-driven updates too, but don't enqueue the
-        // reload for later: callers must only return once the shared state and
-        // its matching timeline invalidation have both been submitted.
         WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 
