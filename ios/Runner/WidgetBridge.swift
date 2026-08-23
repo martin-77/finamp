@@ -8,8 +8,12 @@ extension AppDelegate {
             name: "finamp/ios_widget",
             binaryMessenger: flutterEngine.binaryMessenger
         )
+        let actionState = FinampWidgetActionState()
 
         FinampWidgetActionDispatcher.handler = { action, rating in
+            actionState.begin()
+            defer { actionState.end() }
+
             let arguments: [String: Any] = [
                 "action": action.rawValue,
                 "rating": rating as Any
@@ -80,9 +84,12 @@ extension AppDelegate {
                 }
 
                 do {
+                    let reload =
+                        (arguments["reload"] as? Bool ?? true) &&
+                        !actionState.isActive
                     try FinampWidgetStateWriter.writeState(
                         arguments,
-                        reload: arguments["reload"] as? Bool ?? true
+                        reload: reload
                     )
                     result(nil)
                 } catch {
@@ -108,10 +115,13 @@ extension AppDelegate {
                 }
 
                 do {
+                    let reload =
+                        (arguments["reload"] as? Bool ?? true) &&
+                        !actionState.isActive
                     try FinampWidgetStateWriter.writeArtwork(
                         typedData.data,
                         itemID: itemID,
-                        reload: arguments["reload"] as? Bool ?? true
+                        reload: reload
                     )
                     result(nil)
                 } catch {
@@ -126,6 +136,29 @@ extension AppDelegate {
                 result(FlutterMethodNotImplemented)
             }
         }
+    }
+}
+
+private final class FinampWidgetActionState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var depth = 0
+
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return depth > 0
+    }
+
+    func begin() {
+        lock.lock()
+        depth += 1
+        lock.unlock()
+    }
+
+    func end() {
+        lock.lock()
+        depth = max(0, depth - 1)
+        lock.unlock()
     }
 }
 
