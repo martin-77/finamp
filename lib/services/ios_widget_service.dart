@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:finamp/gen/assets.gen.dart';
 import 'package:finamp/models/jellyfin_models.dart';
+import 'package:finamp/services/album_image_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
@@ -31,11 +31,13 @@ class IosWidgetService {
   ProviderSubscription<bool>? _showRatingsSubscription;
   ProviderSubscription<bool>? _favoriteSubscription;
   ProviderSubscription<double?>? _ratingSubscription;
+  ProviderSubscription<AlbumImageInfo>? _artworkSubscription;
 
   AudioHandler? _audioHandler;
   MediaItem? _mediaItem;
   PlaybackState? _playbackState;
   BaseItemDto? _currentItem;
+  Uri? _artUri;
 
   Future<void> _syncTail = Future<void>.value();
   bool _initialized = false;
@@ -72,6 +74,9 @@ class IosWidgetService {
     _favoriteSubscription = null;
     _ratingSubscription?.close();
     _ratingSubscription = null;
+    _artworkSubscription?.close();
+    _artworkSubscription = null;
+    _artUri = null;
 
     final item = _currentItem;
     if (item == null) return;
@@ -87,6 +92,16 @@ class IosWidgetService {
     _ratingSubscription = container.listen<double?>(
       userRatingProvider(item),
       (_, __) => unawaited(syncNow()),
+      fireImmediately: true,
+    );
+
+    final artRequest = AlbumImageRequest(item: item);
+    _artworkSubscription = container.listen<AlbumImageInfo>(
+      albumImageProvider(artRequest),
+      (_, latest) {
+        _artUri = latest.uri;
+        unawaited(syncNow());
+      },
       fireImmediately: true,
     );
   }
@@ -193,7 +208,7 @@ class IosWidgetService {
       'showStarRatings': FinampSettingsHelper.finampSettings.showStarRatings,
       'isFavorite': isFavorite,
       'starRating': jellyfinRating == null ? null : ratingToStarValue(jellyfinRating),
-      'artURI': _widgetArtUri(_mediaItem?.artUri)?.toString(),
+      'artURI': _artUri?.toString(),
     };
 
     try {
@@ -201,20 +216,6 @@ class IosWidgetService {
     } on PlatformException catch (error, stackTrace) {
       _log.warning('Failed to update iOS widget state', error, stackTrace);
     }
-  }
-
-  Uri? _widgetArtUri(Uri? artUri) {
-    if (artUri == null) return null;
-
-    // QueueService temporarily publishes Finamp's album placeholder while the
-    // full-quality artwork is being loaded into the player image cache. The
-    // same MediaItem is published again with the real file URI once loading
-    // completes. Never persist that transient placeholder as widget artwork.
-    if (artUri.isScheme('file') && artUri.path.endsWith(Assets.images.albumWhite.path)) {
-      return null;
-    }
-
-    return artUri;
   }
 
   BaseItemDto? _baseItemFrom(MediaItem? mediaItem) {
@@ -239,10 +240,12 @@ class IosWidgetService {
     _showRatingsSubscription?.close();
     _favoriteSubscription?.close();
     _ratingSubscription?.close();
+    _artworkSubscription?.close();
 
     _audioHandler = null;
     _mediaItem = null;
     _playbackState = null;
     _currentItem = null;
+    _artUri = null;
   }
 }
