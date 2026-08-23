@@ -28,8 +28,25 @@ class IosPlaybackStateSync {
     if (!Platform.isIOS) return;
 
     try {
-      await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
+      final diagnostic = await _channel.invokeMethod<Object?>(
+        'setPlaybackState',
+        {'isPlaying': isPlaying},
+      );
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
+
+      if (diagnostic case final Map<Object?, Object?> values) {
+        _logger.info(
+          '[WIDGET-DIAG] extensionLastRead '
+          'timestamp=${values['timestamp']} '
+          'item=${values['itemID']} '
+          'title=${values['title']} '
+          'playing=${values['isPlaying']} '
+          'revision=${values['coverRevision']} '
+          'coverExists=${values['coverExists']}',
+        );
+      } else {
+        _logger.info('[WIDGET-DIAG] extensionLastRead none');
+      }
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
     }
