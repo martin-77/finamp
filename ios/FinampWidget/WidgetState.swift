@@ -63,7 +63,7 @@ struct FinampWidgetState: Codable, Equatable {
                 from: data
             )
         else {
-            recordDiagnosticRead(
+            recordDiagnostic(
                 state: .empty,
                 coverExists: false,
                 source: source
@@ -75,17 +75,9 @@ struct FinampWidgetState: Codable, Equatable {
             return .empty
         }
 
-        let coverExists: Bool
-        if let itemID = state.itemID, let container = FinampWidgetShared.containerURL {
-            let coverURL = container
-                .appendingPathComponent("\(FinampWidgetShared.coverFileName)-\(itemID)")
-                .appendingPathExtension("jpg")
-            coverExists = FileManager.default.fileExists(atPath: coverURL.path)
-        } else {
-            coverExists = false
-        }
+        let coverExists = coverExists(for: state)
 
-        recordDiagnosticRead(
+        recordDiagnostic(
             state: state,
             coverExists: coverExists,
             source: source
@@ -103,6 +95,29 @@ struct FinampWidgetState: Codable, Equatable {
         return state
     }
 
+    static func recordDiagnostic(
+        state: FinampWidgetState,
+        source: String,
+        coverExists explicitCoverExists: Bool? = nil
+    ) {
+        guard let url = FinampWidgetShared.diagnosticReadURL else { return }
+
+        let payload: [String: Any] = [
+            "timestamp": Date().timeIntervalSince1970,
+            "source": source,
+            "itemID": state.itemID as Any,
+            "title": state.title,
+            "isPlaying": state.isPlaying,
+            "coverRevision": state.coverRevision,
+            "coverExists": explicitCoverExists ?? coverExists(for: state)
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            return
+        }
+        try? data.write(to: url, options: .atomic)
+    }
+
     func save() throws {
         guard let stateURL = FinampWidgetShared.stateURL else {
             throw NSError(
@@ -116,26 +131,17 @@ struct FinampWidgetState: Codable, Equatable {
         try data.write(to: stateURL, options: .atomic)
     }
 
-    private static func recordDiagnosticRead(
-        state: FinampWidgetState,
-        coverExists: Bool,
-        source: String
-    ) {
-        guard let url = FinampWidgetShared.diagnosticReadURL else { return }
-
-        let payload: [String: Any] = [
-            "timestamp": Date().timeIntervalSince1970,
-            "source": source,
-            "itemID": state.itemID as Any,
-            "title": state.title,
-            "isPlaying": state.isPlaying,
-            "coverRevision": state.coverRevision,
-            "coverExists": coverExists
-        ]
-
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
-            return
+    private static func coverExists(for state: FinampWidgetState) -> Bool {
+        guard
+            let itemID = state.itemID,
+            let container = FinampWidgetShared.containerURL
+        else {
+            return false
         }
-        try? data.write(to: url, options: .atomic)
+
+        let coverURL = container
+            .appendingPathComponent("\(FinampWidgetShared.coverFileName)-\(itemID)")
+            .appendingPathExtension("jpg")
+        return FileManager.default.fileExists(atPath: coverURL.path)
     }
 }
