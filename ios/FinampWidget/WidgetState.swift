@@ -85,10 +85,12 @@ struct FinampWidgetState: Codable, Equatable {
             coverExists: coverExists
         )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ playing=%@ revision=%d trackSeq=%@ coverExists=%@",
+            "[FINAMP-WIDGET-DIAG] extension load source=%@ item=%@ title=%@ artist=%@ album=%@ playing=%@ revision=%d trackSeq=%@ coverExists=%@",
             source,
             state.itemID ?? "nil",
             state.title,
+            state.artist,
+            state.album,
             String(state.isPlaying),
             state.coverRevision,
             String(describing: state.diagnosticTrackSequence),
@@ -110,6 +112,8 @@ struct FinampWidgetState: Codable, Equatable {
             "source": source,
             "itemID": state.itemID as Any,
             "title": state.title,
+            "artist": state.artist,
+            "album": state.album,
             "isPlaying": state.isPlaying,
             "coverRevision": state.coverRevision,
             "trackSequence": state.diagnosticTrackSequence as Any,
