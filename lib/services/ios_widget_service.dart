@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:finamp/gen/assets.gen.dart';
 import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/jellyfin_models.dart';
-import 'package:finamp/services/album_image_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
@@ -34,7 +34,6 @@ class IosWidgetService {
   ProviderSubscription<bool>? _showRatingsSubscription;
   ProviderSubscription<bool>? _favoriteSubscription;
   ProviderSubscription<double?>? _ratingSubscription;
-  ProviderSubscription<AlbumImageInfo>? _artworkSubscription;
 
   AudioHandler? _audioHandler;
   MediaItem? _mediaItem;
@@ -54,7 +53,8 @@ class IosWidgetService {
 
     _mediaItemSubscription = audioHandler.mediaItem.listen((mediaItem) {
       _mediaItem = mediaItem;
-      unawaited(syncNow());
+      final generation = ++_artworkGeneration;
+      unawaited(_handleMediaItemUpdate(mediaItem, generation));
     });
 
     _playbackStateSubscription = audioHandler.playbackState.listen((state) {
@@ -78,15 +78,58 @@ class IosWidgetService {
     );
   }
 
+  Future<void> _handleMediaItemUpdate(
+    MediaItem? mediaItem,
+    int generation,
+  ) async {
+    // QueueService in redesign deliberately publishes the MediaItem twice:
+    // first with Finamp's placeholder artwork, then again once the full-quality
+    // albumImageProvider has resolved to a local cached file. Mirror that
+    // existing lifecycle instead of creating a second artwork provider here.
+    await syncNow();
+
+    if (mediaItem == null || generation != _artworkGeneration) return;
+
+    final item = _currentItem;
+    final artUri = mediaItem.artUri;
+    if (item == null || artUri == null || !artUri.isScheme('file')) return;
+
+    if (_isPlaceholderArtwork(artUri)) return;
+
+    try {
+      final bytes = await File.fromUri(artUri).readAsBytes();
+      if (bytes.isEmpty ||
+          generation != _artworkGeneration ||
+          _currentItem?.id != item.id ||
+          _mediaItem?.artUri != artUri) {
+        return;
+      }
+
+      await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
+        'itemID': item.id.raw,
+        'bytes': bytes,
+      });
+    } catch (error, stackTrace) {
+      _log.warning(
+        'Failed to publish iOS widget artwork from $artUri',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  bool _isPlaceholderArtwork(Uri artUri) {
+    final placeholderPath = Assets.images.albumWhite.path;
+    return artUri.path == placeholderPath ||
+        artUri.path.endsWith('/$placeholderPath');
+  }
+
   void _bindItemProviders() {
     _favoriteSubscription?.close();
     _favoriteSubscription = null;
     _ratingSubscription?.close();
     _ratingSubscription = null;
-    _artworkSubscription?.close();
-    _artworkSubscription = null;
 
-    final generation = ++_artworkGeneration;
     final item = _currentItem;
     if (item == null) return;
 
@@ -103,58 +146,6 @@ class IosWidgetService {
       (_, __) => unawaited(syncNow()),
       fireImmediately: true,
     );
-
-    // Use the exact full-quality file downloaded by Finamp's album image
-    // provider. Once it is available, transfer its bytes to the native Runner
-    // instead of asking Swift to reopen a Flutter cache path or refetch from
-    // Jellyfin. This keeps all Jellyfin resolution/authentication in Finamp.
-    _artworkSubscription = container.listen<AlbumImageInfo>(
-      albumImageProvider(AlbumImageRequest(item: item)),
-      (_, latest) => unawaited(
-        _publishArtwork(
-          latest,
-          itemID: item.id.raw,
-          generation: generation,
-        ),
-      ),
-      fireImmediately: true,
-    );
-  }
-
-  Future<void> _publishArtwork(
-    AlbumImageInfo artwork, {
-    required String itemID,
-    required int generation,
-  }) async {
-    final uri = artwork.uri;
-    if (uri == null || !uri.isScheme('file')) return;
-
-    try {
-      final bytes = await File.fromUri(uri).readAsBytes();
-      if (generation != _artworkGeneration || _currentItem?.id.raw != itemID) {
-        return;
-      }
-
-      // A cached AlbumImageProvider can fire immediately when the current track
-      // changes. Ensure the matching widget state has reached the native side
-      // before sending artwork; WidgetBridge deliberately rejects artwork for
-      // an itemID that is not current yet.
-      await syncNow();
-      if (generation != _artworkGeneration || _currentItem?.id.raw != itemID) {
-        return;
-      }
-
-      await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
-        'itemID': itemID,
-        'bytes': bytes,
-      });
-    } catch (error, stackTrace) {
-      _log.warning(
-        'Failed to publish iOS widget artwork from $uri',
-        error,
-        stackTrace,
-      );
-    }
   }
 
   Future<void> _handleNativeCall(MethodCall call) async {
@@ -303,7 +294,6 @@ class IosWidgetService {
     _showRatingsSubscription?.close();
     _favoriteSubscription?.close();
     _ratingSubscription?.close();
-    _artworkSubscription?.close();
 
     _audioHandler = null;
     _mediaItem = null;
