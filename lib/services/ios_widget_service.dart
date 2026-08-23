@@ -40,9 +40,9 @@ class IosWidgetService {
   MediaItem? _mediaItem;
   PlaybackState? _playbackState;
   BaseItemDto? _currentItem;
-  Uri? _artUri;
 
   Future<void> _syncTail = Future<void>.value();
+  int _artworkGeneration = 0;
   bool _initialized = false;
 
   Future<void> initialize({required AudioHandler audioHandler}) async {
@@ -85,8 +85,8 @@ class IosWidgetService {
     _ratingSubscription = null;
     _artworkSubscription?.close();
     _artworkSubscription = null;
-    _artUri = null;
 
+    final generation = ++_artworkGeneration;
     final item = _currentItem;
     if (item == null) return;
 
@@ -104,18 +104,48 @@ class IosWidgetService {
       fireImmediately: true,
     );
 
-    // Mirror the player artwork path exactly. AlbumImageProvider lets Jellyfin
-    // resolve track/parent/album artwork through item.imageId, downloads the
-    // full-quality image with Finamp's cache manager, and then publishes the
-    // resulting local file URI. The native bridge only needs to copy that file.
+    // Use the exact full-quality file downloaded by Finamp's album image
+    // provider. Once it is available, transfer its bytes to the native Runner
+    // instead of asking Swift to reopen a Flutter cache path or refetch from
+    // Jellyfin. This keeps all Jellyfin resolution/authentication in Finamp.
     _artworkSubscription = container.listen<AlbumImageInfo>(
       albumImageProvider(AlbumImageRequest(item: item)),
-      (_, latest) {
-        _artUri = latest.uri;
-        unawaited(syncNow());
-      },
+      (_, latest) => unawaited(
+        _publishArtwork(
+          latest,
+          itemID: item.id.raw,
+          generation: generation,
+        ),
+      ),
       fireImmediately: true,
     );
+  }
+
+  Future<void> _publishArtwork(
+    AlbumImageInfo artwork, {
+    required String itemID,
+    required int generation,
+  }) async {
+    final uri = artwork.uri;
+    if (uri == null || !uri.isScheme('file')) return;
+
+    try {
+      final bytes = await File.fromUri(uri).readAsBytes();
+      if (generation != _artworkGeneration || _currentItem?.id.raw != itemID) {
+        return;
+      }
+
+      await _channel.invokeMethod<void>('updateArtwork', <String, Object>{
+        'itemID': itemID,
+        'bytes': bytes,
+      });
+    } catch (error, stackTrace) {
+      _log.warning(
+        'Failed to publish iOS widget artwork from $uri',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   Future<void> _handleNativeCall(MethodCall call) async {
@@ -230,7 +260,7 @@ class IosWidgetService {
         : container.read(userRatingProvider(item));
 
     final state = <String, Object?>{
-      'itemID': item?.id,
+      'itemID': item?.id.raw,
       'title': _mediaItem?.title ?? 'Finamp',
       'artist': _mediaItem?.artist ?? '',
       'album': _mediaItem?.album ?? '',
@@ -240,7 +270,6 @@ class IosWidgetService {
       'starRating': jellyfinRating == null
           ? null
           : ratingToStarValue(jellyfinRating),
-      'artURI': _artUri?.toString(),
     };
 
     try {
@@ -271,6 +300,6 @@ class IosWidgetService {
     _mediaItem = null;
     _playbackState = null;
     _currentItem = null;
-    _artUri = null;
+    ++_artworkGeneration;
   }
 }
