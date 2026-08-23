@@ -176,9 +176,6 @@ private struct RatingOrFavoriteView: View {
                 .accessibilityLabel(state.isFavorite ? "Remove favorite" : "Add favorite")
             }
         } else {
-            // Metadata writes require main-process execution targeting.
-            // On older iOS versions we keep the widget safe and read-only for
-            // rating/favorite state while playback controls remain interactive.
             if state.showStarRatings {
                 StarDisplayView(rating: state.starRating, compact: compact)
             } else {
@@ -294,7 +291,6 @@ private struct SmallWidgetView: View {
             .buttonStyle(.plain)
             .font(.body)
         }
-        .widgetURL(URL(string: "finamp://player"))
     }
 }
 
@@ -367,7 +363,6 @@ private struct MediumWidgetView: View {
                 RatingOrFavoriteView(state: state, compact: false)
             }
         }
-        .widgetURL(URL(string: "finamp://player"))
     }
 }
 
@@ -434,7 +429,5 @@ private struct LargeWidgetView: View {
             .buttonStyle(.plain)
             .font(.title3)
         }
-        .widgetURL(URL(string: "finamp://player"))
     }
 }
-
