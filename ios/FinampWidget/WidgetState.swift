@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum FinampWidgetShared {
     static let kind = "FinampNowPlayingWidget"
@@ -107,9 +108,17 @@ struct FinampWidgetState: Codable, Equatable {
     ) {
         guard let url = FinampWidgetShared.diagnosticReadURL else { return }
 
+        let coverExists = explicitCoverExists ?? coverExists(for: state)
+        let diagnosticSource: String
+        if source.hasPrefix("render:") {
+            diagnosticSource = "\(source):coverDecode=\(coverDecodeStatus(for: state))"
+        } else {
+            diagnosticSource = source
+        }
+
         let payload: [String: Any] = [
             "timestamp": Date().timeIntervalSince1970,
-            "source": source,
+            "source": diagnosticSource,
             "itemID": state.itemID as Any,
             "title": state.title,
             "artist": state.artist,
@@ -117,7 +126,7 @@ struct FinampWidgetState: Codable, Equatable {
             "isPlaying": state.isPlaying,
             "coverRevision": state.coverRevision,
             "trackSequence": state.diagnosticTrackSequence as Any,
-            "coverExists": explicitCoverExists ?? coverExists(for: state)
+            "coverExists": coverExists
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
@@ -140,16 +149,31 @@ struct FinampWidgetState: Codable, Equatable {
     }
 
     private static func coverExists(for state: FinampWidgetState) -> Bool {
+        coverURL(for: state).map {
+            FileManager.default.fileExists(atPath: $0.path)
+        } ?? false
+    }
+
+    private static func coverDecodeStatus(for state: FinampWidgetState) -> String {
+        guard let coverURL = coverURL(for: state) else {
+            return "missing"
+        }
+        guard FileManager.default.fileExists(atPath: coverURL.path) else {
+            return "missing"
+        }
+        return UIImage(contentsOfFile: coverURL.path) == nil ? "failed" : "ok"
+    }
+
+    private static func coverURL(for state: FinampWidgetState) -> URL? {
         guard
             let itemID = state.itemID,
             let container = FinampWidgetShared.containerURL
         else {
-            return false
+            return nil
         }
 
-        let coverURL = container
+        return container
             .appendingPathComponent("\(FinampWidgetShared.coverFileName)-\(itemID)")
             .appendingPathExtension("jpg")
-        return FileManager.default.fileExists(atPath: coverURL.path)
     }
 }
