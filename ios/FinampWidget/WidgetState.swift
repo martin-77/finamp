@@ -2,7 +2,7 @@ import Foundation
 
 enum FinampWidgetShared {
     static let kind = "FinampNowPlayingWidget"
-    static let stateKey = "finamp.widget.state.v1"
+    static let stateFileName = "now-playing-state.json"
     static let coverFileName = "now-playing-cover"
 
     static var appGroupIdentifier: String {
@@ -15,17 +15,14 @@ enum FinampWidgetShared {
         return value
     }
 
-    static var defaults: UserDefaults {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else {
-            preconditionFailure("Unable to open Finamp widget app-group defaults")
-        }
-        return defaults
-    }
-
     static var containerURL: URL? {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         )
+    }
+
+    static var stateURL: URL? {
+        containerURL?.appendingPathComponent(stateFileName)
     }
 }
 
@@ -54,9 +51,8 @@ struct FinampWidgetState: Codable, Equatable {
 
     static func load() -> FinampWidgetState {
         guard
-            let data = FinampWidgetShared.defaults.data(
-                forKey: FinampWidgetShared.stateKey
-            ),
+            let stateURL = FinampWidgetShared.stateURL,
+            let data = try? Data(contentsOf: stateURL),
             let state = try? JSONDecoder().decode(
                 FinampWidgetState.self,
                 from: data
@@ -89,7 +85,15 @@ struct FinampWidgetState: Codable, Equatable {
     }
 
     func save() throws {
+        guard let stateURL = FinampWidgetShared.stateURL else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 20,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to resolve widget state destination"]
+            )
+        }
+
         let data = try JSONEncoder().encode(self)
-        FinampWidgetShared.defaults.set(data, forKey: FinampWidgetShared.stateKey)
+        try data.write(to: stateURL, options: .atomic)
     }
 }
