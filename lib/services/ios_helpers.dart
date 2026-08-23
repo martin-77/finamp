@@ -22,7 +22,7 @@ final _logger = Logger('IosHelpers');
 class IosPlaybackStateSync {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/playback_state');
 
-  /// Sets the playback state on iOS's MPNowPlayingInfoCenter.
+  /// Sets playback state on iOS's MPNowPlayingInfoCenter.
   /// This is needed for CarPlay to show the correct play/pause state.
   static Future<void> setPlaybackState({required bool isPlaying}) async {
     if (!Platform.isIOS) return;
@@ -38,6 +38,7 @@ class IosPlaybackStateSync {
         _logger.info(
           '[WIDGET-DIAG] extensionLastRead '
           'timestamp=${values['timestamp']} '
+          'source=${values['source']} '
           'item=${values['itemID']} '
           'title=${values['title']} '
           'playing=${values['isPlaying']} '
