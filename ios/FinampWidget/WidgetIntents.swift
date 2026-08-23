@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import WidgetKit
 
 enum FinampWidgetAction: String, Codable, Sendable {
     case togglePlayback
@@ -30,10 +31,12 @@ enum FinampWidgetActionDispatcher {
             )
         }
 
-        // WidgetKit reloads an interactive widget after perform() returns.
-        // The handler only has to make sure the matching shared state has been
-        // persisted before it returns.
+        // The handler returns only after Finamp has completed the action and
+        // persisted one final coherent shared-state snapshot. Reload exactly
+        // once afterwards so WidgetKit cannot keep rendering the previous
+        // timeline when no later artwork/state event happens to trigger one.
         try await handler(action, rating)
+        WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 }
 
