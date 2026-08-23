@@ -51,7 +51,10 @@ extension AppDelegate {
                     }
 
                     guard let state = result as? [String: Any] else {
-                        NSLog("[FINAMP-WIDGET-DIAG] action missing final state action=%@", action.rawValue)
+                        NSLog(
+                            "[FINAMP-WIDGET-DIAG] action missing final state action=%@",
+                            action.rawValue
+                        )
                         continuation.resume(
                             throwing: NSError(
                                 domain: "FinampWidget",
@@ -73,15 +76,14 @@ extension AppDelegate {
                             state["title"] as? String ?? "nil",
                             String(describing: state["isPlaying"] as? Bool)
                         )
-                        // WidgetKit reloads automatically when the AppIntent
-                        // returns. Persist the final confirmed snapshot first,
-                        // but do not invalidate the timeline from inside the
-                        // still-running intent.
                         try FinampWidgetStateWriter.writeState(
                             state,
                             reload: false
                         )
-                        NSLog("[FINAMP-WIDGET-DIAG] action end action=%@", action.rawValue)
+                        NSLog(
+                            "[FINAMP-WIDGET-DIAG] action end action=%@",
+                            action.rawValue
+                        )
                         continuation.resume()
                     } catch {
                         NSLog(
@@ -126,7 +128,10 @@ extension AppDelegate {
                     )
                     result(nil)
                 } catch {
-                    NSLog("[FINAMP-WIDGET-DIAG] updateState failed error=%@", error.localizedDescription)
+                    NSLog(
+                        "[FINAMP-WIDGET-DIAG] updateState failed error=%@",
+                        error.localizedDescription
+                    )
                     result(FlutterError(
                         code: "WIDGET_STATE_WRITE_FAILED",
                         message: error.localizedDescription,
@@ -217,26 +222,21 @@ private enum FinampWidgetStateWriter {
         "group.\(Bundle.main.bundleIdentifier ?? "com.unicornsonlsd.finamp-ios").widget"
     }
 
+    private static var containerURL: URL? {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroup
+        )
+    }
+
+    private static var stateURL: URL? {
+        containerURL?.appendingPathComponent(FinampWidgetShared.stateFileName)
+    }
+
     static func writeState(
         _ arguments: [String: Any],
         reload: Bool
     ) throws {
-        guard let defaults = UserDefaults(suiteName: appGroup) else {
-            throw NSError(
-                domain: "FinampWidget",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to open app-group defaults"]
-            )
-        }
-
-        let decoder = JSONDecoder()
-        let oldState: FinampWidgetState
-        if let existing = defaults.data(forKey: FinampWidgetShared.stateKey),
-           let decoded = try? decoder.decode(FinampWidgetState.self, from: existing) {
-            oldState = decoded
-        } else {
-            oldState = .empty
-        }
+        let oldState = loadState()
 
         var state = oldState
         state.itemID = arguments["itemID"] as? String
@@ -252,7 +252,7 @@ private enum FinampWidgetStateWriter {
             removeCover(itemID: oldID)
         }
 
-        try save(state, to: defaults)
+        try save(state)
         NSLog(
             "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ reload=%@",
             state.itemID ?? "nil",
@@ -270,30 +270,12 @@ private enum FinampWidgetStateWriter {
         itemID: String,
         reload: Bool
     ) throws {
-        guard let defaults = UserDefaults(suiteName: appGroup) else {
-            throw NSError(
-                domain: "FinampWidget",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to open app-group defaults"]
-            )
-        }
-
-        guard
-            let existing = defaults.data(forKey: FinampWidgetShared.stateKey),
-            var state = try? JSONDecoder().decode(FinampWidgetState.self, from: existing),
-            state.itemID == itemID
-        else {
-            let storedItemID: String
-            if let existing = defaults.data(forKey: FinampWidgetShared.stateKey),
-               let state = try? JSONDecoder().decode(FinampWidgetState.self, from: existing) {
-                storedItemID = state.itemID ?? "nil"
-            } else {
-                storedItemID = "unreadable"
-            }
+        var state = loadState()
+        guard state.itemID == itemID else {
             NSLog(
                 "[FINAMP-WIDGET-DIAG] writeArtwork rejected item=%@ storedItem=%@",
                 itemID,
-                storedItemID
+                state.itemID ?? "nil"
             )
             return
         }
@@ -302,7 +284,10 @@ private enum FinampWidgetStateWriter {
             throw NSError(
                 domain: "FinampWidget",
                 code: 11,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to resolve widget artwork destination"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to resolve widget artwork destination"
+                ]
             )
         }
 
@@ -321,7 +306,7 @@ private enum FinampWidgetStateWriter {
 
         try normalizedData.write(to: destination, options: .atomic)
         state.coverRevision &+= 1
-        try save(state, to: defaults)
+        try save(state)
         NSLog(
             "[FINAMP-WIDGET-DIAG] writeArtwork saved item=%@ path=%@ inputBytes=%d outputBytes=%d revision=%d reload=%@",
             itemID,
@@ -336,12 +321,45 @@ private enum FinampWidgetStateWriter {
         }
     }
 
+    private static func loadState() -> FinampWidgetState {
+        guard
+            let stateURL,
+            let data = try? Data(contentsOf: stateURL),
+            let state = try? JSONDecoder().decode(
+                FinampWidgetState.self,
+                from: data
+            )
+        else {
+            return .empty
+        }
+        return state
+    }
+
+    private static func save(_ state: FinampWidgetState) throws {
+        guard let stateURL else {
+            throw NSError(
+                domain: "FinampWidget",
+                code: 10,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to resolve widget state destination"
+                ]
+            )
+        }
+
+        let data = try JSONEncoder().encode(state)
+        try data.write(to: stateURL, options: .atomic)
+    }
+
     private static func normalizeCoverData(_ data: Data) throws -> Data {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw NSError(
                 domain: "FinampWidget",
                 code: 12,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to decode widget artwork"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to decode widget artwork"
+                ]
             )
         }
 
@@ -360,7 +378,10 @@ private enum FinampWidgetStateWriter {
             throw NSError(
                 domain: "FinampWidget",
                 code: 13,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to downsample widget artwork"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to downsample widget artwork"
+                ]
             )
         }
 
@@ -374,43 +395,49 @@ private enum FinampWidgetStateWriter {
             throw NSError(
                 domain: "FinampWidget",
                 code: 14,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to create widget artwork encoder"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to create widget artwork encoder"
+                ]
             )
         }
 
         let properties: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: jpegCompressionQuality
         ]
-        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        CGImageDestinationAddImage(
+            destination,
+            image,
+            properties as CFDictionary
+        )
 
         guard CGImageDestinationFinalize(destination) else {
             throw NSError(
                 domain: "FinampWidget",
                 code: 15,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to encode widget artwork"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to encode widget artwork"
+                ]
             )
         }
 
         return output as Data
     }
 
-    private static func save(
-        _ state: FinampWidgetState,
-        to defaults: UserDefaults
-    ) throws {
-        let data = try JSONEncoder().encode(state)
-        defaults.set(data, forKey: FinampWidgetShared.stateKey)
-    }
-
     private static func reloadWidget() {
-        NSLog("[FINAMP-WIDGET-DIAG] reloadTimelines kind=%@", FinampWidgetShared.kind)
+        NSLog(
+            "[FINAMP-WIDGET-DIAG] reloadTimelines kind=%@",
+            FinampWidgetShared.kind
+        )
         WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
 
     private static func coverURL(itemID: String) -> URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-            .appendingPathComponent("\(FinampWidgetShared.coverFileName)-\(itemID)")
+        containerURL?
+            .appendingPathComponent(
+                "\(FinampWidgetShared.coverFileName)-\(itemID)"
+            )
             .appendingPathExtension("jpg")
     }
 
