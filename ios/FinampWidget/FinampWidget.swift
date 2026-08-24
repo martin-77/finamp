@@ -55,14 +55,38 @@ struct FinampNowPlayingWidget: Widget {
     }
 }
 
+private struct FinampWidgetDiagnosticSourceKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+
+private extension EnvironmentValues {
+    var finampWidgetDiagnosticSource: String {
+        get { self[FinampWidgetDiagnosticSourceKey.self] }
+        set { self[FinampWidgetDiagnosticSourceKey.self] = newValue }
+    }
+}
+
 private struct FinampWidgetRootView: View {
     @Environment(\.widgetFamily) private var family
     let state: FinampWidgetState
     let generationID: String
+    let diagnosticSource: String
 
     init(entry: FinampNowPlayingEntry) {
         state = entry.state
         generationID = entry.generationID
+        let coverDecode = FinampWidgetState.diagnosticCoverDecodeStatus(
+            for: entry.state
+        )
+        diagnosticSource = [
+            "g=\(entry.generationID)",
+            "s=\(entry.state.diagnosticStateSequence.map(String.init) ?? "-")",
+            "t=\(entry.state.diagnosticTrackSequence.map(String.init) ?? "-")",
+            "i=\(entry.state.itemID ?? "-")",
+            "p=\(entry.state.isPlaying ? 1 : 0)",
+            "r=\(entry.state.coverRevision)",
+            "d=\(coverDecode)"
+        ].joined(separator: ";")
         FinampWidgetState.recordDiagnostic(
             state: entry.state,
             source: "render:\(entry.generationID)"
@@ -70,6 +94,15 @@ private struct FinampWidgetRootView: View {
     }
 
     var body: some View {
+        content
+            .environment(
+                \.finampWidgetDiagnosticSource,
+                diagnosticSource
+            )
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch family {
         case .systemSmall:
             SmallWidgetView(state: state)
@@ -146,10 +179,15 @@ private struct TrackText: View {
 }
 
 private struct PlaybackButton: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
 
     var body: some View {
-        Button(intent: TogglePlaybackIntent()) {
+        Button(
+            intent: TogglePlaybackIntent(
+                diagnosticSource: diagnosticSource
+            )
+        ) {
             Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
                 .font(.headline)
                 .frame(width: 32, height: 32)
@@ -160,18 +198,27 @@ private struct PlaybackButton: View {
 }
 
 private struct TransportControls: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
 
     var body: some View {
         HStack(spacing: 20) {
-            Button(intent: PreviousTrackIntent()) {
+            Button(
+                intent: PreviousTrackIntent(
+                    diagnosticSource: diagnosticSource
+                )
+            ) {
                 Image(systemName: "backward.fill")
             }
             .accessibilityLabel("Previous track")
 
             PlaybackButton(state: state)
 
-            Button(intent: NextTrackIntent()) {
+            Button(
+                intent: NextTrackIntent(
+                    diagnosticSource: diagnosticSource
+                )
+            ) {
                 Image(systemName: "forward.fill")
             }
             .accessibilityLabel("Next track")
@@ -182,6 +229,7 @@ private struct TransportControls: View {
 }
 
 private struct RatingOrFavoriteView: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
     let compact: Bool
 
@@ -190,7 +238,11 @@ private struct RatingOrFavoriteView: View {
             if state.showStarRatings {
                 StarRatingView(state: state, compact: compact)
             } else {
-                Button(intent: ToggleFavoriteIntent()) {
+                Button(
+                    intent: ToggleFavoriteIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(systemName: state.isFavorite ? "heart.fill" : "heart")
                         .font(compact ? .body : .title3)
                         .symbolRenderingMode(.hierarchical)
@@ -212,6 +264,7 @@ private struct RatingOrFavoriteView: View {
 
 @available(iOS 27.0, *)
 private struct StarRatingView: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
     let compact: Bool
 
@@ -222,13 +275,22 @@ private struct StarRatingView: View {
                 let clears = state.starRating == Double(star)
 
                 if clears {
-                    Button(intent: ClearStarRatingIntent()) {
+                    Button(
+                        intent: ClearStarRatingIntent(
+                            diagnosticSource: diagnosticSource
+                        )
+                    ) {
                         starImage(selected: selected)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Clear rating")
                 } else {
-                    Button(intent: SetStarRatingIntent(stars: Double(star))) {
+                    Button(
+                        intent: SetStarRatingIntent(
+                            stars: Double(star),
+                            diagnosticSource: diagnosticSource
+                        )
+                    ) {
                         starImage(selected: selected)
                     }
                     .buttonStyle(.plain)
@@ -261,6 +323,7 @@ private struct StarDisplayView: View {
 }
 
 private struct SmallWidgetView: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
 
     var body: some View {
@@ -293,7 +356,11 @@ private struct SmallWidgetView: View {
             Spacer(minLength: 0)
 
             HStack {
-                Button(intent: PreviousTrackIntent()) {
+                Button(
+                    intent: PreviousTrackIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(systemName: "backward.fill")
                         .frame(width: 28, height: 28)
                 }
@@ -305,7 +372,11 @@ private struct SmallWidgetView: View {
 
                 Spacer(minLength: 2)
 
-                Button(intent: NextTrackIntent()) {
+                Button(
+                    intent: NextTrackIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(systemName: "forward.fill")
                         .frame(width: 28, height: 28)
                 }
@@ -318,6 +389,7 @@ private struct SmallWidgetView: View {
 }
 
 private struct SmallRatingOrFavoriteView: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
 
     var body: some View {
@@ -326,18 +398,31 @@ private struct SmallRatingOrFavoriteView: View {
                 let hasRating = state.starRating != nil
 
                 if hasRating {
-                    Button(intent: ClearStarRatingIntent()) {
+                    Button(
+                        intent: ClearStarRatingIntent(
+                            diagnosticSource: diagnosticSource
+                        )
+                    ) {
                         Image(systemName: "star.fill")
                     }
                     .accessibilityLabel("Clear rating")
                 } else {
-                    Button(intent: SetStarRatingIntent(stars: 5)) {
+                    Button(
+                        intent: SetStarRatingIntent(
+                            stars: 5,
+                            diagnosticSource: diagnosticSource
+                        )
+                    ) {
                         Image(systemName: "star")
                     }
                     .accessibilityLabel("Rate 5 stars")
                 }
             } else {
-                Button(intent: ToggleFavoriteIntent()) {
+                Button(
+                    intent: ToggleFavoriteIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(
                         systemName: state.isFavorite
                             ? "heart.fill"
@@ -390,6 +475,7 @@ private struct MediumWidgetView: View {
 }
 
 private struct LargeWidgetView: View {
+    @Environment(\.finampWidgetDiagnosticSource) private var diagnosticSource
     let state: FinampWidgetState
 
     var body: some View {
@@ -431,7 +517,11 @@ private struct LargeWidgetView: View {
             Divider()
 
             HStack {
-                Button(intent: PreviousTrackIntent()) {
+                Button(
+                    intent: PreviousTrackIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(systemName: "backward.fill")
                         .frame(width: 42, height: 42)
                 }
@@ -443,7 +533,11 @@ private struct LargeWidgetView: View {
 
                 Spacer()
 
-                Button(intent: NextTrackIntent()) {
+                Button(
+                    intent: NextTrackIntent(
+                        diagnosticSource: diagnosticSource
+                    )
+                ) {
                     Image(systemName: "forward.fill")
                         .frame(width: 42, height: 42)
                 }
