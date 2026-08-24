@@ -14,7 +14,17 @@ extension AppDelegate {
 
         FinampWidgetActionDispatcher.handler = { action, rating in
             actionState.begin()
-            defer { actionState.end() }
+            FinampWidgetStateWriter.recordDiagnosticEvent(
+                "ACTION_START",
+                note: action.rawValue
+            )
+            defer {
+                actionState.end()
+                FinampWidgetStateWriter.recordDiagnosticEvent(
+                    "ACTION_RETURN",
+                    note: action.rawValue
+                )
+            }
 
             NSLog("[FINAMP-WIDGET-DIAG] action start action=%@", action.rawValue)
 
@@ -79,6 +89,10 @@ extension AppDelegate {
                         try FinampWidgetStateWriter.writeState(
                             state,
                             reload: false
+                        )
+                        FinampWidgetStateWriter.recordDiagnosticEvent(
+                            "ACTION_FINAL_STATE",
+                            note: action.rawValue
                         )
                         NSLog(
                             "[FINAMP-WIDGET-DIAG] action end action=%@",
@@ -232,6 +246,14 @@ private enum FinampWidgetStateWriter {
         containerURL?.appendingPathComponent(FinampWidgetShared.stateFileName)
     }
 
+    static func recordDiagnosticEvent(_ event: String, note: String? = nil) {
+        FinampWidgetDiagnostics.record(
+            event: event,
+            state: loadState(),
+            note: note
+        )
+    }
+
     static func writeState(
         _ arguments: [String: Any],
         reload: Bool
@@ -256,12 +278,20 @@ private enum FinampWidgetStateWriter {
         }
 
         if state == oldState {
+            if reload {
+                FinampWidgetDiagnostics.record(
+                    event: "STATE_NOOP",
+                    state: state,
+                    note: "reload=true"
+                )
+            }
             NSLog(
-                "[FINAMP-WIDGET-DIAG] writeState unchanged item=%@ title=%@ playing=%@ trackSeq=%@",
+                "[FINAMP-WIDGET-DIAG] writeState unchanged item=%@ title=%@ playing=%@ trackSeq=%@ stateSeq=%@",
                 state.itemID ?? "nil",
                 state.title,
                 String(state.isPlaying),
-                String(describing: state.diagnosticTrackSequence)
+                String(describing: state.diagnosticTrackSequence),
+                String(describing: state.diagnosticStateSequence)
             )
             return
         }
@@ -270,17 +300,25 @@ private enum FinampWidgetStateWriter {
             removeCover(itemID: oldID)
         }
 
+        state.diagnosticStateSequence =
+            (oldState.diagnosticStateSequence ?? 0) + 1
         try save(state)
+        FinampWidgetDiagnostics.record(
+            event: "STATE_WRITE",
+            state: state,
+            note: "reload=\(reload)"
+        )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ trackSeq=%@ reload=%@",
+            "[FINAMP-WIDGET-DIAG] writeState saved item=%@ title=%@ playing=%@ trackSeq=%@ stateSeq=%@ reload=%@",
             state.itemID ?? "nil",
             state.title,
             String(state.isPlaying),
             String(describing: state.diagnosticTrackSequence),
+            String(describing: state.diagnosticStateSequence),
             String(reload)
         )
         if reload {
-            reloadWidget()
+            reloadWidget(reason: "state", state: state)
         }
     }
 
@@ -291,6 +329,11 @@ private enum FinampWidgetStateWriter {
     ) throws {
         var state = loadState()
         guard state.itemID == itemID else {
+            FinampWidgetDiagnostics.record(
+                event: "ARTWORK_REJECTED",
+                state: state,
+                note: "requested=\(itemID)"
+            )
             NSLog(
                 "[FINAMP-WIDGET-DIAG] writeArtwork rejected item=%@ storedItem=%@",
                 itemID,
@@ -298,6 +341,12 @@ private enum FinampWidgetStateWriter {
             )
             return
         }
+
+        FinampWidgetDiagnostics.record(
+            event: "ARTWORK_BEGIN",
+            state: state,
+            note: "bytes=\(data.count) reload=\(reload)"
+        )
 
         guard let destination = coverURL(itemID: itemID) else {
             throw NSError(
@@ -314,6 +363,11 @@ private enum FinampWidgetStateWriter {
 
         if let existingData = try? Data(contentsOf: destination),
            existingData == normalizedData {
+            FinampWidgetDiagnostics.record(
+                event: "ARTWORK_NOOP",
+                state: state,
+                note: "reload=\(reload)"
+            )
             NSLog(
                 "[FINAMP-WIDGET-DIAG] writeArtwork unchanged item=%@ path=%@ bytes=%d",
                 itemID,
@@ -325,18 +379,29 @@ private enum FinampWidgetStateWriter {
 
         try normalizedData.write(to: destination, options: .atomic)
         state.coverRevision &+= 1
+        state.diagnosticStateSequence =
+            (state.diagnosticStateSequence ?? 0) + 1
         try save(state)
+        FinampWidgetDiagnostics.record(
+            event: "ARTWORK_END",
+            state: state,
+            coverExists: true,
+            coverDecode: FinampWidgetState.diagnosticCoverDecodeStatus(for: state),
+            note: "bytes=\(normalizedData.count) reload=\(reload)"
+        )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] writeArtwork saved item=%@ path=%@ inputBytes=%d outputBytes=%d revision=%d reload=%@",
+            "[FINAMP-WIDGET-DIAG] writeArtwork saved item=%@ path=%@ inputBytes=%d outputBytes=%d revision=%d trackSeq=%@ stateSeq=%@ reload=%@",
             itemID,
             destination.path,
             data.count,
             normalizedData.count,
             state.coverRevision,
+            String(describing: state.diagnosticTrackSequence),
+            String(describing: state.diagnosticStateSequence),
             String(reload)
         )
         if reload {
-            reloadWidget()
+            reloadWidget(reason: "artwork", state: state)
         }
     }
 
@@ -444,10 +509,18 @@ private enum FinampWidgetStateWriter {
         return output as Data
     }
 
-    private static func reloadWidget() {
+    private static func reloadWidget(reason: String, state: FinampWidgetState) {
+        FinampWidgetDiagnostics.record(
+            event: "RELOAD_REQUEST",
+            state: state,
+            note: reason
+        )
         NSLog(
-            "[FINAMP-WIDGET-DIAG] reloadTimelines kind=%@",
-            FinampWidgetShared.kind
+            "[FINAMP-WIDGET-DIAG] reloadTimelines kind=%@ reason=%@ trackSeq=%@ stateSeq=%@",
+            FinampWidgetShared.kind,
+            reason,
+            String(describing: state.diagnosticTrackSequence),
+            String(describing: state.diagnosticStateSequence)
         )
         WidgetCenter.shared.reloadTimelines(ofKind: FinampWidgetShared.kind)
     }
