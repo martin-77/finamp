@@ -436,9 +436,9 @@ enum FinampWidgetDiagnostics {
             return
         }
 
-        _ = Darwin.flock(descriptor, LOCK_EX)
+        _ = Darwin.lockf(descriptor, F_LOCK, 0)
         defer {
-            _ = Darwin.flock(descriptor, LOCK_UN)
+            _ = Darwin.lockf(descriptor, F_ULOCK, 0)
             _ = Darwin.close(descriptor)
         }
         body()
