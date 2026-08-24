@@ -509,6 +509,17 @@ class IosWidgetService {
     return sync;
   }
 
+  bool _shouldPreserveStateDuringInitialQueueLoad() {
+    if (!GetIt.instance.isRegistered<QueueService>()) return true;
+
+    final queue = GetIt.instance<QueueService>().getQueue();
+    if (queue.currentTrack != null) return false;
+
+    return queue.saveState == SavedQueueState.preInit ||
+        queue.saveState == SavedQueueState.init ||
+        queue.saveState == SavedQueueState.loading;
+  }
+
   Map<String, Object?> _buildState() {
     final queueItem = _liveCurrentQueueItem();
     final item = queueItem?.baseItem;
@@ -538,6 +549,17 @@ class IosWidgetService {
   }
 
   Future<void> _syncNow({required bool reload}) async {
+    if (_shouldPreserveStateDuringInitialQueueLoad()) {
+      final saveState = GetIt.instance.isRegistered<QueueService>()
+          ? GetIt.instance<QueueService>().getQueue().saveState
+          : null;
+      _log.info(
+        '[WIDGET-DIAG] state skip reason=initial-queue-load '
+        'saveState=$saveState',
+      );
+      return;
+    }
+
     final state = _buildState();
     _log.info(
       '[WIDGET-DIAG] state send item=${state['itemID']} '
