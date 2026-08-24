@@ -119,34 +119,12 @@ extension AppDelegate {
                     let center = MPNowPlayingInfoCenter.default()
                     center.playbackState = isPlaying ? .playing : .paused
                 }
-                result(self?.readWidgetExtensionDiagnostic())
+                result(nil)
 
             default:
                 result(FlutterMethodNotImplemented)
             }
         }
-    }
-
-    private func readWidgetExtensionDiagnostic() -> [String: Any]? {
-        let fallbackBundleID = "com.unicornsonlsd.finamp-ios"
-        let bundleID = Bundle.main.bundleIdentifier ?? fallbackBundleID
-        let appGroup = "group.\(bundleID).widget"
-
-        guard
-            let container = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: appGroup
-            ),
-            let data = try? Data(
-                contentsOf: container.appendingPathComponent(
-                    FinampWidgetShared.diagnosticReadFileName
-                )
-            ),
-            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-
-        return payload
     }
 }
 

@@ -22,35 +22,14 @@ final _logger = Logger('IosHelpers');
 class IosPlaybackStateSync {
   static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/playback_state');
 
-  /// Sets playback state on iOS's MPNowPlayingInfoCenter.
+  /// Sets the playback state on iOS's MPNowPlayingInfoCenter.
   /// This is needed for CarPlay to show the correct play/pause state.
   static Future<void> setPlaybackState({required bool isPlaying}) async {
     if (!Platform.isIOS) return;
 
     try {
-      final diagnostic = await _channel.invokeMethod<Object?>(
-        'setPlaybackState',
-        {'isPlaying': isPlaying},
-      );
+      await _channel.invokeMethod('setPlaybackState', {'isPlaying': isPlaying});
       _logger.fine('Set iOS playback state to ${isPlaying ? "playing" : "paused"}');
-
-      if (diagnostic case final Map<Object?, Object?> values) {
-        _logger.info(
-          '[WIDGET-DIAG] extensionLastRead '
-          'timestamp=${values['timestamp']} '
-          'source=${values['source']} '
-          'item=${values['itemID']} '
-          'title=${values['title']} '
-          'artist=${values['artist']} '
-          'album=${values['album']} '
-          'playing=${values['isPlaying']} '
-          'revision=${values['coverRevision']} '
-          'trackSeq=${values['trackSequence']} '
-          'coverExists=${values['coverExists']}',
-        );
-      } else {
-        _logger.info('[WIDGET-DIAG] extensionLastRead none');
-      }
     } catch (e) {
       _logger.warning('Failed to set iOS playback state: $e');
     }
