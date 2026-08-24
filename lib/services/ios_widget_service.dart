@@ -39,6 +39,9 @@ class IosWidgetService {
   AudioHandler? _audioHandler;
 
   Future<void> _syncTail = Future<void>.value();
+  String? _artworkTrackItemID;
+  String? _publishedArtworkItemID;
+  Completer<void>? _artworkReadyCompleter;
   int _widgetActionDepth = 0;
   bool _queueServiceBound = false;
   bool _initialized = false;
@@ -92,14 +95,17 @@ class IosWidgetService {
     }
 
     final queueService = GetIt.instance<QueueService>();
+    final currentItem = queueService.getCurrentTrack()?.baseItem;
     _queueServiceBound = true;
-    _bindItemProviders(queueService.getCurrentTrack()?.baseItem);
+    _trackArtworkForItem(currentItem?.id.raw);
+    _bindItemProviders(currentItem);
 
     _currentTrackSubscription = queueService.getCurrentTrackStream().listen((queueItem) {
       _log.info(
         '[WIDGET-DIAG] currentTrack id=${queueItem?.baseItem.id.raw} '
         'title=${queueItem?.item.title}',
       );
+      _trackArtworkForItem(queueItem?.baseItem.id.raw);
       _bindItemProviders(queueItem?.baseItem);
       unawaited(syncNow());
     });
@@ -193,6 +199,7 @@ class IosWidgetService {
         'bytes': bytes,
         'reload': !_isHandlingWidgetAction,
       });
+      _markArtworkPublished(item.id.raw);
       _log.info('[WIDGET-DIAG] artwork sent item=${item.id.raw}');
     } catch (error, stackTrace) {
       _log.warning(
@@ -223,6 +230,65 @@ class IosWidgetService {
     _bindQueueServiceIfAvailable();
     if (!GetIt.instance.isRegistered<QueueService>()) return null;
     return GetIt.instance<QueueService>().getCurrentTrack();
+  }
+
+  void _trackArtworkForItem(String? itemID) {
+    if (_artworkTrackItemID == itemID) return;
+
+    final previousCompleter = _artworkReadyCompleter;
+    if (previousCompleter != null && !previousCompleter.isCompleted) {
+      previousCompleter.complete();
+    }
+
+    _artworkTrackItemID = itemID;
+    _publishedArtworkItemID = null;
+    _artworkReadyCompleter = null;
+  }
+
+  void _markArtworkPublished(String itemID) {
+    if (_artworkTrackItemID != itemID) return;
+
+    _publishedArtworkItemID = itemID;
+    final completer = _artworkReadyCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+  }
+
+  Future<void> _waitForArtworkPublication(BaseItemDto item) async {
+    if (item.imageId == null) {
+      _log.info(
+        '[WIDGET-DIAG] artwork wait skip item=${item.id.raw} reason=no-image',
+      );
+      return;
+    }
+
+    final liveItem = _liveCurrentQueueItem()?.baseItem;
+    if (liveItem == null || liveItem.id != item.id) {
+      _log.info(
+        '[WIDGET-DIAG] artwork wait skip item=${item.id.raw} '
+        'reason=track-mismatch live=${liveItem?.id.raw}',
+      );
+      return;
+    }
+
+    final itemID = item.id.raw;
+    _trackArtworkForItem(itemID);
+    if (_publishedArtworkItemID == itemID) {
+      _log.info(
+        '[WIDGET-DIAG] artwork wait skip item=$itemID reason=already-published',
+      );
+      return;
+    }
+
+    final completer = _artworkReadyCompleter ??= Completer<void>();
+    _log.info('[WIDGET-DIAG] artwork wait item=$itemID');
+    try {
+      await completer.future.timeout(_intentStateTimeout);
+      _log.info('[WIDGET-DIAG] artwork ready item=$itemID');
+    } on TimeoutException {
+      _log.warning('Timed out waiting for iOS widget artwork: item=$itemID');
+    }
   }
 
   bool _isPlaceholderArtwork(Uri artUri) {
@@ -303,6 +369,7 @@ class IosWidgetService {
           final confirmedItem = await confirmation;
           if (confirmedItem != null) {
             _bindItemProviders(confirmedItem.baseItem);
+            await _waitForArtworkPublication(confirmedItem.baseItem);
           }
         case 'next':
           final previousItemID = _liveCurrentQueueItem()?.baseItem.id.raw;
@@ -311,6 +378,7 @@ class IosWidgetService {
           final confirmedItem = await confirmation;
           if (confirmedItem != null) {
             _bindItemProviders(confirmedItem.baseItem);
+            await _waitForArtworkPublication(confirmedItem.baseItem);
           }
         case 'toggleFavorite':
           await _toggleFavorite();
@@ -334,12 +402,10 @@ class IosWidgetService {
           );
       }
 
-      // Stream callbacks triggered by the action are allowed to persist state
-      // (and artwork) while the intent is running, but they are serialized and
-      // suppress WidgetCenter reloads. Wait for all already-enqueued writes,
-      // then return one final coherent snapshot to Swift. Swift persists that
-      // snapshot before AppIntent.perform() returns; WidgetKit performs the
-      // single timeline reload afterwards.
+      // Track-change actions wait for the matching artwork publication above.
+      // Stream callbacks can still enqueue state writes while that happens, so
+      // drain the state tail before returning one final coherent snapshot to
+      // Swift. Swift persists it before AppIntent.perform() returns.
       await _syncTail;
       final state = _buildState();
       _log.info(
@@ -508,7 +574,14 @@ class IosWidgetService {
     _favoriteSubscription?.close();
     _ratingSubscription?.close();
 
+    final artworkCompleter = _artworkReadyCompleter;
+    if (artworkCompleter != null && !artworkCompleter.isCompleted) {
+      artworkCompleter.complete();
+    }
     _audioHandler = null;
+    _artworkTrackItemID = null;
+    _publishedArtworkItemID = null;
+    _artworkReadyCompleter = null;
     _queueServiceBound = false;
     _widgetActionDepth = 0;
   }
