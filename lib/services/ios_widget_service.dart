@@ -95,7 +95,7 @@ class IosWidgetService {
     }
 
     final queueService = GetIt.instance<QueueService>();
-    final currentItem = queueService.getCurrentTrack()?.baseItem;
+    final currentItem = queueService.getCurrentTrackStream().value?.baseItem;
     _queueServiceBound = true;
     _trackArtworkForItem(currentItem?.id.raw);
     _bindItemProviders(currentItem);
@@ -229,7 +229,7 @@ class IosWidgetService {
   FinampQueueItem? _liveCurrentQueueItem() {
     _bindQueueServiceIfAvailable();
     if (!GetIt.instance.isRegistered<QueueService>()) return null;
-    return GetIt.instance<QueueService>().getCurrentTrack();
+    return GetIt.instance<QueueService>().getCurrentTrackStream().value;
   }
 
   void _trackArtworkForItem(String? itemID) {
@@ -455,7 +455,7 @@ class IosWidgetService {
     } on TimeoutException {
       // Previous may intentionally seek to the beginning of the current track
       // instead of changing tracks, and next may stay put at the end of a queue.
-      return GetIt.instance<QueueService>().getCurrentTrack();
+      return _liveCurrentQueueItem();
     }
   }
 
