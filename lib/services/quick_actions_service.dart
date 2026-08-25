@@ -22,7 +22,7 @@ class QuickActionsService {
 
   static final _quickActionsServiceLogger = Logger("QuickActionsService");
 
-  static Future<void> handleAction(QuickActionConfig action, BuildContext context) async {
+  static Future<void> handleAction(QuickActionConfig action, [BuildContext? context]) async {
     final audioServiceHelper = GetIt.instance<AudioServiceHelper>();
     final queueService = GetIt.instance<QueueService>();
 
@@ -32,9 +32,17 @@ class QuickActionsService {
         await audioServiceHelper.shuffleAll(onlyShowFavorites: FinampSettingsHelper.finampSettings.onlyShowFavorites);
         break;
       case FinampQuickActions.browseRecentQueues:
+        if (context == null) {
+          _quickActionsServiceLogger.warning("Quick action $action requires a BuildContext.");
+          return;
+        }
         await Navigator.pushNamed(context, QueueRestoreScreen.routeName);
         break;
       case FinampQuickActions.browsePlaybackHistory:
+        if (context == null) {
+          _quickActionsServiceLogger.warning("Quick action $action requires a BuildContext.");
+          return;
+        }
         await Navigator.pushNamed(context, PlaybackHistoryScreen.routeName);
         break;
       case FinampQuickActions.playRandomItem:
@@ -65,6 +73,10 @@ class QuickActionsService {
         }
         break;
       case FinampQuickActions.configureOutput:
+        if (context == null) {
+          _quickActionsServiceLogger.warning("Quick action $action requires a BuildContext.");
+          return;
+        }
         await showOutputMenu(context: context);
         break;
       case FinampQuickActions.playSpecificItem:
