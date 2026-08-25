@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:collection/collection.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
@@ -10,6 +11,7 @@ import 'package:logging/logging.dart';
 import '../models/finamp_models.dart';
 import 'android_auto_helper.dart';
 import 'audio_service_helper.dart';
+import 'finamp_settings_helper.dart';
 import 'quick_actions_service.dart';
 
 /// iOS-specific helpers for playback state sync, Siri media intents, and
