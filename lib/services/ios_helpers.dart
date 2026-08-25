@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
+import 'package:finamp/l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
@@ -7,8 +10,10 @@ import 'package:logging/logging.dart';
 import '../models/finamp_models.dart';
 import 'android_auto_helper.dart';
 import 'audio_service_helper.dart';
+import 'quick_actions_service.dart';
 
-/// iOS-specific helpers for playback state sync and Siri media intents.
+/// iOS-specific helpers for playback state sync, Siri media intents, and
+/// Home Screen quick actions.
 
 final _logger = Logger('IosHelpers');
 
@@ -34,6 +39,80 @@ class IosPlaybackStateSync {
       _logger.warning('Failed to set iOS playback state: $e');
     }
   }
+}
+
+/// Exposes Finamp's existing Home Screen playback quick actions through the
+/// iOS app-icon long-press menu.
+///
+/// The native side only publishes shortcut metadata and forwards the selected
+/// action ID. Playback behavior stays in [QuickActionsService].
+class IosHomeScreenQuickActions {
+  static const _channel = MethodChannel('com.unicornsonlsd.finamp-ios/home_screen_quick_actions');
+  static bool _isSetup = false;
+
+  static final List<QuickActionConfig> _defaultActions = DefaultSettings.homeScreenConfiguration.actions.take(4).toList(
+    growable: false,
+  );
+
+  static void setup() {
+    if (!Platform.isIOS || _isSetup) return;
+    _isSetup = true;
+
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'performShortcut') {
+        _logger.warning('Unknown iOS Home Screen quick action method: ${call.method}');
+        return;
+      }
+
+      final actionId = call.arguments as String?;
+      if (actionId == null) {
+        _logger.warning('Received iOS Home Screen quick action without an action ID');
+        return;
+      }
+
+      final action = _defaultActions.where((config) => config.action.name == actionId).firstOrNull;
+      if (action == null) {
+        _logger.warning('Unknown iOS Home Screen quick action: $actionId');
+        return;
+      }
+
+      _logger.info('Handling iOS Home Screen quick action: $actionId');
+      await QuickActionsService.handleAction(action);
+    });
+
+    unawaited(_publishDefaultActions());
+  }
+
+  static Future<void> _publishDefaultActions() async {
+    try {
+      final locale = FinampSettingsHelper.finampSettings.locale ?? PlatformDispatcher.instance.locale;
+      final l10n = await AppLocalizations.delegate.load(locale);
+
+      final shortcuts = _defaultActions
+          .map(
+            (config) => <String, String>{
+              'id': config.action.name,
+              'title': config.getTitle(l10n),
+              'systemImageName': _systemImageName(config.action),
+            },
+          )
+          .toList(growable: false);
+
+      await _channel.invokeMethod('setShortcuts', shortcuts);
+      await _channel.invokeMethod('ready');
+      _logger.info('Published ${shortcuts.length} iOS Home Screen quick actions');
+    } catch (e, stackTrace) {
+      _logger.warning('Failed to publish iOS Home Screen quick actions: $e', e, stackTrace);
+    }
+  }
+
+  static String _systemImageName(FinampQuickActions action) => switch (action) {
+    FinampQuickActions.shuffleTracks => 'shuffle',
+    FinampQuickActions.playRandomFavoriteItem => 'heart.fill',
+    FinampQuickActions.playPreviousQueue => 'arrow.counterclockwise',
+    FinampQuickActions.surpriseMe => 'radio',
+    _ => 'music.note',
+  };
 }
 
 /// Handles Siri media intent commands from iOS.
@@ -63,6 +142,7 @@ class IosSiriHandler {
       }
     });
 
+    IosHomeScreenQuickActions.setup();
     _logger.info("Siri intent handler set up");
   }
 
