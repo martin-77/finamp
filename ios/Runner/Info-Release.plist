@@ -82,7 +82,9 @@
 		</dict>
 		<key>NSAppleMusicUsageDescription</key>
 		<string>Finamp can use your media library to store downloaded songs. If you don't want this, Finamp can also download songs to the app's internal directory, which doesn't use any permissions.</string>
-		<key>NSCameraUsageDescription</key>
+		<key>NSLocalNetworkUsageDescription</key>
+	<string>Finamp uses your local network to discover and connect to Jellyfin servers on your Wi-Fi network.</string>
+	<key>NSCameraUsageDescription</key>
 		<string>I don't know why this permission is being requested, you should probably deny it. If you can, create a GitHub issue with a screenshot of this message.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>I don't know why this permission is being requested, you should probably deny it. If you can, create a GitHub issue with a screenshot of this message.</string>
