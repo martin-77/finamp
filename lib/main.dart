@@ -291,6 +291,12 @@ Future<void> _setupDownloadsHelper() async {
 Future<void> _setupPlayOnService() async {
   final playOnService = PlayOnService();
   GetIt.instance.registerSingleton(playOnService);
+
+  // The persisted local/public choice can be stale after a cold start.
+  // Resolve the target before PlayOn makes its first request. PlayOn is
+  // initialized immediately afterwards, so no reconnect is needed here.
+  await AutoOffline.reevaluateTargetUrl(reason: "startup", reconnectPlayOn: false);
+
   GetIt.instance<FinampUserHelper>().runUserHook(playOnService.initialize);
 }
 
