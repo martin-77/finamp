@@ -9,6 +9,7 @@ import 'package:finamp/services/downloads_service.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/playon_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
@@ -32,11 +33,13 @@ final autoOfflineStatusProvider = StreamProvider((ref) {
 }).select((v) => v.valueOrNull ?? 0);
 
 final StreamSubscription<List<ConnectivityResult>> _listener = Connectivity().onConnectivityChanged.listen(
-  _onConnectivityChange,
+  (connections) => _onConnectivityChange(connections, reason: "connectivity-change"),
 );
 
 @riverpod
 class AutoOffline extends _$AutoOffline {
+  static AppLifecycleListener? _lifecycleListener;
+
   static void startWatching() {
     ProviderContainer container = GetIt.instance<ProviderContainer>();
 
@@ -47,11 +50,44 @@ class AutoOffline extends _$AutoOffline {
       if (automationEnabled) {
         _listener.resume();
         // instantly check if offline mode should be on
-        _onConnectivityChange(null);
+        _onConnectivityChange(null, reason: "automation-state-change");
       } else {
         _listener.pause();
       }
     });
+
+    _lifecycleListener ??= AppLifecycleListener(
+      onRestart: () {
+        unawaited(reevaluateTargetUrl(reason: "app-restart"));
+      },
+    );
+  }
+
+  static Future<void> reevaluateTargetUrl({
+    required String reason,
+    bool reconnectPlayOn = true,
+  }) async {
+    final connections = await Connectivity().checkConnectivity();
+    final user = GetIt.instance<FinampUserHelper>().currentUser;
+
+    _networkAutomationLogger.info(
+      "Target URL reevaluation: reason=$reason, "
+      "connectivity=${connections.map((element) => element.toString()).join(", ")}, "
+      "preferLocalNetwork=${user?.preferLocalNetwork ?? false}, "
+      "activeAddress=${user?.isLocal == true ? "local" : "public"}",
+    );
+
+    final baseUrlChanged = await changeTargetUrl();
+
+    _networkAutomationLogger.info(
+      "Target URL reevaluation complete: reason=$reason, "
+      "changed=$baseUrlChanged, "
+      "activeAddress=${GetIt.instance<FinampUserHelper>().currentUser?.isLocal == true ? "local" : "public"}",
+    );
+
+    if (baseUrlChanged && reconnectPlayOn) {
+      _reconnectPlayOnService(connections);
+    }
   }
 
   @override
@@ -81,9 +117,13 @@ class AutoOffline extends _$AutoOffline {
   }
 }
 
-Future<void> _onConnectivityChange(List<ConnectivityResult>? connections) async {
+Future<void> _onConnectivityChange(
+  List<ConnectivityResult>? connections, {
+  String reason = "manual",
+}) async {
   _networkAutomationLogger.info(
-    "Network Change: ${connections?.map((element) => element.toString()).join(", ") ?? "None (likely a manual function call)"}",
+    "Network Change: reason=$reason, "
+    "${connections?.map((element) => element.toString()).join(", ") ?? "None (manual connectivity check)"}",
   );
   connections ??= await Connectivity().checkConnectivity();
   final [offlineModeActive, baseUrlChanged] = await Future.wait([_setOfflineMode(connections), changeTargetUrl()]);
@@ -170,9 +210,13 @@ Future<bool> changeTargetUrl({bool? isLocal}) async {
   }
 
   // Disable this feature
-  if (!user.preferLocalNetwork) return changeTargetUrl(isLocal: false);
+  if (!user.preferLocalNetwork) {
+    _networKSwitcherLogger.info("Prefer local network disabled; selecting public address");
+    return changeTargetUrl(isLocal: false);
+  }
 
   bool reachable = await GetIt.instance<JellyfinApiHelper>().pingLocalServer();
+  _networKSwitcherLogger.info("Local server probe: ${reachable ? "reachable" : "unreachable"}");
   return await changeTargetUrl(isLocal: reachable);
 }
 
