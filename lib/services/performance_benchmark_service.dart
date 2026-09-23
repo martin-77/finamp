@@ -166,12 +166,15 @@ class PerformanceBenchmarkService {
   static const _runKeyPrefix = "run:";
   static const _activeRunKey = "active-run";
   static const _cleanupRequiredKey = "cleanup-required";
+  static const _hostStreamFileName = "finamp-benchmark-stream.jsonl";
 
   static final PerformanceBenchmarkService instance = PerformanceBenchmarkService._();
 
   PerformanceBenchmarkService._();
 
   Box<String>? _box;
+  File? _hostStreamFile;
+  Future<void> _hostWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
   int _runSequence = 0;
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
@@ -397,10 +400,46 @@ class PerformanceBenchmarkService {
       "emittedAt": DateTime.now().toUtc().toIso8601String(),
       ...payload,
     };
+    final encoded = jsonEncode(record);
     // Intentionally machine-readable for the macOS host-side benchmark collector.
     // Do not include media names, item ids, URLs, tokens or user identifiers.
     // ignore: avoid_print
-    print("BENCH_JSON ${jsonEncode(record)}");
+    print("BENCH_JSON $encoded");
+    if (enabled) {
+      _hostWriteChain = _hostWriteChain.then((_) => _appendHostRecord(encoded));
+    }
+  }
+
+  Future<void> _appendHostRecord(String encoded) async {
+    final file = _hostStreamFile ??= File(
+      path_helper.join(
+        (await getApplicationDocumentsDirectory()).path,
+        _hostStreamFileName,
+      ),
+    );
+    await file.writeAsString(
+      "$encoded\n",
+      mode: FileMode.append,
+      flush: true,
+    );
+  }
+
+  Future<void> resetHostStream() async {
+    if (!enabled) return;
+    await _hostWriteChain;
+    final file = _hostStreamFile ??= File(
+      path_helper.join(
+        (await getApplicationDocumentsDirectory()).path,
+        _hostStreamFileName,
+      ),
+    );
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  Future<void> flushHostStream() async {
+    await _hostWriteChain;
   }
 
   Future<T> runStep<T>({
