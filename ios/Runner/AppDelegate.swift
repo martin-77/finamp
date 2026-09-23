@@ -91,7 +91,7 @@ private let benchmarkNativeLaunchUptimeNanoseconds = DispatchTime.now().uptimeNa
 extension AppDelegate {
     func setupBenchmarkLaunchTimingChannel() {
         let channel = FlutterMethodChannel(
-            name: "\(Bundle.main.bundleIdentifier!)/benchmark_launch_timing",
+            name: "finamp/benchmark_launch_timing",
             binaryMessenger: flutterEngine.binaryMessenger
         )
 
