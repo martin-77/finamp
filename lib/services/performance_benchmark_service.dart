@@ -283,6 +283,7 @@ class PerformanceBenchmarkService {
 
   Box<String>? _box;
   File? _hostStreamFile;
+  Timer? _heartbeatTimer;
   Future<void> _hostWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
   PerformanceBenchmarkTabCommand? _activeTabCommand;
@@ -324,6 +325,26 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
       _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
+
+  void startHeartbeat() {
+    if (!enabled || _heartbeatTimer != null) return;
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final run = _activeRun;
+      diagnostic(
+        "benchmark-heartbeat",
+        values: {
+          "activeRun": run != null,
+          if (run != null) "scenario": run.scenario,
+          if (run?.lastStep != null) "lastStep": run!.lastStep,
+        },
+      );
+    });
+  }
+
+  void stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
 
   Future<File> _suiteStageFile() async {
     final directory = (Platform.isAndroid || Platform.isIOS)
