@@ -139,6 +139,7 @@ def main():
                     "phase": values.get("phase"),
                     "fullyReadyMs": values.get("fullyReadyMs"),
                     "nativeFullyReadyMs": values.get("nativeFullyReadyMs"),
+                    "nativeToDartMainMs": values.get("nativeToDartMainMs"),
                     "requestCount": values.get("requestCount"),
                     "responseBytes": values.get("responseBytes"),
                     "httpDurationMicrosTotal": values.get("httpDurationMicrosTotal"),
@@ -361,6 +362,7 @@ def main():
 
         ready = numeric_values("fullyReadyMs")
         native_ready = numeric_values("nativeFullyReadyMs")
+        native_to_dart = numeric_values("nativeToDartMainMs")
         requests = numeric_values("requestCount")
         http_total = numeric_values("httpDurationMicrosTotal")
         worker_total = numeric_values("workerDurationMicrosTotal")
@@ -378,6 +380,10 @@ def main():
                 statistics.median(native_ready) if native_ready else None
             ),
             "nativeFullyReadyP90Ms": p90(native_ready) if native_ready else None,
+            "nativeToDartMainMedianMs": (
+                statistics.median(native_to_dart)
+                if native_to_dart else None
+            ),
             "requestMedian": statistics.median(requests) if requests else None,
             "httpTotalMedianMs": (
                 statistics.median(http_total) / 1000.0
@@ -461,6 +467,11 @@ def main():
                     if isinstance(values.get("nativeLaunchElapsedMs"), (int, float))
                     else None
                 ),
+                "nativeToDartMainMs": (
+                    float(values["nativeToDartMainMs"])
+                    if isinstance(values.get("nativeToDartMainMs"), (int, float))
+                    else None
+                ),
                 "phase": values.get("phase"),
                 "contentType": values.get("contentType"),
             })
@@ -474,8 +485,8 @@ def main():
         "",
         "## Startup timeline",
         "",
-        "| Milestone | Phase/content | Dart-main elapsed ms | Native-launch elapsed ms |",
-        "|---|---|---:|---:|",
+        "| Milestone | Phase/content | Dart-main elapsed ms | Native-launch elapsed ms | Native -> Dart main ms |",
+        "|---|---|---:|---:|---:|",
     ])
     if startup_timeline:
         for item in startup_timeline:
@@ -483,10 +494,11 @@ def main():
             lines.append(
                 f"| {item.get('name', '')} | {context} | "
                 f"{item.get('processElapsedMs', ''):.3f} | "
-                f"{'' if item.get('nativeLaunchElapsedMs') is None else round(item['nativeLaunchElapsedMs'], 3)} |"
+                f"{'' if item.get('nativeLaunchElapsedMs') is None else round(item['nativeLaunchElapsedMs'], 3)} | "
+                f"{'' if item.get('nativeToDartMainMs') is None else round(item['nativeToDartMainMs'], 3)} |"
             )
     else:
-        lines.append("|  |  |  |  |")
+        lines.append("|  |  |  |  |  |")
 
     lines.extend([
         "",
@@ -510,8 +522,8 @@ def main():
         "",
         "## Startup phase comparison",
         "",
-        "| Phase | Runs | Dart ready med ms | Dart p90 ms | Native ready med ms | Native p90 ms | Requests med | HTTP total med ms | Worker total med ms | >50ms frames med | Max frame med ms | Image loads med | RSS med MiB |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Phase | Runs | Dart ready med ms | Dart p90 ms | Native ready med ms | Native p90 ms | Native -> Dart main med ms | Requests med | HTTP total med ms | Worker total med ms | >50ms frames med | Max frame med ms | Image loads med | RSS med MiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     if startup_phase_grouped:
         for item in startup_phase_grouped:
@@ -524,6 +536,7 @@ def main():
                 f"{fmt(item['fullyReadyP90Ms'])} | "
                 f"{fmt(item['nativeFullyReadyMedianMs'])} | "
                 f"{fmt(item['nativeFullyReadyP90Ms'])} | "
+                f"{fmt(item['nativeToDartMainMedianMs'])} | "
                 f"{fmt(item['requestMedian'])} | "
                 f"{fmt(item['httpTotalMedianMs'])} | "
                 f"{fmt(item['workerTotalMedianMs'])} | "
@@ -533,7 +546,7 @@ def main():
                 f"{fmt(item['rssMedianMiB'])} |"
             )
     else:
-        lines.append("|  |  |  |  |  |  |  |  |  |  |  |  |  |")
+        lines.append("|  |  |  |  |  |  |  |  |  |  |  |  |  |  |")
 
     lines.extend([
         "",
