@@ -17,12 +17,14 @@ printf 'Full log: %s\nBenchmark JSONL: %s\n' "$raw_log" "$jsonl"
 # BENCH_JSON. The full Flutter/device log is retained separately.
 flutter run "$@" 2>&1 |
   tee "$raw_log" |
-  awk '
+  awk -v jsonl="$jsonl" '
     {
+      print
+      fflush()
       marker = index($0, "BENCH_JSON ")
       if (marker > 0) {
-        print substr($0, marker + length("BENCH_JSON "))
-        fflush()
+        print substr($0, marker + length("BENCH_JSON ")) >> jsonl
+        fflush(jsonl)
       }
     }
-  ' >> "$jsonl"
+  '
