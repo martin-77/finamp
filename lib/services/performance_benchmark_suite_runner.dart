@@ -90,6 +90,7 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     try {
       await WidgetsBinding.instance.endOfFrame;
+      await _recoverPendingDownloadCleanup();
       recorder.diagnostic("post-restart-phase-start");
 
       await recorder.waitForStartupQuiescence(
@@ -189,6 +190,8 @@ class PerformanceBenchmarkSuiteRunner {
 
     final recorder = PerformanceBenchmarkService.instance;
     try {
+      await _recoverPendingDownloadCleanup();
+
       // Keep benchmark work out of the authentication transition itself,
       // then wait for Finamp's known asynchronous startup jobs to finish.
       await WidgetsBinding.instance.endOfFrame;
@@ -281,6 +284,76 @@ class PerformanceBenchmarkSuiteRunner {
     } finally {
       _running = false;
     }
+  }
+
+  Future<void> _recoverPendingDownloadCleanup() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final requirement = await recorder.getDownloadCleanupRequirement();
+    if (requirement == null) return;
+
+    final alias = requirement["targetAlias"] as String?;
+    if (alias == null || alias.isEmpty) {
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: "",
+        required: false,
+      );
+      return;
+    }
+
+    recorder.diagnostic(
+      "download-cleanup-recovery-start",
+      values: {"targetAlias": alias},
+    );
+
+    // Cleanup must be online so queued deletes can finish.
+    FinampSetters.setIsOffline(false);
+    await Future<void>.delayed(const Duration(seconds: 1));
+
+    final target = await recorder.getTarget(alias);
+    if (target == null) {
+      recorder.diagnostic(
+        "download-cleanup-recovery-target-missing",
+        values: {"targetAlias": alias},
+      );
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: alias,
+        required: false,
+      );
+      return;
+    }
+
+    final container = GetIt.instance<ProviderContainer>();
+    final item = await container.read(
+      itemByIdProvider(BaseItemId(target.itemId)).future,
+    );
+    if (item == null) {
+      recorder.diagnostic(
+        "download-cleanup-recovery-item-missing",
+        values: {"targetAlias": alias},
+      );
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: alias,
+        required: false,
+      );
+      return;
+    }
+
+    final downloads = GetIt.instance<DownloadsService>();
+    final stub = DownloadStub.fromItem(
+      type: DownloadItemType.collection,
+      item: item,
+    );
+    await downloads.deleteDownload(stub: stub);
+    await _waitForDownloadRemoved(downloads, stub);
+    await recorder.setDownloadCleanupRequired(
+      targetAlias: alias,
+      required: false,
+    );
+
+    recorder.diagnostic(
+      "download-cleanup-recovery-complete",
+      values: {"targetAlias": alias},
+    );
   }
 
   Future<bool> _discoverAndValidateTargets() async {
