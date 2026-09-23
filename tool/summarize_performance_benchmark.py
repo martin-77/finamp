@@ -62,6 +62,7 @@ def main():
     phase_memory = []
     network_target_events = []
     recovered_runs = []
+    runtime_environments = []
     phases = []
     diagnostics = []
 
@@ -201,6 +202,16 @@ def main():
                     "values": values,
                     "emittedAt": record.get("emittedAt"),
                 })
+            elif name == "runtime-environment":
+                environment = {
+                    "operatingSystem": values.get("operatingSystem"),
+                    "operatingSystemVersion": values.get("operatingSystemVersion"),
+                    "dartVersion": values.get("dartVersion"),
+                    "processorCount": values.get("processorCount"),
+                    "variant": values.get("variant"),
+                }
+                if environment not in runtime_environments:
+                    runtime_environments.append(environment)
             elif name == "suite-phase-complete":
                 phase = values.get("phase")
                 if phase:
@@ -421,6 +432,7 @@ def main():
         "queueRestores": queue_restores,
         "queueRestoreContent": queue_restore_content,
         "recoveredRuns": recovered_runs,
+        "runtimeEnvironments": runtime_environments,
         "groups": summary_groups,
         "milestones": diagnostics,
     }
@@ -440,6 +452,25 @@ def main():
     lines.extend(f"- {phase}" for phase in phases)
     if not phases:
         lines.append("- none recorded")
+
+    lines.extend([
+        "",
+        "## Runtime environment",
+        "",
+        "| OS | OS version | Dart runtime | Processors | Variant |",
+        "|---|---|---|---:|---|",
+    ])
+    if runtime_environments:
+        for item in runtime_environments:
+            dart_version = str(item.get("dartVersion") or "").replace("\n", " ")
+            lines.append(
+                f"| {item.get('operatingSystem', '')} | "
+                f"{item.get('operatingSystemVersion', '')} | "
+                f"{dart_version} | {item.get('processorCount', '')} | "
+                f"{item.get('variant', '')} |"
+            )
+    else:
+        lines.append("|  |  |  |  |  |")
 
     lines.extend([
         "",
