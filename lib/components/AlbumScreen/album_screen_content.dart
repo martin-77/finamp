@@ -75,6 +75,13 @@ class _AlbumScreenContentState extends ConsumerState<AlbumScreenContent> {
       );
       if (command.refresh) {
         ref.invalidate(getAlbumOrPlaylistTracksProvider(widget.parent));
+        if (BaseItemDtoType.fromItem(widget.parent) ==
+            BaseItemDtoType.playlist) {
+          // Playlist rendering goes through the sorted provider. Invalidate the
+          // family explicitly so refreshed-detail can never reuse a warm sorted
+          // result just because the underlying provider happened not to notify.
+          ref.invalidate(getSortedPlaylistTracksProvider);
+        }
       }
     }
     super.initState();
