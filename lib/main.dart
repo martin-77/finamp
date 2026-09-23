@@ -355,9 +355,26 @@ Future<void> _setupDownloadsHelper() async {
         baseDirectory: DownloadLocationType.platformDefaultDirectory,
       );
       FinampSettingsHelper.addDownloadLocation(downloadLocation);
-      // There may be old downloads present due to skipping the migration
-      // Run a repair to make sure they all get cleaned up.
-      unawaited(downloadsService.repairAllDownloads().then((value) => null, onError: GlobalSnackbar.error));
+      // There may be old downloads present due to skipping the migration.
+      // In benchmark mode this background repair is part of startup readiness;
+      // normal Finamp keeps the existing fire-and-forget behaviour.
+      if (PerformanceBenchmarkService.enabled) {
+        unawaited(
+          PerformanceBenchmarkService.instance
+              .runStartupTask(
+                "repair-downloads-after-location-recreation",
+                downloadsService.repairAllDownloads,
+              )
+              .catchError((dynamic error) => GlobalSnackbar.error(error)),
+        );
+      } else {
+        unawaited(
+          downloadsService.repairAllDownloads().then(
+            (value) => null,
+            onError: GlobalSnackbar.error,
+          ),
+        );
+      }
     }
   }
 
