@@ -370,8 +370,10 @@ Future<void> _setupDownloadsHelper() async {
   if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
     GetIt.instance<FinampUserHelper>().runUserHook(() async {
       if (PerformanceBenchmarkService.enabled) {
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.markStartupPlaylistMetadataWorkRan();
         try {
-          await PerformanceBenchmarkService.instance.runStartupTask(
+          await benchmark.runStartupTask(
             "default-playlist-metadata-download",
             () async {
               await downloadsService.addDefaultPlaylistInfoDownload();
@@ -382,13 +384,17 @@ Future<void> _setupDownloadsHelper() async {
               );
             },
           );
-          PerformanceBenchmarkService.instance
-              .markStartupPlaylistMetadataWorkRan();
+          benchmark.reportStartupPlaylistMetadataWorkResult(
+            success: true,
+          );
         } catch (e) {
+          benchmark.reportStartupPlaylistMetadataWorkResult(
+            success: false,
+            errorType: e.runtimeType.toString(),
+          );
           _mainLog.severe(
             "Benchmark startup playlist metadata download failed: $e",
           );
-          rethrow;
         }
       } else {
         await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
