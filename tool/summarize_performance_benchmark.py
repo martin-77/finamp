@@ -97,7 +97,9 @@ def main():
             elif name in {
                 "startup-main-init-complete",
                 "startup-first-frame",
+                "startup-screen-first-rendered-content",
                 "startup-quiescent",
+                "image-loads-quiescent",
                 "network-quiescent",
                 "startup-fully-ready",
                 "startup-baseline-complete",
@@ -221,10 +223,40 @@ def main():
             f"{item['p90Ms']:.3f} | {item['minMs']:.3f} | {item['maxMs']:.3f} |"
         )
 
+    startup_timeline = []
+    for item in diagnostics:
+        values = item.get("values") or {}
+        elapsed = values.get("processElapsedMs")
+        if isinstance(elapsed, (int, float)):
+            startup_timeline.append({
+                "name": item.get("name"),
+                "processElapsedMs": float(elapsed),
+                "phase": values.get("phase"),
+                "contentType": values.get("contentType"),
+            })
+    startup_timeline.sort(key=lambda item: item["processElapsedMs"])
+
     ready_events = [
         item for item in diagnostics
         if item.get("name") == "startup-fully-ready"
     ]
+    lines.extend([
+        "",
+        "## Startup timeline",
+        "",
+        "| Milestone | Phase/content | Process elapsed ms |",
+        "|---|---|---:|",
+    ])
+    if startup_timeline:
+        for item in startup_timeline:
+            context = item.get("phase") or item.get("contentType") or ""
+            lines.append(
+                f"| {item.get('name', '')} | {context} | "
+                f"{item.get('processElapsedMs', ''):.3f} |"
+            )
+    else:
+        lines.append("|  |  |  |")
+
     lines.extend([
         "",
         "## Startup fully ready",
