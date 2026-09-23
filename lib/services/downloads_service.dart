@@ -1845,6 +1845,7 @@ class DownloadsService {
 
     final benchmark = PerformanceBenchmarkService.instance;
     final stopwatch = Stopwatch()..start();
+    Stopwatch? stalledSince;
     var previousComplete = -1;
 
     while (stopwatch.elapsed < timeout) {
@@ -1879,6 +1880,36 @@ class DownloadsService {
           },
         );
         return progress;
+      }
+
+      final queueState = getPerformanceBenchmarkQueueState();
+      final globallyActive =
+          (queueState["enqueued"] ?? 0) +
+          (queueState["downloading"] ?? 0);
+      final pendingSyncTasks = queueState["pendingSyncTasks"] ?? 0;
+      final systemIdle = globallyActive == 0 &&
+          pendingSyncTasks == 0 &&
+          !syncBuffer.isRunning &&
+          !_userDeleteRunning;
+
+      if (systemIdle) {
+        stalledSince ??= Stopwatch()..start();
+        if (stalledSince.elapsed >= const Duration(seconds: 30)) {
+          benchmark.mark(
+            "download-stalled-incomplete",
+            values: {
+              "expectedTracks": expectedTracks,
+              "totalTracks": total,
+              "completeTracks": complete,
+              "failedTracks": failed,
+            },
+          );
+          throw StateError(
+            "Benchmark download became idle before reaching expected completion",
+          );
+        }
+      } else {
+        stalledSince = null;
       }
 
       await Future<void>.delayed(const Duration(milliseconds: 500));
