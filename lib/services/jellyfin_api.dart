@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show HttpClient, Platform;
+import 'dart:isolate' show SendPort;
 
 import 'package:chopper/chopper.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -574,7 +575,11 @@ abstract class JellyfinApi extends ChopperService {
   @Get(path: "/System/Endpoint", optionalBody: true)
   Future<Response<dynamic>> pingServer();
 
-  static JellyfinApi create({required bool inForeground, required bool verboseLogging}) {
+  static JellyfinApi create({
+    required bool inForeground,
+    required bool verboseLogging,
+    SendPort? benchmarkSendPort,
+  }) {
     // Body logging can be very excessive, so we do not perform it by default.  If in debug mode or configured for verbose
     // logging, body log foreground requests but keep disabled for verbose getItems calls in background.  If using verbose
     // logs in debug mode, body log every request.
@@ -599,7 +604,10 @@ abstract class JellyfinApi extends ChopperService {
       interceptors: [
         /// Gets baseUrl from SharedPreferences.
         JellyfinInterceptor(inForeground),
-        HttpAggregateLoggingInterceptor(level: chopperHttpLogLevel),
+        HttpAggregateLoggingInterceptor(
+          level: chopperHttpLogLevel,
+          benchmarkSendPort: benchmarkSendPort,
+        ),
       ],
     );
 
