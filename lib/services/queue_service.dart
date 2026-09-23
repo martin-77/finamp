@@ -403,6 +403,80 @@ class QueueService {
     return info.trackCount;
   }
 
+  /// Test-only deterministic restore of the persisted latest queue.
+  ///
+  /// Normal startup still honors the user's autoload setting. The benchmark
+  /// uses this only after startup when autoload was skipped, so queue-restore
+  /// performance is covered independently of that preference.
+  Future<int> restorePerformanceBenchmarkPersistedQueue() async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Explicit queue restore is only available in benchmark mode",
+      );
+    }
+
+    final info = _queuesBox.get("latest");
+    if (info == null || info.trackCount == 0) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "queue-restore-explicit-missing",
+      );
+      return 0;
+    }
+
+    final currentCount = getQueue().trackCount;
+    if (currentCount == info.trackCount) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "queue-restore-explicit-already-loaded",
+        values: {"storedTrackCount": info.trackCount},
+      );
+      return currentCount;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      await loadSavedQueue(info);
+      stopwatch.stop();
+      final restoredCount = getQueue().trackCount;
+      PerformanceBenchmarkService.instance.diagnostic(
+        "queue-restore-explicit-complete",
+        values: {
+          "storedTrackCount": info.trackCount,
+          "restoredTrackCount": restoredCount,
+          "durationMs": stopwatch.elapsedMicroseconds / 1000.0,
+        },
+      );
+      return restoredCount;
+    } catch (error) {
+      stopwatch.stop();
+      PerformanceBenchmarkService.instance.diagnostic(
+        "queue-restore-explicit-failed",
+        values: {
+          "storedTrackCount": info.trackCount,
+          "durationMs": stopwatch.elapsedMicroseconds / 1000.0,
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      rethrow;
+    }
+  }
+
+  /// Clears both the active queue and the persisted latest queue after the
+  /// queue-restore benchmark so later UI/cache phases start from neutral state.
+  Future<void> clearPerformanceBenchmarkQueueState() async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark queue cleanup is only available in benchmark mode",
+      );
+    }
+
+    await stopAndClearQueue();
+    await _queuesBox.delete("latest");
+    await _queuesBox.flush();
+    PerformanceBenchmarkService.instance.diagnostic(
+      "queue-benchmark-state-cleared",
+    );
+  }
+
   Future<void> performInitialQueueLoad() async {
     if (_savedQueueState == SavedQueueState.preInit) {
       try {
