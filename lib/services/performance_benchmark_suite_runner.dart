@@ -5,6 +5,7 @@ import 'package:finamp/models/jellyfin_models.dart';
 import 'package:finamp/services/music_player_background_task.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/downloads_service.dart';
+import 'package:finamp/services/album_image_provider.dart';
 import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/music_models.dart';
 import 'package:finamp/screens/album_screen.dart';
@@ -257,6 +258,12 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.diagnostic(
         "suite-phase-complete",
         values: {"phase": "download-offline"},
+      );
+
+      await _runImageCacheBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "image-cache"},
       );
 
       await recorder.setSuiteStage("awaiting-host-restart");
@@ -705,6 +712,46 @@ class PerformanceBenchmarkSuiteRunner {
 
       await Future<void>.delayed(const Duration(seconds: 5));
     }
+  }
+
+  Future<void> _runImageCacheBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    await clearPerformanceBenchmarkImageCache();
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    await _runUiTabBaseline(
+      "albums",
+      mode: "image-cache-cold-refreshed",
+      round: 1,
+    );
+    await Future<void>.delayed(const Duration(seconds: 3));
+    await _runUiTabBaseline(
+      "albums",
+      mode: "image-cache-warm-view",
+      round: 1,
+    );
+    await Future<void>.delayed(const Duration(seconds: 3));
+
+    await _runDetailBaseline(
+      targetAlias: "detail-album",
+      detailType: "album",
+      mode: "image-cache-cold-detail",
+      refresh: true,
+    );
+    await Future<void>.delayed(const Duration(seconds: 3));
+    await _runDetailBaseline(
+      targetAlias: "detail-album",
+      detailType: "album",
+      mode: "image-cache-warm-detail",
+      refresh: false,
+    );
+
+    recorder.diagnostic("image-cache-baseline-complete");
+    await recorder.waitForNetworkQuiescence(
+      quietPeriod: const Duration(seconds: 3),
+      timeout: const Duration(minutes: 3),
+    );
   }
 
   Future<void> _runDownloadAndOfflineBaselines() async {
