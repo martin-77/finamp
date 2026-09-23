@@ -25,6 +25,7 @@ import '../models/jellyfin_models.dart';
 import '../setup_logging.dart';
 import 'downloads_service.dart';
 import 'downloads_service_backend.dart';
+import 'performance_benchmark_service.dart';
 import 'finamp_settings_helper.dart';
 import 'finamp_user_helper.dart';
 import 'jellyfin_api.dart' as jellyfin_api;
@@ -1129,26 +1130,59 @@ class JellyfinApiHelper {
   Future<bool> pingLocalServer() async {
     FinampUser? user = GetIt.instance<FinampUserHelper>().currentUser;
     if (user == null) return false;
-    return await _pingSpecificServer(user.localAddress);
+    return _benchmarkPing(
+      target: "local",
+      operation: () => _pingSpecificServer(user.localAddress),
+    );
   }
 
   Future<bool> pingPublicServer() async {
     FinampUser? user = GetIt.instance<FinampUserHelper>().currentUser;
     if (user == null) return false;
-    return await _pingSpecificServer(user.publicAddress);
+    return _benchmarkPing(
+      target: "public",
+      operation: () => _pingSpecificServer(user.publicAddress),
+    );
   }
 
   Future<bool> pingActiveServer() async {
-    try {
-      Response<dynamic>? response = await jellyfinApi
-          .pingServer()
-          .then((e) => e as Response<dynamic>?)
-          .timeout(Duration(seconds: 3));
-      return response?.statusCode == 200;
-    } catch (e) {
-      _jellyfinApiHelperLogger.severe(e);
-      return false;
+    return _benchmarkPing(
+      target: "active",
+      operation: () async {
+        try {
+          Response<dynamic>? response = await jellyfinApi
+              .pingServer()
+              .then((e) => e as Response<dynamic>?)
+              .timeout(Duration(seconds: 3));
+          return response?.statusCode == 200;
+        } catch (e) {
+          _jellyfinApiHelperLogger.severe(e);
+          return false;
+        }
+      },
+    );
+  }
+
+  Future<bool> _benchmarkPing({
+    required String target,
+    required Future<bool> Function() operation,
+  }) async {
+    if (!PerformanceBenchmarkService.enabled) {
+      return operation();
     }
+
+    final stopwatch = Stopwatch()..start();
+    final result = await operation();
+    stopwatch.stop();
+    PerformanceBenchmarkService.instance.diagnostic(
+      "network-target-ping",
+      values: {
+        "target": target,
+        "success": result,
+        "durationMs": stopwatch.elapsedMicroseconds / 1000.0,
+      },
+    );
+    return result;
   }
 
   /// Returns the correct image URL for the given item, or null if there is no
