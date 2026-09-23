@@ -252,12 +252,14 @@ privacy rules are otherwise identical to the full run.
 
 ## Result privacy tiers
 
-- The append-only device/host JSONL is the diagnostic source of truth and may
-  contain detailed page-progress counters needed to diagnose the benchmark.
-  Treat it as internal benchmark data.
+- The append-only device/host JSONL is the diagnostic source of truth, but it
+  must still be safe against disclosure of the private library cardinality.
+  Exact list-growth counters such as loaded items, page items added, response
+  page size and alphabet pages loaded stay device-local and are stripped from
+  every host-facing record, including nested final/recovered run JSON.
 - The generated JSON/Markdown summary is the shareable/public-facing result.
-  It excludes cardinality-sensitive metrics such as alphabet pages loaded and
-  buckets image-cache scale instead of exposing exact counts.
+  It retains a second denylist for cardinality-sensitive metrics and buckets
+  image-cache scale instead of exposing exact counts.
 - Neither tier may contain server URLs/domains, credentials, user/server IDs,
   media names, raw media IDs or the total private library cardinality.
 
