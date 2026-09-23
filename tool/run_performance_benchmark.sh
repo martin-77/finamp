@@ -68,40 +68,49 @@ while true; do
     exit 124
   fi
 
-  rm -rf "$pull_root/current"
-  mkdir -p "$pull_root/current"
+  pulled_file="$pull_root/finamp-benchmark-stream.jsonl"
+  rm -f "$pulled_file"
 
   set +e
-  xcrun devicectl device copy from     --device "$device_id"     --domain-type appDataContainer     --domain-identifier "$bundle_id"     --source "$remote_stream"     --destination "$pull_root/current"     >"$pull_root/copy.out" 2>"$pull_root/copy.err"
+  xcrun devicectl device copy from \
+    --device "$device_id" \
+    --domain-type appDataContainer \
+    --domain-identifier "$bundle_id" \
+    --source "$remote_stream" \
+    --destination "$pulled_file" \
+    >"$pull_root/copy.out" 2>"$pull_root/copy.err"
   copy_status=$?
   set -e
 
-  if [[ "$copy_status" -eq 0 ]]; then
-    pulled_file="$(find "$pull_root/current" -type f -name 'finamp-benchmark-stream.jsonl' -print -quit)"
-    if [[ -z "$pulled_file" && -f "$pull_root/current" ]]; then
-      pulled_file="$pull_root/current"
+  if [[ "$copy_status" -eq 0 && -f "$pulled_file" ]]; then
+    cp "$pulled_file" "$jsonl"
+    size="$(wc -c < "$jsonl" | tr -d ' ')"
+    if [[ "$size" != "$last_size" ]]; then
+      log "Pulled benchmark stream: ${size} bytes"
+      last_size="$size"
     fi
 
-    if [[ -n "$pulled_file" && -f "$pulled_file" ]]; then
-      cp "$pulled_file" "$jsonl"
-      size="$(wc -c < "$jsonl" | tr -d ' ')"
-      if [[ "$size" != "$last_size" ]]; then
-        log "Pulled benchmark stream: ${size} bytes"
-        last_size="$size"
+    if grep -q '"name":"suite-complete"' "$jsonl"; then
+      log "==> Benchmark suite completed"
+      exit 0
+    fi
+    if grep -q '"name":"suite-blocked"' "$jsonl"; then
+      log "ERROR: Benchmark suite blocked; inspect $jsonl"
+      exit 3
+    fi
+    if grep -q '"name":"suite-error"' "$jsonl"; then
+      log "ERROR: Benchmark suite reported an error; inspect $jsonl"
+      exit 4
+    fi
+  else
+    if [[ "$last_size" -lt 0 ]]; then
+      copy_error="$(tr '\n' ' ' < "$pull_root/copy.err" | sed 's/[[:space:]]\+/ /g' | cut -c1-500)"
+      if [[ -n "$copy_error" ]]; then
+        log "Waiting for benchmark stream: $copy_error"
+      else
+        log "Waiting for benchmark stream: devicectl copy exited with status $copy_status"
       fi
-
-      if grep -q '"name":"suite-complete"' "$jsonl"; then
-        log "==> Benchmark suite completed"
-        exit 0
-      fi
-      if grep -q '"name":"suite-blocked"' "$jsonl"; then
-        log "ERROR: Benchmark suite blocked; inspect $jsonl"
-        exit 3
-      fi
-      if grep -q '"name":"suite-error"' "$jsonl"; then
-        log "ERROR: Benchmark suite reported an error; inspect $jsonl"
-        exit 4
-      fi
+      last_size=-2
     fi
   fi
 
