@@ -984,6 +984,8 @@ class PerformanceBenchmarkSuiteRunner {
         "download-first-track-complete",
         timeout: const Duration(minutes: 10),
       );
+      unawaited(firstTransfer.catchError((_) {}));
+      unawaited(firstTrack.catchError((_) {}));
 
       await recorder.runStep(
         name: "download-plan-and-enqueue",
@@ -1397,15 +1399,6 @@ class PerformanceBenchmarkSuiteRunner {
     );
 
     try {
-      final playingFuture = recorder.waitForEvent(
-        "player-playing",
-        timeout: const Duration(minutes: 3),
-      );
-      final firstPositionFuture = recorder.waitForEvent(
-        "player-first-position-advance",
-        timeout: const Duration(minutes: 3),
-      );
-
       final slice = await recorder.runStep(
         name: "playable-slice-provider",
         timeout: const Duration(minutes: 5),
@@ -1416,6 +1409,20 @@ class PerformanceBenchmarkSuiteRunner {
           ).future,
         ),
       );
+
+      // Subscribe immediately before the action that can emit these events.
+      // Attach a secondary error consumer so an earlier queue failure does not
+      // leave an unobserved timeout behind.
+      final playingFuture = recorder.waitForEvent(
+        "player-playing",
+        timeout: const Duration(minutes: 3),
+      );
+      final firstPositionFuture = recorder.waitForEvent(
+        "player-first-position-advance",
+        timeout: const Duration(minutes: 3),
+      );
+      unawaited(playingFuture.catchError((_) {}));
+      unawaited(firstPositionFuture.catchError((_) {}));
 
       await recorder.runStep(
         name: "queue-and-player-start",
@@ -1561,9 +1568,14 @@ class PerformanceBenchmarkSuiteRunner {
         navigator.pop();
         await WidgetsBinding.instance.endOfFrame;
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (PerformanceBenchmarkService.instance.activeRun != null) {
-        // runStep already persisted failure/timeout where applicable.
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: error,
+          stackTrace: stackTrace,
+          step: "detail-open",
+        );
       }
       final navigator = GlobalSnackbar.navigatorState;
       if (navigator?.canPop() ?? false) {
