@@ -462,6 +462,12 @@ class PerformanceBenchmarkSuiteRunner {
 
       if (!_stageAtOrAfter(stage, "main-download-done")) {
         stage = await _runDownloadAndOfflineBaselines(stage);
+        final persistedStage = await recorder.getSuiteStage();
+        if (persistedStage?.startsWith("offline-bench1000-") ?? false) {
+          // The host will terminate this process after seeing the restart
+          // request. Do not overwrite the durable offline continuation stage.
+          return;
+        }
         recorder.diagnostic(
           "suite-phase-complete",
           values: {"phase": "download-offline"},
