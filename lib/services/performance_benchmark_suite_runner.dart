@@ -107,11 +107,18 @@ class PerformanceBenchmarkSuiteRunner {
 
     if (stage == null) {
       GetIt.instance<FinampUserHelper>().runUserHook(() {
-        unawaited(_prepareColdProcessRun());
+        unawaited(_prepareFreshSuiteState());
       });
       if (GetIt.instance<FinampUserHelper>().currentUser == null) {
         recorder.diagnostic("suite-waiting-for-login");
       }
+      return;
+    }
+
+    if (stage == "realistic-startup-prepared") {
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_prepareColdProcessRun());
+      });
       return;
     }
 
@@ -199,6 +206,68 @@ class PerformanceBenchmarkSuiteRunner {
         "networkTimeoutSeconds": networkTimeout.inSeconds,
       },
     );
+  }
+
+  Future<void> _prepareFreshSuiteState() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+
+      // Recover any stale cleanup marker from an older interrupted suite first.
+      await _recoverPendingDownloadCleanup();
+      await _waitForStartupReady(
+        phase: "suite-preconditioning",
+        startupTaskTimeout: const Duration(minutes: 30),
+        networkTimeout: const Duration(minutes: 30),
+      );
+
+      final downloads = GetIt.instance<DownloadsService>();
+      final metadataStub = DownloadStub.fromFinampCollection(
+        FinampCollection(
+          type: FinampCollectionType.allPlaylistsMetadata,
+        ),
+      );
+
+      recorder.diagnostic("suite-preconditioning-metadata-cleanup-start");
+      // Deleting a missing target is harmless; deleting an old or partial
+      // target makes the next process exercise the real first-run workload.
+      await downloads.deleteDownload(stub: metadataStub);
+      await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        stableFor: const Duration(seconds: 5),
+        timeout: const Duration(minutes: 30),
+      );
+      recorder.diagnostic("suite-preconditioning-metadata-cleanup-complete");
+
+      await _settleUi(
+        schedulerCooldown: Duration.zero,
+      );
+      await clearPerformanceBenchmarkImageCache();
+
+      await recorder.setSuiteStage("realistic-startup-prepared");
+      recorder.diagnostic(
+        "host-restart-requested",
+        values: {
+          "reason": "fresh-suite-preconditioned",
+          "nextStage": "realistic-startup-prepared",
+        },
+      );
+      await recorder.flushHostStream();
+    } catch (error) {
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "suite-preconditioning",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+    } finally {
+      _running = false;
+    }
   }
 
   Future<void> _prepareColdProcessRun() async {
