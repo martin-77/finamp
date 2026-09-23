@@ -50,6 +50,7 @@ import 'package:finamp/services/ios_helpers.dart';
 import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/item_helper.dart';
 import 'package:finamp/services/keep_screen_on_helper.dart';
+import 'package:finamp/services/library_page_cache.dart';
 import 'package:finamp/services/music_providers.dart';
 import 'package:finamp/services/network_manager.dart';
 import 'package:finamp/services/offline_listen_helper.dart';
@@ -321,6 +322,7 @@ Future<void> setupHive() async {
     Hive.openBox<FinampStorableQueueInfo>("Queues", path: dir.path),
     Hive.openBox<OfflineListen>("OfflineListens", path: dir.path),
     Hive.openBox<RawThemeResult>("CachedThemes", path: dir.path),
+    Hive.openBox<String>(LibraryPageCache.boxName, path: dir.path),
   ]);
 
   // If the settings box is empty, we add an initial settings value here.
