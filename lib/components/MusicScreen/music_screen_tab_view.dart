@@ -163,8 +163,28 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
         return;
       }
-      _activeBenchmarkJump = command;
+      final sortBy = widget.sortConfig.sortBy;
+      final fastScrollerAvailable =
+          sortBy == SortBy.sortName || sortBy == SortBy.albumArtist;
       _recordBenchmarkSortConfiguration();
+      if (!fastScrollerAvailable) {
+        final error = StateError(
+          "Fast scroller is not available for the current sort configuration",
+        );
+        PerformanceBenchmarkService.instance.mark(
+          "alphabet-jump-unavailable",
+          values: {
+            "contentType": command.contentType,
+            "letter": command.letter,
+            "sortBy": sortBy?.name ?? "none",
+            "sortOrder": widget.sortConfig.sortOrder?.name ?? "none",
+          },
+        );
+        command.completeError(error, StackTrace.current);
+        return;
+      }
+
+      _activeBenchmarkJump = command;
       final benchmark = PerformanceBenchmarkService.instance;
       benchmark.mark(
         "alphabet-jump-start",
