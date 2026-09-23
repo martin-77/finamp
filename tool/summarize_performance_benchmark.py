@@ -416,8 +416,8 @@ def main():
         "",
         "## Scenario groups",
         "",
-        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | HTTP req med | HTTP total ms med | HTTP max ms med | Bytes med | RSS Δ MiB med | >50ms frames med | Results |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | HTTP req med | HTTP total ms med | Worker ops med | Worker total ms med | HTTP max ms med | Bytes med | RSS Δ MiB med | >50ms frames med | Results |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ])
     for item in summary_groups:
         target = item["targetAlias"] or item["targetType"] or ""
@@ -429,18 +429,21 @@ def main():
         metrics = item.get("numericMetrics") or {}
         http_requests = metrics.get("httpRequestCount", {}).get("median", "")
         http_total_us = metrics.get("httpDurationMicrosTotal", {}).get("median")
+        worker_ops = metrics.get("workerApiOperationCount", {}).get("median", "")
+        worker_total_us = metrics.get("workerApiDurationMicrosTotal", {}).get("median")
         http_max_us = metrics.get("httpDurationMicrosMax", {}).get("median")
         response_bytes = metrics.get("httpResponseBytes", {}).get("median", "")
         rss_delta = metrics.get("rssDeltaBytes", {}).get("median")
         frames_50 = metrics.get("framesOver50ms", {}).get("median", "")
         http_total_ms = "" if http_total_us is None else round(http_total_us / 1000.0, 3)
+        worker_total_ms = "" if worker_total_us is None else round(worker_total_us / 1000.0, 3)
         http_max_ms = "" if http_max_us is None else round(http_max_us / 1000.0, 3)
         rss_delta_mib = "" if rss_delta is None else round(rss_delta / (1024 * 1024), 3)
         lines.append(
             f"| {item['scenario']} | {item['mode']} | {target} | {item['runs']} | "
             f"{median} | {p90_value} | {http_requests} | {http_total_ms} | "
-            f"{http_max_ms} | {response_bytes} | {rss_delta_mib} | "
-            f"{frames_50} | {results} |"
+            f"{worker_ops} | {worker_total_ms} | {http_max_ms} | "
+            f"{response_bytes} | {rss_delta_mib} | {frames_50} | {results} |"
         )
 
     lines.extend([
