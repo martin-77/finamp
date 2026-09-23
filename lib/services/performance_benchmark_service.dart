@@ -679,7 +679,16 @@ class PerformanceBenchmarkService {
   }) {
     if (!enabled) return;
     final run = _activeRun;
-    if (run == null || _playbackSourceRunId == run.id) return;
+    final isPlaybackRun = run != null &&
+        (run.scenario.startsWith("playback-startup-") ||
+            run.scenario == "artist-album-track-drilldown");
+    if (!isPlaybackRun ||
+        !run!.events.any(
+          (event) => event.name == "playback-action-received",
+        ) ||
+        _playbackSourceRunId == run.id) {
+      return;
+    }
     _playbackSourceRunId = run.id;
 
     mark(
