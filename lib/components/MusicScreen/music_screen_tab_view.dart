@@ -465,10 +465,15 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       letterToSearch = null;
       _completeBenchmarkJump();
     } else {
-      timer = Timer(const Duration(seconds: 8), () {
-        // If page loading takes too long, cancel search and allow image loading.
-        letterToSearch = null;
-      });
+      // Normal interactive use gives up after eight seconds so deferred
+      // image loading can resume. The benchmark must not do that: a slow page
+      // is exactly what we are trying to measure, so keep the target letter
+      // active until the real page arrives or the suite-level timeout fires.
+      if (_activeBenchmarkJump == null) {
+        timer = Timer(const Duration(seconds: 8), () {
+          letterToSearch = null;
+        });
+      }
 
       PerformanceBenchmarkService.instance.incrementMetric("alphabetJumpPagesLoaded");
       PerformanceBenchmarkService.instance.mark(
