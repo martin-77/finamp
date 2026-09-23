@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 
@@ -22,6 +23,7 @@ import 'package:finamp/screens/home_screen_settings_screen.dart';
 import 'package:finamp/screens/music_screen.dart';
 import 'package:finamp/services/finamp_settings_helper.dart';
 import 'package:finamp/services/music_screen_provider.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/quick_actions_service.dart';
 import 'package:finamp/utils/platform_helper.dart';
@@ -49,9 +51,107 @@ class HomeScreenContent extends ConsumerStatefulWidget {
 
 class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     with AutomaticKeepAliveClientMixin<HomeScreenContent> {
+  StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
+  PerformanceBenchmarkTabCommand? _activeBenchmarkTab;
+  bool _benchmarkDataMarked = false;
+  bool _benchmarkFrameScheduled = false;
+  static bool _startupReadyReported = false;
+
   // tabs on the music screen should be kept alive
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _benchmarkTabSubscription =
+        PerformanceBenchmarkService.instance.tabCommands.listen((command) {
+      if (command.contentType == "home") {
+        _activateBenchmarkTab(command);
+      }
+    });
+    final pending = PerformanceBenchmarkService.instance.activeTabCommand;
+    if (pending != null && pending.contentType == "home") {
+      _activateBenchmarkTab(pending);
+    }
+  }
+
+  @override
+  void dispose() {
+    _benchmarkTabSubscription?.cancel();
+    _activeBenchmarkTab?.completeError(
+      StateError("Home screen disposed during benchmark measurement"),
+      StackTrace.current,
+    );
+    super.dispose();
+  }
+
+  void _activateBenchmarkTab(PerformanceBenchmarkTabCommand command) {
+    _activeBenchmarkTab = command;
+    _benchmarkDataMarked = false;
+    _benchmarkFrameScheduled = false;
+    PerformanceBenchmarkService.instance.mark(
+      "ui-tab-refresh-start",
+      values: {"contentType": "home"},
+    );
+    if (command.refresh) {
+      unawaited(_refresh());
+    }
+  }
+
+  bool _homeSectionsReady() {
+    final sections =
+        ref.read(finampSettingsProvider.homeScreenConfiguration).sections;
+    for (final section in sections) {
+      final resolved = ref.read(resolveSectionProvider(section));
+      if (resolved.isLoading) return false;
+      final displayable = resolved.valueOrNull;
+      if (displayable == null || displayable is UnavailableHomeSectionPlayable) {
+        continue;
+      }
+      final page = ref.read(pagedContentProvider(displayable));
+      if (page.isLoading || page.items == null) return false;
+    }
+    return true;
+  }
+
+  void _maybeCompleteBenchmarkHome() {
+    final ready = _homeSectionsReady();
+    if (ready && !_startupReadyReported) {
+      _startupReadyReported = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        PerformanceBenchmarkService.instance.diagnostic(
+          "startup-home-first-rendered-content",
+        );
+      });
+    }
+
+    final command = _activeBenchmarkTab;
+    if (command == null || !command.selected || !ready) return;
+
+    final benchmark = PerformanceBenchmarkService.instance;
+    if (!_benchmarkDataMarked) {
+      _benchmarkDataMarked = true;
+      benchmark.mark(
+        "ui-tab-data-ready",
+        values: {"contentType": "home"},
+      );
+    }
+
+    if (_benchmarkFrameScheduled) return;
+    _benchmarkFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_activeBenchmarkTab, command)) return;
+      benchmark.mark(
+        "ui-tab-first-rendered-content",
+        values: {"contentType": "home"},
+      );
+      command.complete();
+      _activeBenchmarkTab = null;
+      _benchmarkFrameScheduled = false;
+    });
+  }
 
   void _refresh() async {
     for (var section in ref.watch(finampSettingsProvider.homeScreenConfiguration).sections) {
@@ -65,6 +165,9 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
   Widget build(BuildContext context) {
     super.build(context);
     widget.refresh?.callback = _refresh;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeCompleteBenchmarkHome();
+    });
     return RefreshIndicator(
       onRefresh: () async => _refresh(),
       child: CustomScrollView(
