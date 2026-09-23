@@ -255,6 +255,28 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _bestEffortTerminalCleanupAndRestore() async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    try {
+      await _recoverPendingDownloadCleanup();
+    } catch (error) {
+      recorder.diagnostic(
+        "terminal-cleanup-failed",
+        values: {"errorType": error.runtimeType.toString()},
+      );
+    }
+
+    try {
+      await _restoreSuiteOriginalOfflineState();
+    } catch (error) {
+      recorder.diagnostic(
+        "terminal-offline-state-restore-failed",
+        values: {"errorType": error.runtimeType.toString()},
+      );
+    }
+  }
+
   Future<void> _prepareFreshSuiteState() async {
     if (_running) return;
     _running = true;
@@ -308,7 +330,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
-      await _restoreSuiteOriginalOfflineState();
+      await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -392,7 +414,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
-      await _restoreSuiteOriginalOfflineState();
+      await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -523,7 +545,7 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } catch (error) {
-      await _restoreSuiteOriginalOfflineState();
+      await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -705,7 +727,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
-      await _restoreSuiteOriginalOfflineState();
+      await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {"errorType": error.runtimeType.toString()},
@@ -2400,7 +2422,7 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.flushHostStream();
       }
     } catch (error) {
-      await _restoreSuiteOriginalOfflineState();
+      await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {
