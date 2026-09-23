@@ -277,60 +277,39 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     try {
       await WidgetsBinding.instance.endOfFrame;
-      final pendingCleanup =
-          await recorder.getDownloadCleanupRequirement();
-      final interruptedStartupCleanup =
-          pendingCleanup != null &&
-          !recorder.startupPlaylistMetadataWorkRan;
 
-      await _recoverPendingDownloadCleanup(
-        skipCurrentSuiteOwned:
-            recorder.startupPlaylistMetadataWorkRan,
-      );
-
-      if (interruptedStartupCleanup &&
-          !recorder.startupPlaylistMetadataWorkRan) {
-        recorder.diagnostic(
-          "host-restart-requested",
-          values: {
-            "reason": "interrupted-startup-cleanup-recovered",
-            "nextStage": "fresh",
-          },
-        );
-        await recorder.flushHostStream();
-        return;
-      }
-
+      // This process exists specifically to measure Finamp's real first-start
+      // playlist metadata workload. A cleanup marker here is current-suite
+      // ownership, not stale state; do not delete it while startup is running.
       await _waitForStartupReady(
-        phase: "cold-process-preparation",
+        phase: "realistic-first-startup",
       );
-      if (recorder.startupPlaylistMetadataWorkRan) {
-        final downloads = GetIt.instance<DownloadsService>();
-        final metadataStub = DownloadStub.fromFinampCollection(
-          FinampCollection(
-            type: FinampCollectionType.allPlaylistsMetadata,
-          ),
-        );
-        recorder.diagnostic(
-          "startup-playlist-metadata-cleanup-start",
-        );
-        await downloads.deleteDownload(stub: metadataStub);
-        await downloads.waitForPerformanceBenchmarkCleanup(
-          stub: metadataStub,
-          timeout: const Duration(minutes: 30),
-        );
-        await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
-          stableFor: const Duration(seconds: 5),
-          timeout: const Duration(minutes: 30),
-        );
-        await recorder.setDownloadCleanupRequired(
-          targetAlias: "all-playlists-metadata",
-          required: false,
-        );
-        recorder.diagnostic(
-          "startup-playlist-metadata-cleanup-complete",
-        );
-      }
+      recorder.reportStartupNetworkSummary();
+      final downloads = GetIt.instance<DownloadsService>();
+      final metadataStub = DownloadStub.fromFinampCollection(
+        FinampCollection(
+          type: FinampCollectionType.allPlaylistsMetadata,
+        ),
+      );
+      recorder.diagnostic(
+        "startup-playlist-metadata-cleanup-start",
+        values: {
+          "startupWorkObserved":
+              recorder.startupPlaylistMetadataWorkRan,
+        },
+      );
+      await downloads.deleteDownload(stub: metadataStub);
+      await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        stableFor: const Duration(seconds: 5),
+        timeout: const Duration(minutes: 30),
+      );
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: "all-playlists-metadata",
+        required: false,
+      );
+      recorder.diagnostic(
+        "startup-playlist-metadata-cleanup-complete",
+      );
 
       // Prepare a reproducible cold image-cache process while preserving auth,
       // settings and download configuration in the isolated benchmark app.
