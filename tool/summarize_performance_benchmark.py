@@ -429,8 +429,8 @@ def main():
         metrics = item.get("numericMetrics") or {}
         http_requests = metrics.get("httpRequestCount", {}).get("median", "")
         http_total_us = metrics.get("httpDurationMicrosTotal", {}).get("median")
-        worker_ops = metrics.get("workerApiOperationCount", {}).get("median", "")
-        worker_total_us = metrics.get("workerApiDurationMicrosTotal", {}).get("median")
+        worker_ops = metrics.get("workerOperationCount", {}).get("median", "")
+        worker_total_us = metrics.get("workerDurationMicrosTotal", {}).get("median")
         http_max_us = metrics.get("httpDurationMicrosMax", {}).get("median")
         response_bytes = metrics.get("httpResponseBytes", {}).get("median", "")
         rss_delta = metrics.get("rssDeltaBytes", {}).get("median")
