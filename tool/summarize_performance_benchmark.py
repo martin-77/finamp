@@ -100,6 +100,10 @@ def main():
                     "responseBytes": values.get("responseBytes"),
                     "durationMicrosTotal": values.get("durationMicrosTotal"),
                     "durationMicrosMax": values.get("durationMicrosMax"),
+                    "workerOperationCount": values.get("workerOperationCount"),
+                    "workerOperationFailed": values.get("workerOperationFailed"),
+                    "workerDurationMicrosTotal": values.get("workerDurationMicrosTotal"),
+                    "workerDurationMicrosMax": values.get("workerDurationMicrosMax"),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name == "startup-frame-summary":
@@ -315,21 +319,28 @@ def main():
         "",
         "## Startup network",
         "",
-        "| Phase | Requests | Response bytes | HTTP total ms | HTTP max ms |",
-        "|---|---:|---:|---:|---:|",
+        "| Phase | Requests | Response bytes | HTTP total ms | HTTP max ms | Worker ops | Worker failures | Worker total ms | Worker max ms |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     if startup_network:
         for item in startup_network:
             total_us = item.get("durationMicrosTotal")
             max_us = item.get("durationMicrosMax")
+            worker_total_us = item.get("workerDurationMicrosTotal")
+            worker_max_us = item.get("workerDurationMicrosMax")
             total_ms = "" if not isinstance(total_us, (int, float)) else round(total_us / 1000.0, 3)
             max_ms = "" if not isinstance(max_us, (int, float)) else round(max_us / 1000.0, 3)
+            worker_total_ms = "" if not isinstance(worker_total_us, (int, float)) else round(worker_total_us / 1000.0, 3)
+            worker_max_ms = "" if not isinstance(worker_max_us, (int, float)) else round(worker_max_us / 1000.0, 3)
             lines.append(
                 f"| {item.get('phase', '')} | {item.get('requestCount', '')} | "
-                f"{item.get('responseBytes', '')} | {total_ms} | {max_ms} |"
+                f"{item.get('responseBytes', '')} | {total_ms} | {max_ms} | "
+                f"{item.get('workerOperationCount', '')} | "
+                f"{item.get('workerOperationFailed', '')} | "
+                f"{worker_total_ms} | {worker_max_ms} |"
             )
     else:
-        lines.append("|  |  |  |  |  |")
+        lines.append("|  |  |  |  |  |  |  |  |  |")
 
     lines.extend([
         "",
