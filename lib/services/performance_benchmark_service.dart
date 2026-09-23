@@ -1406,14 +1406,53 @@ class PerformanceBenchmarkService {
     });
   }
 
+  static const Set<String> _privateCardinalityExportKeys = {
+    "alphabetJumpPagesLoaded",
+    "loadedItems",
+    "itemsAdded",
+    "pageItemsAdded",
+    "pageSize",
+    "playlistItemsSeen",
+    "playlistPagesFetched",
+  };
+
+  Object? _sanitizeHostExportValue(Object? value) {
+    if (value is Map) {
+      final sanitized = <String, Object?>{};
+      for (final entry in value.entries) {
+        final key = entry.key.toString();
+        if (_privateCardinalityExportKeys.contains(key)) {
+          continue;
+        }
+        sanitized[key] = _sanitizeHostExportValue(entry.value);
+      }
+      return sanitized;
+    }
+    if (value is Iterable) {
+      return value.map(_sanitizeHostExportValue).toList();
+    }
+    return value;
+  }
+
   void _emitHostRecord(
     String type,
     Map<String, Object?> payload,
   ) {
+    // Some counters are needed locally to decide when paging/scroller work has
+    // really completed, but exporting them can reveal the exact cardinality of
+    // a private library once a list reaches its end. Keep them device-local in
+    // the in-memory/Hive run state and remove them from every host-facing
+    // record, including the final nested run JSON.
+    if (type == "metric" &&
+        _privateCardinalityExportKeys.contains(payload["name"])) {
+      return;
+    }
+    final sanitizedPayload =
+        _sanitizeHostExportValue(payload) as Map<String, Object?>;
     final record = <String, Object?>{
       "type": type,
       "emittedAt": DateTime.now().toUtc().toIso8601String(),
-      ...payload,
+      ...sanitizedPayload,
     };
     final encoded = jsonEncode(record);
     // Intentionally machine-readable for the macOS host-side benchmark collector.
