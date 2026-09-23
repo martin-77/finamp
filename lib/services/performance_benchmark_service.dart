@@ -1416,6 +1416,10 @@ class PerformanceBenchmarkService {
     "playlistPagesFetched",
   };
 
+  static const Set<String> _privateCardinalityEventNames = {
+    "alphabet-jump-page-requested",
+  };
+
   Object? _sanitizeHostExportValue(Object? value) {
     if (value is Map) {
       final sanitized = <String, Object?>{};
@@ -1429,7 +1433,15 @@ class PerformanceBenchmarkService {
       return sanitized;
     }
     if (value is Iterable) {
-      return value.map(_sanitizeHostExportValue).toList();
+      final sanitized = <Object?>[];
+      for (final item in value) {
+        if (item is Map &&
+            _privateCardinalityEventNames.contains(item["name"])) {
+          continue;
+        }
+        sanitized.add(_sanitizeHostExportValue(item));
+      }
+      return sanitized;
     }
     return value;
   }
@@ -1446,6 +1458,13 @@ class PerformanceBenchmarkService {
     if (type == "metric" &&
         _privateCardinalityExportKeys.contains(payload["name"])) {
       return;
+    }
+    if (type == "event") {
+      final event = payload["event"];
+      if (event is Map &&
+          _privateCardinalityEventNames.contains(event["name"])) {
+        return;
+      }
     }
     final sanitizedPayload =
         _sanitizeHostExportValue(payload) as Map<String, Object?>;
