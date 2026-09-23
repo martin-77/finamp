@@ -107,6 +107,10 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       try {
+        var pagesFetched = 0;
+        var playlistItemsSeen = 0;
+        final normalizedAlias = alias.trim().toLowerCase();
+
         final matches = await recorder.runStep(
           name: "playlist-discovery",
           operation: () async {
@@ -121,8 +125,15 @@ class PerformanceBenchmarkSuiteRunner {
                 startIndex: startIndex,
                 limit: pageSize,
               );
+              pagesFetched++;
               final items = page.items ?? const <BaseItemDto>[];
-              matches.addAll(items.where((item) => item.name == alias));
+              playlistItemsSeen += items.length;
+              matches.addAll(
+                items.where(
+                  (item) =>
+                      item.name?.trim().toLowerCase() == normalizedAlias,
+                ),
+              );
 
               if (items.length < pageSize) break;
               startIndex += items.length;
@@ -132,6 +143,8 @@ class PerformanceBenchmarkSuiteRunner {
           },
         );
 
+        recorder.metric("playlistPagesFetched", pagesFetched);
+        recorder.metric("playlistItemsSeen", playlistItemsSeen);
         recorder.metric("matchingPlaylists", matches.length);
         if (matches.length != 1) {
           recorder.metric("valid", false);
