@@ -396,9 +396,28 @@ class DownloadsService {
 
     await downloadTaskQueue.initializeQueue();
 
-    // Wait a few seconds to not slow initial library load
+    // Wait a few seconds to not slow initial library load.
+    //
+    // The benchmark's first process is a cleanup/preconditioning process, not
+    // a measured startup. It must be able to remove state left by an
+    // interrupted earlier benchmark before the normal queues are restarted;
+    // otherwise stale queued work can block startup readiness indefinitely and
+    // prevent the cleanup phase from ever running. Real measured startup
+    // processes keep the normal queue restart unchanged and readiness-blocking.
     _finampUserHelper.runUserHook(() async {
-      await PerformanceBenchmarkService.instance.runStartupTask(
+      final benchmark = PerformanceBenchmarkService.instance;
+      if (PerformanceBenchmarkService.enabled) {
+        final suiteStage = await benchmark.getSuiteStage();
+        if (suiteStage == null) {
+          benchmark.diagnostic(
+            "startup-download-queue-work-suppressed-for-preconditioning",
+            values: {"suiteStage": "fresh-preconditioning"},
+          );
+          return;
+        }
+      }
+
+      await benchmark.runStartupTask(
         "download-queue-startup",
         () async {
           await Future<void>.delayed(const Duration(seconds: 10));
