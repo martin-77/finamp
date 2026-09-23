@@ -61,6 +61,15 @@ Future<void> initImageCache() async {
       cacheEntry.url,
     );
   }
+  if (PerformanceBenchmarkService.enabled) {
+    PerformanceBenchmarkService.instance.diagnostic(
+      "startup-image-cache-index-loaded",
+      values: {
+        "persistentEntryCount": entries.length,
+        "mappedPlayerEntries": _playerImageCache.length,
+      },
+    );
+  }
   await _imageCache.config.repo.close();
 }
 
