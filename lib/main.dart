@@ -231,14 +231,27 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
 
   await findSystemLocale();
   await initializeDateFormatting();
-  unawaited(fetchSystemPalette());
+  unawaited(
+    PerformanceBenchmarkService.instance.runStartupTask(
+      "system-palette",
+      fetchSystemPalette,
+    ),
+  );
   await initDBus();
 
   _mainLog.info("Launching main app");
 
   // Integration testing will launch the widgets itself, so just return
   if (!integrationTesting) {
+    PerformanceBenchmarkService.instance.diagnostic(
+      "startup-main-init-complete",
+    );
     runApp(const Finamp());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "startup-first-frame",
+      );
+    });
     PerformanceBenchmarkSuiteRunner.instance.arm();
   }
 }
@@ -324,7 +337,12 @@ Future<void> _setupDownloadsHelper() async {
 Future<void> _setupPlayOnService() async {
   final playOnService = PlayOnService();
   GetIt.instance.registerSingleton(playOnService);
-  GetIt.instance<FinampUserHelper>().runUserHook(playOnService.initialize);
+  GetIt.instance<FinampUserHelper>().runUserHook(() async {
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "play-on-service",
+      playOnService.initialize,
+    );
+  });
 }
 
 Future<void> _setupDiscordRpc() async {
@@ -504,7 +522,14 @@ Future<void> _setupPlaybackServices() async {
   }
 
   // Begin to restore queue
-  unawaited(queueService.performInitialQueueLoad().catchError((dynamic x) => GlobalSnackbar.error(x)));
+  unawaited(
+    PerformanceBenchmarkService.instance
+        .runStartupTask(
+          "initial-queue-restore",
+          queueService.performInitialQueueLoad,
+        )
+        .catchError((dynamic x) => GlobalSnackbar.error(x)),
+  );
 }
 
 /// Migrates the old DownloadLocations list to a map
