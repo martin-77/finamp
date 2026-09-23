@@ -994,14 +994,11 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForDownloadRemoved(downloads, stub);
     }
 
-    final locations =
-        FinampSettingsHelper.finampSettings.downloadLocationsMap.keys.toList();
-    if (locations.isEmpty) {
-      throw StateError("No Finamp download location is available");
-    }
+    final internalLocation =
+        FinampSettingsHelper.finampSettings.internalTrackDir;
     final profile = DownloadProfile(
       transcodeCodec: FinampTranscodingCodec.original,
-      downloadLocationId: locations.first,
+      downloadLocationId: internalLocation.id,
     );
 
     await recorder.startRun(
