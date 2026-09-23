@@ -19,7 +19,7 @@ summary_md="$out_dir/finamp-benchmark-$timestamp-summary.md"
 app_path="build/ios/iphoneos/Runner.app"
 remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
-timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-28800}"
+timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-86400}"
 
 log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
@@ -70,7 +70,7 @@ last_size=-1
 handled_planned_restarts=0
 recovery_restarts=0
 max_recovery_restarts="${FINAMP_BENCH_MAX_RECOVERY_RESTARTS:-3}"
-heartbeat_stall_seconds="${FINAMP_BENCH_HEARTBEAT_STALL_SECONDS:-180}"
+heartbeat_stall_seconds="${FINAMP_BENCH_HEARTBEAT_STALL_SECONDS:-600}"
 benchmark_started=0
 last_stream_change_epoch="$(date +%s)"
 
