@@ -61,6 +61,24 @@ class PerformanceBenchmarkSuiteRunner {
       },
     );
 
+    if (stage == null) {
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_prepareColdProcessRun());
+      });
+      if (GetIt.instance<FinampUserHelper>().currentUser == null) {
+        recorder.diagnostic("suite-waiting-for-login");
+      }
+      return;
+    }
+
+    if (stage == "cold-start-prepared") {
+      await recorder.setSuiteStage("main-running");
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runAfterAuthentication());
+      });
+      return;
+    }
+
     if (stage == "awaiting-host-restart") {
       await recorder.setSuiteStage("post-restart-running");
       GetIt.instance<FinampUserHelper>().runUserHook(() {
@@ -71,16 +89,69 @@ class PerformanceBenchmarkSuiteRunner {
 
     if (stage == "complete") {
       recorder.diagnostic("suite-already-complete");
+      recorder.stopHeartbeat();
       return;
     }
 
-    await recorder.setSuiteStage("main-running");
-    GetIt.instance<FinampUserHelper>().runUserHook(() {
-      unawaited(_runAfterAuthentication());
-    });
+    // main-running/post-restart-running means the previous process ended
+    // unexpectedly. Recovery records the interrupted active run in main().
+    if (stage == "post-restart-running") {
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runPostRestartPhase());
+      });
+    } else {
+      await recorder.setSuiteStage("main-running");
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runAfterAuthentication());
+      });
+    }
+  }
 
-    if (GetIt.instance<FinampUserHelper>().currentUser == null) {
-      recorder.diagnostic("suite-waiting-for-login");
+  Future<void> _prepareColdProcessRun() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await _recoverPendingDownloadCleanup();
+      await recorder.waitForStartupQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+
+      // Prepare a reproducible cold image-cache process while preserving auth,
+      // settings and download configuration in the isolated benchmark app.
+      await clearPerformanceBenchmarkImageCache();
+
+      // The preparation process is not part of the baseline. Start the host
+      // stream fresh so the next process contains only measured startup work.
+      await recorder.resetHostStream();
+      await recorder.setSuiteStage("cold-start-prepared");
+      recorder.diagnostic(
+        "host-restart-requested",
+        values: {
+          "reason": "cold-process-prepared",
+          "nextStage": "main-running",
+        },
+      );
+      await recorder.flushHostStream();
+    } catch (error) {
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "cold-process-preparation",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+    } finally {
+      _running = false;
     }
   }
 
