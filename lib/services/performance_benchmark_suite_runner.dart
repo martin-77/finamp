@@ -46,6 +46,7 @@ class PerformanceBenchmarkSuiteRunner {
   static const _mainStageOrder = <String>[
     "main-running",
     "main-targets-done",
+    "main-network-done",
     "main-api-done",
     "main-ui-done",
     "main-paging-done",
@@ -509,6 +510,16 @@ class PerformanceBenchmarkSuiteRunner {
         }
         await recorder.setSuiteStage("main-targets-done");
         stage = "main-targets-done";
+      }
+
+      if (!_stageAtOrAfter(stage, "main-network-done")) {
+        await _runNetworkTargetBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "network-target-probes"},
+        );
+        await recorder.setSuiteStage("main-network-done");
+        stage = "main-network-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-api-done")) {
@@ -3162,6 +3173,94 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       rethrow;
+    }
+  }
+
+  Future<void> _runNetworkTargetBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final api = GetIt.instance<JellyfinApiHelper>();
+    final user = GetIt.instance<FinampUserHelper>().currentUser;
+    if (user == null) {
+      await _recordUnavailableTargetRun(
+        scenario: "network-target-probe",
+        mode: "online",
+        targetAlias: "active",
+        targetType: "network",
+        step: "user-missing",
+      );
+      return;
+    }
+
+    final localUri = Uri.tryParse(user.localAddress);
+    final localConfigured =
+        localUri != null &&
+        localUri.host.isNotEmpty &&
+        localUri.host != "0.0.0.0";
+
+    for (var round = 1; round <= 3; round++) {
+      for (final target in const <String>["public", "local", "active"]) {
+        if (target == "local" && !localConfigured) {
+          recorder.diagnostic(
+            "network-target-probe-skipped",
+            values: {
+              "target": "local",
+              "reason": "not-configured",
+              "round": round,
+            },
+          );
+          continue;
+        }
+
+        await recorder.startRun(
+          scenario: "network-target-probe",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "online",
+          targetAlias: target,
+          targetType: "network",
+        );
+        recorder.metric("round", round);
+
+        try {
+          final success = await recorder.runStep(
+            name: "ping",
+            timeout: const Duration(seconds: 10),
+            operation: () => switch (target) {
+              "public" => api.pingPublicServer(),
+              "local" => api.pingLocalServer(),
+              "active" => api.pingActiveServer(),
+              _ => throw StateError("Unsupported network target"),
+            },
+          );
+          recorder.metric("success", success);
+          if (!success) {
+            await recorder.failActiveRun(
+              result: PerformanceBenchmarkResult.failed,
+              error: StateError("Network target probe failed"),
+              stackTrace: StackTrace.current,
+              step: "ping",
+            );
+          } else {
+            await recorder.finishRun();
+          }
+        } catch (error, stackTrace) {
+          if (recorder.activeRun != null) {
+            await recorder.failActiveRun(
+              result: PerformanceBenchmarkResult.failed,
+              error: error,
+              stackTrace: stackTrace,
+              step: "ping",
+            );
+          }
+        }
+
+        await recorder.waitForNetworkQuiescence(
+          quietPeriod: const Duration(milliseconds: 750),
+          timeout: const Duration(seconds: 30),
+        );
+      }
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 1),
+      );
     }
   }
 
