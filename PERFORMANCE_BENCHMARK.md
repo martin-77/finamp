@@ -73,7 +73,7 @@ and ids are never exported.
    - local probe is skipped when no real local endpoint is configured
    - export only target category, success/failure and duration; never the URL/domain/IP
 
-4. **Direct API reference layer**
+3. **Direct API reference layer**
    - Performing Artists and Album Artists as separate Jellyfin paths
    - Albums / Tracks / Playlists / Genres
    - three deterministic rotated rounds
