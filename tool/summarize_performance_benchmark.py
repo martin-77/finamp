@@ -88,10 +88,16 @@ def main():
             results[str(run.get("result", "unknown"))] += 1
 
         numeric_metrics = defaultdict(list)
+        event_elapsed = defaultdict(list)
         for run in runs:
             for metric_name, metric_value in (run.get("metrics") or {}).items():
                 if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                     numeric_metrics[metric_name].append(float(metric_value))
+            for event in run.get("events") or []:
+                event_name = event.get("name")
+                elapsed = event.get("elapsedMicros")
+                if isinstance(event_name, str) and isinstance(elapsed, int):
+                    event_elapsed[event_name].append(elapsed)
 
         metric_summary = {
             metric_name: {
@@ -101,6 +107,17 @@ def main():
                 "max": max(values),
             }
             for metric_name, values in sorted(numeric_metrics.items())
+            if values
+        }
+
+        event_summary = {
+            event_name: {
+                "medianMsFromRunStart": ms(statistics.median(values)),
+                "p90MsFromRunStart": ms(p90(values)),
+                "minMsFromRunStart": ms(min(values)),
+                "maxMsFromRunStart": ms(max(values)),
+            }
+            for event_name, values in sorted(event_elapsed.items())
             if values
         }
 
@@ -116,6 +133,7 @@ def main():
             "maxMs": ms(max(durations)) if durations else None,
             "results": dict(results),
             "numericMetrics": metric_summary,
+            "eventMilestones": event_summary,
         })
 
     startup_summary = []
@@ -189,6 +207,26 @@ def main():
             f"{median} | {p90_value} | {http_requests} | {response_bytes} | "
             f"{frames_50} | {results} |"
         )
+
+    lines.extend([
+        "",
+        "## Event milestones",
+        "",
+        "Milestones below are measured from each scenario run start. Full details remain in the JSON summary.",
+        "",
+        "| Scenario | Mode | Target | Event | Median ms | p90 ms |",
+        "|---|---|---|---|---:|---:|",
+    ])
+    for item in summary_groups:
+        target = item["targetAlias"] or item["targetType"] or ""
+        for event_name, event_values in item.get("eventMilestones", {}).items():
+            if event_name in {"run-start", "run-end"}:
+                continue
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | {event_name} | "
+                f"{event_values['medianMsFromRunStart']:.3f} | "
+                f"{event_values['p90MsFromRunStart']:.3f} |"
+            )
 
     Path(args.md_out).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
