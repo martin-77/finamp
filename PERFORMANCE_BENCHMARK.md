@@ -189,7 +189,9 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | fresh-suite preconditioning | automated | removes old benchmark playlist-metadata/image-cache state without deleting auth/settings; captures original offline state and forces measured baseline online |
 | realistic first startup | automated | includes normal playlist-metadata background work, per-process network/frame/RSS/image-load summary, then cleans benchmark-owned state |
 | controlled cold process | automated | host restart with preserved auth/settings and cleared image cache |
-| persistent-cache restart | automated | same installed build/container, explicit stage checkpoints |
+| native iOS launch timing | automated | monotonic native launch -> Dart main/runApp/first frame/usable screen/fully-ready correlation; no wall-clock dependency |
+| persistent-cache startup repeats | automated | three additional process launches on the same installed app/container, aggregated as one startup class with median/p90 |
+| persistent-cache restart | automated | same installed build/container, explicit stage checkpoints and post-restart API/UI/detail cache matrix |
 | API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown |
 | Home + main tabs | automated | rotated refreshed/warm rounds with first-rendered + quiescent timing |
 | deep paging | automated | repeated real UI next-page actions |
