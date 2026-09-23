@@ -62,11 +62,15 @@ class PerformanceBenchmarkSuiteRunner {
 
     final recorder = PerformanceBenchmarkService.instance;
     try {
-      // Keep benchmark work out of the authentication transition itself.
+      // Keep benchmark work out of the authentication transition itself,
+      // then wait for Finamp's known asynchronous startup jobs to finish.
       await WidgetsBinding.instance.endOfFrame;
-      await Future<void>.delayed(const Duration(seconds: 2));
-
       recorder.diagnostic("suite-authenticated");
+      await recorder.waitForStartupQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+
       final targetsReady = await _discoverAndValidateTargets();
       if (!targetsReady) {
         recorder.diagnostic(
@@ -279,9 +283,9 @@ class PerformanceBenchmarkSuiteRunner {
     // one running process; true cold-process measurements require relaunch.
     recorder.diagnostic(
       "ui-stabilization-start",
-      values: {"seconds": 15},
+      values: {"seconds": 3, "afterStartupQuiescence": true},
     );
-    await Future<void>.delayed(const Duration(seconds: 15));
+    await Future<void>.delayed(const Duration(seconds: 3));
     recorder.diagnostic("ui-stabilization-complete");
 
     for (var round = 0; round < rounds.length; round++) {
