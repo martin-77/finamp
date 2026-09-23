@@ -19,6 +19,30 @@ def ms(value):
     return round(value / 1000.0, 3)
 
 
+def cardinality_bucket(value):
+    if not isinstance(value, (int, float)):
+        return None
+    value = int(value)
+    if value <= 0:
+        return "0"
+    if value < 100:
+        return "1-99"
+    if value < 1000:
+        return "100-999"
+    if value < 5000:
+        return "1000-4999"
+    if value < 10000:
+        return "5000-9999"
+    return "10000+"
+
+
+PUBLIC_NUMERIC_METRIC_DENYLIST = {
+    # Combined with known page size, this can approximate private library
+    # cardinality for late alphabet targets such as Z.
+    "alphabetJumpPagesLoaded",
+}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("jsonl")
@@ -131,8 +155,12 @@ def main():
                 })
             elif name == "startup-image-cache-index-loaded":
                 startup_image_cache.append({
-                    "persistentEntryCount": values.get("persistentEntryCount"),
-                    "mappedPlayerEntries": values.get("mappedPlayerEntries"),
+                    "persistentEntryBucket": cardinality_bucket(
+                        values.get("persistentEntryCount")
+                    ),
+                    "mappedPlayerEntryBucket": cardinality_bucket(
+                        values.get("mappedPlayerEntries")
+                    ),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name in {
@@ -201,6 +229,8 @@ def main():
         for run in runs:
             run_metrics = run.get("metrics") or {}
             for metric_name, metric_value in run_metrics.items():
+                if metric_name in PUBLIC_NUMERIC_METRIC_DENYLIST:
+                    continue
                 if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                     numeric_metrics[metric_name].append(float(metric_value))
 
@@ -441,14 +471,14 @@ def main():
         "",
         "## Startup persistent image cache",
         "",
-        "| Persistent entries | Mapped player entries |",
-        "|---:|---:|",
+        "| Persistent entries (bucket) | Mapped player entries (bucket) |",
+        "|---|---|",
     ])
     if startup_image_cache:
         for item in startup_image_cache:
             lines.append(
-                f"| {item.get('persistentEntryCount', '')} | "
-                f"{item.get('mappedPlayerEntries', '')} |"
+                f"| {item.get('persistentEntryBucket', '')} | "
+                f"{item.get('mappedPlayerEntryBucket', '')} |"
             )
     else:
         lines.append("|  |  |")
