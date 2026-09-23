@@ -164,26 +164,36 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _waitForStartupReady({
     required String phase,
+    Duration startupTaskTimeout = const Duration(hours: 3),
+    Duration screenTimeout = const Duration(minutes: 15),
+    Duration imageTimeout = const Duration(minutes: 15),
+    Duration networkTimeout = const Duration(minutes: 30),
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
     await recorder.waitForStartupQuiescence(
       quietPeriod: const Duration(seconds: 3),
-      timeout: const Duration(minutes: 3),
+      timeout: startupTaskTimeout,
     );
     await recorder.waitForStartupScreenReady(
-      timeout: const Duration(minutes: 3),
+      timeout: screenTimeout,
     );
     await recorder.waitForImageQuiescence(
       quietPeriod: const Duration(seconds: 1),
-      timeout: const Duration(minutes: 3),
+      timeout: imageTimeout,
     );
     await recorder.waitForNetworkQuiescence(
       quietPeriod: const Duration(seconds: 3),
-      timeout: const Duration(minutes: 3),
+      timeout: networkTimeout,
     );
     recorder.diagnostic(
       "startup-fully-ready",
-      values: {"phase": phase},
+      values: {
+        "phase": phase,
+        "startupTaskTimeoutSeconds": startupTaskTimeout.inSeconds,
+        "screenTimeoutSeconds": screenTimeout.inSeconds,
+        "imageTimeoutSeconds": imageTimeout.inSeconds,
+        "networkTimeoutSeconds": networkTimeout.inSeconds,
+      },
     );
   }
 
