@@ -145,21 +145,44 @@ class JellyfinApiHelper {
   }
 
   /// Runs the given function in a background isolate, supplying a valid API instance.
-  Future<T> runInIsolate<T>(Future<T> Function(jellyfin_api.JellyfinApi) func) async {
+  Future<T> runInIsolate<T>(
+    Future<T> Function(jellyfin_api.JellyfinApi) func,
+  ) async {
     if (_workerIsolatePort == null) {
       return func(jellyfinApi);
     }
-    ReceivePort port = ReceivePort();
+
+    final benchmark = PerformanceBenchmarkService.instance;
+    final benchmarkStopwatch = PerformanceBenchmarkService.enabled
+        ? (Stopwatch()..start())
+        : null;
+    benchmark.backgroundApiOperationStarted();
+
+    final port = ReceivePort();
     try {
       _workerIsolatePort!.send((func, port.sendPort));
-    } catch (e) {
-      GlobalSnackbar.error(e);
+      final dynamic output = await port.first;
+      benchmarkStopwatch?.stop();
+      benchmark.backgroundApiOperationCompleted(
+        durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
+        failed: output is! T,
+      );
+      if (output is T) {
+        return output;
+      }
+      throw output as Object;
+    } catch (error) {
+      if (benchmarkStopwatch?.isRunning ?? false) {
+        benchmarkStopwatch!.stop();
+        benchmark.backgroundApiOperationCompleted(
+          durationMicros: benchmarkStopwatch.elapsedMicroseconds,
+          failed: true,
+        );
+      }
+      rethrow;
+    } finally {
+      port.close();
     }
-    dynamic output = await port.first;
-    if (output is T) {
-      return output;
-    }
-    throw output as Object;
   }
 
   Future<List<BaseItemDto>?> getItems({
