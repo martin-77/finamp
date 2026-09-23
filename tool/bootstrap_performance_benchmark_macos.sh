@@ -27,6 +27,7 @@ allowed_exact = {
     " M ios/Runner/Info-Debug.plist",
     " M ios/Runner/Info-Profile.plist",
     " M ios/Runner/Info-Release.plist",
+    " M ios/Runner/Runner.entitlements",
     " M pubspec.lock",
     "?? ios/Runner/RunnerDebug.entitlements",
     "?? ios/Runner/RunnerRelease.entitlements",
@@ -34,6 +35,7 @@ allowed_exact = {
 }
 allowed_prefixes = (
     "?? benchmark-results/",
+    "?? Build Runner_",
 )
 for line in sys.stdin:
     line = line.rstrip("\n")
