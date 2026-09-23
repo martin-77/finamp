@@ -3025,27 +3025,30 @@ class PerformanceBenchmarkSuiteRunner {
     final api = GetIt.instance<JellyfinApiHelper>();
     final recorder = PerformanceBenchmarkService.instance;
 
-    const rounds = <List<(String, String)>>[
+    const rounds = <List<(String, String, ArtistType?)>>[
       [
-        ("artists", "MusicArtist"),
-        ("albums", "MusicAlbum"),
-        ("tracks", "Audio"),
-        ("playlists", "Playlist"),
-        ("genres", "MusicGenre"),
+        ("artists-performing", "MusicArtist", ArtistType.artist),
+        ("artists-album", "MusicArtist", ArtistType.albumArtist),
+        ("albums", "MusicAlbum", null),
+        ("tracks", "Audio", null),
+        ("playlists", "Playlist", null),
+        ("genres", "MusicGenre", null),
       ],
       [
-        ("genres", "MusicGenre"),
-        ("playlists", "Playlist"),
-        ("tracks", "Audio"),
-        ("albums", "MusicAlbum"),
-        ("artists", "MusicArtist"),
+        ("genres", "MusicGenre", null),
+        ("playlists", "Playlist", null),
+        ("tracks", "Audio", null),
+        ("albums", "MusicAlbum", null),
+        ("artists-album", "MusicArtist", ArtistType.albumArtist),
+        ("artists-performing", "MusicArtist", ArtistType.artist),
       ],
       [
-        ("tracks", "Audio"),
-        ("artists", "MusicArtist"),
-        ("genres", "MusicGenre"),
-        ("albums", "MusicAlbum"),
-        ("playlists", "Playlist"),
+        ("tracks", "Audio", null),
+        ("artists-album", "MusicArtist", ArtistType.albumArtist),
+        ("genres", "MusicGenre", null),
+        ("artists-performing", "MusicArtist", ArtistType.artist),
+        ("albums", "MusicAlbum", null),
+        ("playlists", "Playlist", null),
       ],
     ];
 
@@ -3056,7 +3059,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       for (final collection in rounds[round]) {
-        final (scenarioName, itemType) = collection;
+        final (scenarioName, itemType, artistType) = collection;
 
         for (final request in const <(int, String)>[
           (25, "size-25"),
@@ -3080,6 +3083,7 @@ class PerformanceBenchmarkSuiteRunner {
               timeout: const Duration(minutes: 10),
               operation: () => api.getItemsWithTotalRecordCount(
                 includeItemTypes: itemType,
+                artistType: artistType,
                 recursive: true,
                 startIndex: 0,
                 limit: limit,
