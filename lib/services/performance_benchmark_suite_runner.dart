@@ -1569,6 +1569,44 @@ class PerformanceBenchmarkSuiteRunner {
       rethrow;
     }
 
+    await recorder.startRun(
+      scenario: "filesystem-read-reference",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "sequential-local-read",
+      targetAlias: targetAlias,
+      targetType: "downloaded-files",
+      allowPendingDownloadCleanup: true,
+    );
+    try {
+      final read = await recorder.runStep(
+        name: "sequential-read",
+        timeout: const Duration(hours: 1),
+        operation: () => downloads.readPerformanceBenchmarkFiles(stub),
+      );
+      final fileCount = read["fileCount"] ?? 0;
+      final readBytes = read["bytes"] ?? 0;
+      final durationMicros = read["durationMicros"] ?? 0;
+      recorder.metric("filesystemFileCount", fileCount);
+      recorder.metric("filesystemBytesRead", readBytes);
+      recorder.metric("filesystemReadMicros", durationMicros);
+      if (durationMicros > 0) {
+        recorder.metric(
+          "filesystemBytesPerSecond",
+          readBytes * 1000000.0 / durationMicros,
+        );
+      }
+      await recorder.finishRun();
+    } catch (error, stackTrace) {
+      if (recorder.activeRun != null) {
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: error,
+          stackTrace: stackTrace,
+          step: "sequential-read",
+        );
+      }
+    }
+
     if (targetAlias == "bench-100") {
       await recorder.startRun(
         scenario: "download-resync",
