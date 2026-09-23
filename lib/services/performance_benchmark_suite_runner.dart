@@ -1274,6 +1274,31 @@ class PerformanceBenchmarkSuiteRunner {
       );
       recorder.metric("downloadedBytes", bytes);
       recorder.metric("resolvedTrackCount", expectedTracks);
+
+      final run = recorder.activeRun;
+      if (run != null) {
+        int? transferStartMicros;
+        int? transferCompleteMicros;
+        for (final event in run.events) {
+          if (event.name == "download-first-transfer-start") {
+            transferStartMicros ??= event.elapsedMicros;
+          } else if (event.name == "download-all-tracks-complete") {
+            transferCompleteMicros = event.elapsedMicros;
+          }
+        }
+        if (transferStartMicros != null &&
+            transferCompleteMicros != null &&
+            transferCompleteMicros > transferStartMicros) {
+          final transferMicros =
+              transferCompleteMicros - transferStartMicros;
+          recorder.metric("downloadTransferMicros", transferMicros);
+          recorder.metric(
+            "downloadBytesPerSecond",
+            bytes * 1000000.0 / transferMicros,
+          );
+        }
+      }
+
       await recorder.finishRun();
     } catch (_) {
       rethrow;
