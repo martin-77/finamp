@@ -694,7 +694,6 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       try {
-        var pagesFetched = 0;
         final normalizedAlias = alias.trim().toLowerCase();
 
         final matches = await recorder.runStep(
@@ -711,7 +710,6 @@ class PerformanceBenchmarkSuiteRunner {
                 startIndex: startIndex,
                 limit: pageSize,
               );
-              pagesFetched++;
               final items = page.items ?? const <BaseItemDto>[];
               matches.addAll(
                 items.where((item) {
@@ -729,7 +727,6 @@ class PerformanceBenchmarkSuiteRunner {
           },
         );
 
-        recorder.metric("playlistPagesFetched", pagesFetched);
         recorder.metric("matchingPlaylists", matches.length);
         if (matches.length != 1) {
           recorder.metric("valid", false);
@@ -1776,10 +1773,6 @@ class PerformanceBenchmarkSuiteRunner {
         allowPendingDownloadCleanup: true,
       );
       try {
-        recorder.metric(
-          "queryLength",
-          privateOfflineSearchQuery.length,
-        );
         await recorder.runStep(
           name: "search",
           timeout: const Duration(minutes: 10),
@@ -1810,10 +1803,6 @@ class PerformanceBenchmarkSuiteRunner {
         allowPendingDownloadCleanup: true,
       );
       try {
-        recorder.metric(
-          "queryLength",
-          privateOfflineSearchQuery.length,
-        );
         await recorder.runStep(
           name: "search",
           timeout: const Duration(minutes: 5),
