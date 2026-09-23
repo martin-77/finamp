@@ -215,6 +215,17 @@ completion prerequisite. The host runner also emits explicit blocked/error
 termination and the app restores the suite-owned original offline state before
 those terminal records.
 
+## Result privacy tiers
+
+- The append-only device/host JSONL is the diagnostic source of truth and may
+  contain detailed page-progress counters needed to diagnose the benchmark.
+  Treat it as internal benchmark data.
+- The generated JSON/Markdown summary is the shareable/public-facing result.
+  It excludes cardinality-sensitive metrics such as alphabet pages loaded and
+  buckets image-cache scale instead of exposing exact counts.
+- Neither tier may contain server URLs/domains, credentials, user/server IDs,
+  media names, raw media IDs or the total private library cardinality.
+
 ## Benchmark scenarios
 
 ### Startup
