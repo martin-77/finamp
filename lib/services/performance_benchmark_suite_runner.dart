@@ -1592,7 +1592,16 @@ class PerformanceBenchmarkSuiteRunner {
       if (failed > 0) {
         throw StateError("Benchmark download contains failed tracks");
       }
-      if (total == expectedTracks && complete == expectedTracks) {
+      if (total == expectedTracks &&
+          complete == expectedTracks &&
+          active == 0) {
+        recorder.mark(
+          "download-all-tracks-complete",
+          values: {
+            "expectedTracks": expectedTracks,
+            "completeTracks": complete,
+          },
+        );
         return;
       }
 
