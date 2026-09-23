@@ -277,7 +277,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
   // downloads are already de-dupped by blurHash and do not need CachedImage
   // Allow drawing albums up to 4X intrinsic size by setting scale
   final fileImage = FileImage(downloadedImage, scale: 0.25);
-  ImageProvider out = PerformanceBenchmarkService.enabled
+  ImageProvider<Object> out = PerformanceBenchmarkService.enabled
       ? CachedImage(fileImage, key)
       : fileImage;
   if (!request.fullQuality) {
@@ -291,9 +291,9 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
 });
 
 class CachedImage extends ImageProvider<CachedImage> {
-  CachedImage(ImageProvider base, this.cacheKey) : _base = base;
+  CachedImage(ImageProvider<Object> base, this.cacheKey) : _base = base;
 
-  final ImageProvider _base;
+  final ImageProvider<Object> _base;
 
   final String? cacheKey;
 
