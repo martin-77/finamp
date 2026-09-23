@@ -346,7 +346,23 @@ class PerformanceBenchmarkService {
   void markStartupPlaylistMetadataWorkRan() {
     if (!enabled) return;
     _startupPlaylistMetadataWorkRan = true;
-    diagnostic("startup-playlist-metadata-work-complete");
+    diagnostic("startup-playlist-metadata-work-started");
+  }
+
+  void reportStartupPlaylistMetadataWorkResult({
+    required bool success,
+    String? errorType,
+  }) {
+    if (!enabled) return;
+    diagnostic(
+      success
+          ? "startup-playlist-metadata-work-complete"
+          : "startup-playlist-metadata-work-failed",
+      values: {
+        "success": success,
+        if (errorType != null) "errorType": errorType,
+      },
+    );
   }
 
   void reportStartupNetworkSummary() {
