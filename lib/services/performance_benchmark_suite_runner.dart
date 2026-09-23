@@ -41,6 +41,26 @@ class PerformanceBenchmarkSuiteRunner {
   bool _armed = false;
   bool _running = false;
 
+  static const _mainStageOrder = <String>[
+    "main-running",
+    "main-targets-done",
+    "main-api-done",
+    "main-ui-done",
+    "main-paging-done",
+    "main-search-done",
+    "main-alphabet-done",
+    "main-details-done",
+    "main-playback-done",
+    "main-download-done",
+    "main-image-cache-done",
+  ];
+
+  bool _stageAtOrAfter(String? current, String target) {
+    final currentIndex = _mainStageOrder.indexOf(current ?? "main-running");
+    final targetIndex = _mainStageOrder.indexOf(target);
+    return currentIndex >= 0 && targetIndex >= 0 && currentIndex >= targetIndex;
+  }
+
   void arm() {
     if (!PerformanceBenchmarkService.enabled || _armed) return;
     _armed = true;
@@ -93,11 +113,16 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
-    // main-running/post-restart-running means the previous process ended
-    // unexpectedly. Recovery records the interrupted active run in main().
+    // A main-* stage means a previous process ended unexpectedly after
+    // one or more durable phase checkpoints. Recovery records the interrupted
+    // active run in main(); the suite resumes at the first unfinished phase.
     if (stage == "post-restart-running") {
       GetIt.instance<FinampUserHelper>().runUserHook(() {
         unawaited(_runPostRestartPhase());
+      });
+    } else if (stage.startsWith("main-") || stage == "main-running") {
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runAfterAuthentication());
       });
     } else {
       await recorder.setSuiteStage("main-running");
@@ -280,74 +305,109 @@ class PerformanceBenchmarkSuiteRunner {
       );
       recorder.diagnostic("startup-baseline-complete");
 
-      final targetsReady = await _discoverAndValidateTargets();
-      if (!targetsReady) {
-        recorder.diagnostic(
-          "suite-blocked",
-          values: {"reason": "benchmark-target-validation"},
-        );
-        return;
+      var stage = await recorder.getSuiteStage();
+
+      if (!_stageAtOrAfter(stage, "main-targets-done")) {
+        final targetsReady = await _discoverAndValidateTargets();
+        if (!targetsReady) {
+          recorder.diagnostic(
+            "suite-blocked",
+            values: {"reason": "benchmark-target-validation"},
+          );
+          return;
+        }
+        await recorder.setSuiteStage("main-targets-done");
+        stage = "main-targets-done";
       }
 
-      await _runCollectionFirstPageBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "authenticated-api-baseline"},
-      );
+      if (!_stageAtOrAfter(stage, "main-api-done")) {
+        await _runCollectionFirstPageBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "authenticated-api-baseline"},
+        );
+        await recorder.setSuiteStage("main-api-done");
+        stage = "main-api-done";
+      }
 
-      await _runUiTabBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "ui-tab-baseline"},
-      );
+      if (!_stageAtOrAfter(stage, "main-ui-done")) {
+        await _runUiTabBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "ui-tab-baseline"},
+        );
+        await recorder.setSuiteStage("main-ui-done");
+        stage = "main-ui-done";
+      }
 
-      await _runPagingBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "deep-paging"},
-      );
+      if (!_stageAtOrAfter(stage, "main-paging-done")) {
+        await _runPagingBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "deep-paging"},
+        );
+        await recorder.setSuiteStage("main-paging-done");
+        stage = "main-paging-done";
+      }
 
-      await _runSearchBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "search"},
-      );
+      if (!_stageAtOrAfter(stage, "main-search-done")) {
+        await _runSearchBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "search"},
+        );
+        await recorder.setSuiteStage("main-search-done");
+        stage = "main-search-done";
+      }
 
-      await _runAlphabetBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "alphabet-fast-scroller"},
-      );
+      if (!_stageAtOrAfter(stage, "main-alphabet-done")) {
+        await _runAlphabetBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "alphabet-fast-scroller"},
+        );
+        await recorder.setSuiteStage("main-alphabet-done");
+        stage = "main-alphabet-done";
+      }
 
-      await _runDetailBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "detail-screens"},
-      );
+      if (!_stageAtOrAfter(stage, "main-details-done")) {
+        await _runDetailBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "detail-screens"},
+        );
+        await recorder.setSuiteStage("main-details-done");
+        stage = "main-details-done";
+      }
 
-      await _runPlaybackBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "queue-playback"},
-      );
+      if (!_stageAtOrAfter(stage, "main-playback-done")) {
+        await _runPlaybackBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "queue-playback"},
+        );
+        await recorder.setSuiteStage("main-playback-done");
+        stage = "main-playback-done";
+      }
 
-      await _runDefaultPlaylistMetadataBaseline();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "default-playlist-metadata-sync"},
-      );
+      if (!_stageAtOrAfter(stage, "main-download-done")) {
+        await _runDownloadAndOfflineBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "download-offline"},
+        );
+        await recorder.setSuiteStage("main-download-done");
+        stage = "main-download-done";
+      }
 
-      await _runDownloadAndOfflineBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "download-offline"},
-      );
-
-      await _runImageCacheBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "image-cache"},
-      );
+      if (!_stageAtOrAfter(stage, "main-image-cache-done")) {
+        await _runImageCacheBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "image-cache"},
+        );
+        await recorder.setSuiteStage("main-image-cache-done");
+      }
 
       await recorder.setSuiteStage("awaiting-host-restart");
       recorder.diagnostic(
