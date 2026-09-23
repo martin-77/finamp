@@ -1288,6 +1288,18 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     if (alreadyRestored != 1000) {
+      if (alreadyRestored > 0) {
+        await queueService.stopAndClearQueue();
+        await recorder.waitForNetworkQuiescence(
+          quietPeriod: const Duration(milliseconds: 750),
+          timeout: const Duration(minutes: 5),
+        );
+        recorder.diagnostic(
+          "queue-restore-partial-autoload-cleared",
+          values: {"partialTrackCount": alreadyRestored},
+        );
+      }
+
       await recorder.startRun(
         scenario: "persisted-queue-restore",
         variant: PerformanceBenchmarkService.variant,
