@@ -170,7 +170,7 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 
 | Area | Status | Notes |
 |---|---|---|
-| realistic first startup | automated | includes normal playlist-metadata background work, then cleans benchmark-owned state |
+| realistic first startup | automated | includes normal playlist-metadata background work, per-process network/frame/RSS summary, then cleans benchmark-owned state |
 | controlled cold process | automated | host restart with preserved auth/settings and cleared image cache |
 | persistent-cache restart | automated | same installed build/container, explicit stage checkpoints |
 | API page-size reference | automated | 25/100/100-warm/500 for major collections |
@@ -280,6 +280,7 @@ For `bench-10`, `bench-100` and `bench-1000`:
 - expected byte size if known
 - actual downloaded byte size
 - average throughput
+- sequential local filesystem read throughput as a separate diagnostic reference
 - download concurrency setting
 - transcoding mode/profile category without private paths or URLs
 
