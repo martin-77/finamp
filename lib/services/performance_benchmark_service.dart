@@ -60,9 +60,13 @@ class PerformanceBenchmarkJumpCommand {
 }
 
 class PerformanceBenchmarkTabCommand {
-  PerformanceBenchmarkTabCommand({required this.contentType});
+  PerformanceBenchmarkTabCommand({
+    required this.contentType,
+    required this.refresh,
+  });
 
   final String contentType;
+  final bool refresh;
   final Completer<void> _completer = Completer<void>();
   bool selected = false;
 
@@ -386,16 +390,23 @@ class PerformanceBenchmarkService {
 
   Future<void> requestUiTab({
     required String contentType,
+    required bool refresh,
     Duration timeout = const Duration(seconds: 90),
   }) async {
     if (_activeTabCommand != null) {
       throw StateError("Another benchmark UI tab command is already active");
     }
-    final command = PerformanceBenchmarkTabCommand(contentType: contentType);
+    final command = PerformanceBenchmarkTabCommand(
+      contentType: contentType,
+      refresh: refresh,
+    );
     _activeTabCommand = command;
     mark(
       "ui-tab-requested",
-      values: {"contentType": contentType},
+      values: {
+        "contentType": contentType,
+        "refresh": refresh,
+      },
     );
     _tabController.add(command);
     try {
