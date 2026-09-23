@@ -15,6 +15,7 @@ import '../models/jellyfin_models.dart';
 import 'downloads_service.dart';
 import 'finamp_settings_helper.dart';
 import 'item_by_id_provider.dart';
+import 'library_page_cache.dart';
 import 'jellyfin_api_helper.dart';
 import 'music_providers.dart';
 
@@ -315,40 +316,86 @@ Future<List<BaseItemDto>?> loadHomeSectionItems(
   };
 
   final artistType = artistFilter != null ? ref.watch(finampSettingsProvider.defaultArtistType) : tabArtistType;
+  final apiFilters = request.sortConfig.filters
+      .map(
+        (filter) => switch (filter.type) {
+          ItemFilterType.isFavorite => "IsFavorite",
+          ItemFilterType.isFullyDownloaded => null, // only applicable for offline mode
+          // ItemFilterType.startsWithCharacter => "NameStartsWith: ${filter.value}",
+          ItemFilterType.startsWithCharacter =>
+            throw UnimplementedError(), //TODO properly handle the "NameStartsWith" filter in the API helper
+          ItemFilterType.genreFilter => null,
+          ItemFilterType.artistFilter => null,
+          ItemFilterType.searchTerm => null,
+          ItemFilterType.isUnplayed => "IsUnplayed",
+        },
+      )
+      .nonNulls
+      .join(",");
+  final effectiveStartIndex = request.sortConfig.sortBy == SortBy.random ? 0 : startIndex;
+  final sortBy = request.sortConfig.sortBy.jellyfinName(request.tab);
+  final sortOrder = request.sortConfig.sortOrder.toString();
 
-  return jellyfinApiHelper.getItems(
+  Future<List<BaseItemDto>?> fetchItems() => jellyfinApiHelper.getItems(
     libraryFilter: library?.id,
     parentItem: request.tab == ContentType.playlists ? null : (artistFilter?.extraBaseItem ?? library),
     includeItemTypes: [request.tab.itemType?.jellyfinName].join(","),
-    sortBy: request.sortConfig.sortBy.jellyfinName(request.tab),
-    sortOrder: request.sortConfig.sortOrder.toString(),
+    sortBy: sortBy,
+    sortOrder: sortOrder,
     searchTerm: searchFilter?.extraString.trim(),
-    filters: request.sortConfig.filters
-        .map(
-          (filter) => switch (filter.type) {
-            ItemFilterType.isFavorite => "IsFavorite",
-            ItemFilterType.isFullyDownloaded => null, // only applicable for offline mode
-            // ItemFilterType.startsWithCharacter => "NameStartsWith: ${filter.value}",
-            ItemFilterType.startsWithCharacter =>
-              throw UnimplementedError(), //TODO properly handle the "NameStartsWith" filter in the API helper
-            ItemFilterType.genreFilter => null,
-            ItemFilterType.artistFilter => null,
-            ItemFilterType.searchTerm => null,
-            ItemFilterType.isUnplayed => "IsUnplayed",
-          },
-        )
-        .nonNulls
-        .join(","),
-    startIndex: request.sortConfig.sortBy == SortBy.random ? 0 : startIndex,
+    filters: apiFilters,
+    startIndex: effectiveStartIndex,
     limit: limit,
     isFavorite: JellyfinApiHelper.getIsFavoriteFilter(request.tab, request.sortConfig.filters),
-    //(widget.tabContentType.itemType == BaseItemDtoType.genre &&
-    //    sortAndFilterConfig.filters.any((filter) => filter.type == ItemFilterType.isFavorite))
-    //     ? true
-    //    : null,
     artistType: artistType,
     genreFilter: genreFilter?.extraBaseItem.id,
   );
+
+  // Random pages are intentionally not cached: returning the same random page
+  // across launches would change the semantics of that sort mode.
+  if (request.sortConfig.sortBy == SortBy.random) {
+    return fetchItems();
+  }
+
+  final currentUser = GetIt.instance<FinampUserHelper>().currentUser;
+  if (currentUser == null) {
+    return fetchItems();
+  }
+
+  final cache = LibraryPageCache.fromOpenBox();
+  final signature = libraryPageCacheSignature(
+    serverId: currentUser.serverId,
+    userId: currentUser.id,
+    libraryId: library?.id.raw,
+    contentType: request.tab.name,
+    sortBy: sortBy,
+    sortOrder: sortOrder,
+    filters: request.sortConfig.filters.map((filter) => filter.toString()),
+    startIndex: effectiveStartIndex,
+    limit: limit,
+  );
+  final cached = cache.get(signature);
+
+  if (cached != null) {
+    if (!cached.isFresh()) {
+      unawaited(
+        fetchItems()
+            .then((items) async {
+              if (items == null) return;
+              await cache.put(signature, items);
+              ref.invalidateSelf();
+            })
+            .catchError((Object _) {}),
+      );
+    }
+    return cached.items;
+  }
+
+  final items = await fetchItems();
+  if (items != null) {
+    await cache.put(signature, items);
+  }
+  return items;
 }
 
 Future<List<BaseItemDto>?> loadHomeSectionItemsOffline({
