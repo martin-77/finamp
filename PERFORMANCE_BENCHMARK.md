@@ -226,3 +226,60 @@ and the point where the target becomes visible.
 
 This is intended to expose scaling behaviour where jumping to a later letter
 requires sequential page loading.
+
+
+## Post-download local/offline benchmark phase
+
+For bench-10, bench-100 and bench-1000, a successful download is followed by a
+local/offline benchmark phase before cleanup.
+
+Sequence:
+
+1. complete and verify the benchmark download
+2. record downloaded track count and actual local bytes
+3. switch Finamp to offline mode so server streaming cannot satisfy playback
+4. rerun the matching collection/detail/queue/playback scenarios
+5. run the same relevant alphabet/paging tests against the downloaded metadata
+6. repeat local playback once to distinguish first-use from warm local access
+7. restore the previous offline-mode setting
+8. delete the benchmark download
+9. verify cleanup before continuing
+
+The local phase uses a distinct run mode such as `local-downloaded-cold` and
+`local-downloaded-warm`. It must never be mixed with online measurements.
+
+Primary local measurements:
+
+- collection resolution duration
+- local metadata query duration
+- queue construction duration
+- action -> player playing
+- action -> first position advance
+- local file count
+- actual local bytes
+- player errors
+- first-use vs repeated local playback
+
+An optional filesystem reference benchmark may sequentially read the already
+downloaded track files and report total bytes, duration and read throughput.
+This is diagnostic only: it helps distinguish storage I/O from Finamp metadata,
+queue and player overhead and is not a replacement for the real offline
+playback benchmark.
+
+## Host-side result capture
+
+Every benchmark event and metric is emitted immediately on stdout as one
+machine-readable line prefixed with `BENCH_JSON `.
+
+When the app is launched from macOS, use:
+
+`tool/run_performance_benchmark.sh -d <device-id> --profile`
+
+The collector writes two files under `benchmark-results/`:
+
+- `finamp-benchmark-<timestamp>.log`: complete Flutter/device output
+- `finamp-benchmark-<timestamp>.jsonl`: benchmark records only
+
+JSONL is append-only while the run is executing, so completed events remain on
+the Mac even if the app crashes or is terminated by iOS. Device-local
+checkpointing remains enabled as a second recovery source.
