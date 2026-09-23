@@ -1710,6 +1710,41 @@ class DownloadsService {
         .watch(fireImmediately: true);
   }
 
+  /// Benchmark-only aggregate state of the download/sync engine.
+  /// Counts are intentionally limited to active/failure states and never expose
+  /// the total library/download cardinality.
+  Map<String, int> getPerformanceBenchmarkQueueState() {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark queue state is only available in benchmark mode",
+      );
+    }
+
+    int countState(DownloadItemState state) => _isar.downloadItems
+        .where()
+        .stateEqualTo(state)
+        .filter()
+        .typeEqualTo(DownloadItemType.track)
+        .or()
+        .typeEqualTo(DownloadItemType.image)
+        .countSync();
+
+    final pendingSyncTasks = _isar.isarTaskDatas
+        .where()
+        .typeEqualTo(IsarTaskDataType.syncNode)
+        .or()
+        .typeEqualTo(IsarTaskDataType.deleteNode)
+        .countSync();
+
+    return {
+      "enqueued": countState(DownloadItemState.enqueued),
+      "downloading": countState(DownloadItemState.downloading),
+      "failed": countState(DownloadItemState.failed),
+      "syncFailed": countState(DownloadItemState.syncFailed),
+      "pendingSyncTasks": pendingSyncTasks,
+    };
+  }
+
   /// Benchmark-only aggregate progress for a downloaded album/playlist.
   /// No media names, ids or paths are exposed.
   Map<String, int> getPerformanceBenchmarkCollectionProgress(
