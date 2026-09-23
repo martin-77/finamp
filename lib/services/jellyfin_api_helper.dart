@@ -230,6 +230,80 @@ class JellyfinApiHelper {
     return response.items;
   }
 
+  /// Fetches every item for queries where the caller requires a complete
+  /// result set rather than a single server page.
+  ///
+  /// Playlist children keep using the playlist endpoint, which currently does
+  /// not expose paging parameters through our API wrapper.
+  Future<List<BaseItemDto>> getAllItems({
+    BaseItemDto? parentItem,
+    BaseItemId? libraryFilter,
+    String? includeItemTypes,
+    String? sortBy,
+    String? sortOrder,
+    String? searchTerm,
+    List<BaseItemId>? albumIds,
+    String? filters,
+    String? fields,
+    bool? recursive,
+    ArtistType? artistType,
+    BaseItemId? genreFilter,
+    bool? isFavorite,
+    int pageSize = 500,
+  }) async {
+    if (parentItem?.type == "Playlist") {
+      return await getItems(
+            parentItem: parentItem,
+            libraryFilter: libraryFilter,
+            includeItemTypes: includeItemTypes,
+            sortBy: sortBy,
+            sortOrder: sortOrder,
+            searchTerm: searchTerm,
+            albumIds: albumIds,
+            filters: filters,
+            fields: fields,
+            recursive: recursive,
+            artistType: artistType,
+            genreFilter: genreFilter,
+            isFavorite: isFavorite,
+          ) ??
+          [];
+    }
+
+    final items = <BaseItemDto>[];
+    var startIndex = 0;
+
+    while (true) {
+      final response = await getItemsWithTotalRecordCount(
+        parentItem: parentItem,
+        libraryFilter: libraryFilter,
+        includeItemTypes: includeItemTypes,
+        sortBy: sortBy,
+        sortOrder: sortOrder,
+        searchTerm: searchTerm,
+        albumIds: albumIds,
+        filters: filters,
+        fields: fields,
+        recursive: recursive,
+        artistType: artistType,
+        genreFilter: genreFilter,
+        isFavorite: isFavorite,
+        startIndex: startIndex,
+        limit: pageSize,
+      );
+      final page = response.items ?? [];
+      items.addAll(page);
+
+      if (page.isEmpty || items.length >= response.totalRecordCount) {
+        break;
+      }
+
+      startIndex += page.length;
+    }
+
+    return items;
+  }
+
   Future<QueryResult_BaseItemDto> getItemsWithTotalRecordCount({
     BaseItemDto? parentItem,
     BaseItemId? libraryFilter,
