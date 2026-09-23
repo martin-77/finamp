@@ -1608,13 +1608,8 @@ class PerformanceBenchmarkSuiteRunner {
     const targetAlias = "bench-1000";
 
     try {
-      // Do not run generic pending-download recovery here: the retained
-      // benchmark download is intentional and is exactly what this process
-      // needs to exercise.
-      await WidgetsBinding.instance.endOfFrame;
-      await _waitForStartupReady(
-        phase: "offline-bench1000-cold-process",
-      );
+      var stage =
+          await recorder.getSuiteStage() ?? "offline-bench1000-running";
 
       final target = await recorder.getTarget(targetAlias);
       if (target == null) {
@@ -1622,72 +1617,110 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       final container = GetIt.instance<ProviderContainer>();
-      final item = await container.read(
-        itemByIdProvider(BaseItemId(target.itemId)).future,
-      );
-      if (item == null) {
-        throw StateError("Offline benchmark item is unavailable");
+      final downloads = GetIt.instance<DownloadsService>();
+
+      // The benchmark-owned download may intentionally survive this process
+      // restart. Do not invoke generic pending-download cleanup until all
+      // offline cold-process scenarios have completed.
+      if (stage == "offline-bench1000-running") {
+        FinampSetters.setIsOffline(true);
+        await Hive.box("FinampSettings").flush();
+
+        await WidgetsBinding.instance.endOfFrame;
+        await _waitForStartupReady(
+          phase: "offline-bench1000-cold-process",
+        );
+
+        final item = await container.read(
+          itemByIdProvider(BaseItemId(target.itemId)).future,
+        );
+        if (item == null) {
+          throw StateError("Offline benchmark item is unavailable");
+        }
+
+        final stub = DownloadStub.fromItem(
+          type: DownloadItemType.collection,
+          item: item,
+        );
+        if (!downloads.getStatus(stub, 1000).isDownloaded) {
+          throw StateError(
+            "Offline benchmark download is incomplete after process restart",
+          );
+        }
+
+        final tracks = await downloads.getCollectionTracks(
+          item,
+          playable: true,
+        );
+        final privateOfflineSearchQuery =
+            tracks.isNotEmpty ? tracks.first.name : null;
+
+        await _runOfflineDownloadedScenarios(
+          targetAlias: targetAlias,
+          item: item,
+          privateOfflineSearchQuery: privateOfflineSearchQuery,
+          coldProcess: true,
+        );
+
+        final persistedQueueCount = await GetIt.instance<QueueService>()
+            .persistPerformanceBenchmarkQueue();
+        recorder.diagnostic(
+          "offline-large-queue-persisted",
+          values: {
+            "targetAlias": targetAlias,
+            "trackCount": persistedQueueCount,
+          },
+        );
+
+        await recorder.setSuiteStage("offline-bench1000-cleanup");
+        stage = "offline-bench1000-cleanup";
       }
 
-      final downloads = GetIt.instance<DownloadsService>();
-      final stub = DownloadStub.fromItem(
-        type: DownloadItemType.collection,
-        item: item,
-      );
-      final tracks = await downloads.getCollectionTracks(
-        item,
-        playable: true,
-      );
-      final privateOfflineSearchQuery =
-          tracks.isNotEmpty ? tracks.first.name : null;
+      if (stage == "offline-bench1000-cleanup") {
+        final originalOffline =
+            await recorder.getOriginalOfflineState() ?? false;
+        FinampSetters.setIsOffline(originalOffline);
+        await Hive.box("FinampSettings").flush();
+        recorder.diagnostic(
+          "offline-mode-restored",
+          values: {
+            "targetAlias": targetAlias,
+            "restoredOffline": originalOffline,
+            "afterProcessRestart": true,
+          },
+        );
 
-      await _runOfflineDownloadedScenarios(
-        targetAlias: targetAlias,
-        item: item,
-        privateOfflineSearchQuery: privateOfflineSearchQuery,
-        coldProcess: true,
-      );
+        final item = await container.read(
+          itemByIdProvider(BaseItemId(target.itemId)).future,
+        );
+        if (item == null) {
+          throw StateError(
+            "Benchmark target could not be resolved for cleanup",
+          );
+        }
+        final stub = DownloadStub.fromItem(
+          type: DownloadItemType.collection,
+          item: item,
+        );
 
-      final originalOffline =
-          await recorder.getOriginalOfflineState() ?? false;
-      FinampSetters.setIsOffline(originalOffline);
-      recorder.diagnostic(
-        "offline-mode-restored",
-        values: {
-          "targetAlias": targetAlias,
-          "restoredOffline": originalOffline,
-          "afterProcessRestart": true,
-        },
-      );
-      await Future<void>.delayed(const Duration(seconds: 1));
+        await _cleanupDownloadedBenchmarkTarget(
+          targetAlias: targetAlias,
+          stub: stub,
+          downloads: downloads,
+        );
+        await recorder.clearOriginalOfflineState();
 
-      final persistedQueueCount =
-          await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
-      recorder.diagnostic(
-        "offline-large-queue-persisted",
-        values: {
-          "targetAlias": targetAlias,
-          "trackCount": persistedQueueCount,
-        },
-      );
-
-      await _cleanupDownloadedBenchmarkTarget(
-        targetAlias: targetAlias,
-        stub: stub,
-        downloads: downloads,
-      );
-      await recorder.clearOriginalOfflineState();
-
-      await recorder.setSuiteStage("main-download-bench1000-done");
-      await recorder.setSuiteStage("main-download-done");
-      recorder.diagnostic(
-        "host-restart-requested",
-        values: {
-          "reason": "return-online-after-offline-cold-process",
-          "nextStage": "main-download-done",
-        },
-      );
-      await recorder.flushHostStream();
+        await recorder.setSuiteStage("main-download-bench1000-done");
+        await recorder.setSuiteStage("main-download-done");
+        recorder.diagnostic(
+          "host-restart-requested",
+          values: {
+            "reason": "return-online-after-offline-cold-process",
+            "nextStage": "main-download-done",
+          },
+        );
+        await recorder.flushHostStream();
+      }
     } catch (error) {
       recorder.diagnostic(
         "suite-error",
