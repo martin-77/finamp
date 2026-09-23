@@ -371,29 +371,37 @@ Future<void> _setupDownloadsHelper() async {
     GetIt.instance<FinampUserHelper>().runUserHook(() async {
       if (PerformanceBenchmarkService.enabled) {
         final benchmark = PerformanceBenchmarkService.instance;
-        benchmark.markStartupPlaylistMetadataWorkRan();
-        try {
-          await benchmark.runStartupTask(
-            "default-playlist-metadata-download",
-            () async {
-              await downloadsService.addDefaultPlaylistInfoDownload();
-              await downloadsService
-                  .waitForPerformanceBenchmarkDownloadSystemIdle(
-                stableFor: const Duration(seconds: 5),
-                timeout: const Duration(hours: 3),
-              );
-            },
-          );
-          benchmark.reportStartupPlaylistMetadataWorkResult(
-            success: true,
-          );
-        } catch (e) {
-          benchmark.reportStartupPlaylistMetadataWorkResult(
-            success: false,
-            errorType: e.runtimeType.toString(),
-          );
-          _mainLog.severe(
-            "Benchmark startup playlist metadata download failed: $e",
+        final suiteStage = await benchmark.getSuiteStage();
+        if (suiteStage == null) {
+          benchmark.markStartupPlaylistMetadataWorkRan();
+          try {
+            await benchmark.runStartupTask(
+              "default-playlist-metadata-download",
+              () async {
+                await downloadsService.addDefaultPlaylistInfoDownload();
+                await downloadsService
+                    .waitForPerformanceBenchmarkDownloadSystemIdle(
+                  stableFor: const Duration(seconds: 5),
+                  timeout: const Duration(hours: 3),
+                );
+              },
+            );
+            benchmark.reportStartupPlaylistMetadataWorkResult(
+              success: true,
+            );
+          } catch (e) {
+            benchmark.reportStartupPlaylistMetadataWorkResult(
+              success: false,
+              errorType: e.runtimeType.toString(),
+            );
+            _mainLog.severe(
+              "Benchmark startup playlist metadata download failed: $e",
+            );
+          }
+        } else {
+          benchmark.diagnostic(
+            "startup-playlist-metadata-work-not-repeated",
+            values: {"suiteStage": suiteStage},
           );
         }
       } else {
