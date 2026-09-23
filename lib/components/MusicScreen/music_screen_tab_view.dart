@@ -141,6 +141,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         return;
       }
       _activeBenchmarkPage = command;
+      _recordBenchmarkSortConfiguration();
       _benchmarkPageInitialCount = state.items?.length ?? 0;
       _benchmarkPageFrameScheduled = false;
       PerformanceBenchmarkService.instance.mark(
@@ -163,6 +164,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         return;
       }
       _activeBenchmarkJump = command;
+      _recordBenchmarkSortConfiguration();
       final benchmark = PerformanceBenchmarkService.instance;
       benchmark.mark(
         "alphabet-jump-start",
@@ -176,6 +178,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
 
     super.initState();
+  }
+
+  void _recordBenchmarkSortConfiguration() {
+    final benchmark = PerformanceBenchmarkService.instance;
+    benchmark.metric("sortBy", widget.sortConfig.sortBy.name);
+    benchmark.metric("sortOrder", widget.sortConfig.sortOrder.name);
   }
 
   bool _matchesBenchmarkTab(PerformanceBenchmarkTabCommand command) {
@@ -201,6 +209,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     _activeBenchmarkTab = command;
+    _recordBenchmarkSortConfiguration();
     _benchmarkTabDataMarked = false;
     _benchmarkTabFrameScheduled = false;
     if (command.refresh) {
@@ -349,6 +358,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
     final resultCount = state.items?.length ?? 0;
     final benchmark = PerformanceBenchmarkService.instance;
+    _recordBenchmarkSortConfiguration();
     benchmark.mark(
       "search-data-ready",
       values: {
