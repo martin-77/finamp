@@ -43,20 +43,142 @@ class PerformanceBenchmarkSuiteRunner {
   void arm() {
     if (!PerformanceBenchmarkService.enabled || _armed) return;
     _armed = true;
+    unawaited(_armAsync());
+  }
 
+  Future<void> _armAsync() async {
     final recorder = PerformanceBenchmarkService.instance;
-    unawaited(recorder.resetHostStream());
+    final stage = await recorder.getSuiteStage();
+
     recorder.diagnostic(
       "suite-armed",
-      values: {"variant": PerformanceBenchmarkService.variant},
+      values: {
+        "variant": PerformanceBenchmarkService.variant,
+        "suiteRunId": PerformanceBenchmarkService.suiteRunId,
+        "stage": stage ?? "fresh",
+      },
     );
 
+    if (stage == "awaiting-host-restart") {
+      await recorder.setSuiteStage("post-restart-running");
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runPostRestartPhase());
+      });
+      return;
+    }
+
+    if (stage == "complete") {
+      recorder.diagnostic("suite-already-complete");
+      return;
+    }
+
+    await recorder.setSuiteStage("main-running");
     GetIt.instance<FinampUserHelper>().runUserHook(() {
       unawaited(_runAfterAuthentication());
     });
 
     if (GetIt.instance<FinampUserHelper>().currentUser == null) {
       recorder.diagnostic("suite-waiting-for-login");
+    }
+  }
+
+  Future<void> _runPostRestartPhase() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      recorder.diagnostic("post-restart-phase-start");
+
+      await recorder.waitForStartupQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+      recorder.diagnostic("post-restart-startup-quiescent");
+
+      await _runCollectionFirstPageBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "post-restart-api-cache"},
+      );
+
+      for (final tab in const <String>[
+        "albums",
+        "artists",
+        "playlists",
+        "tracks",
+        "genres",
+      ]) {
+        await _runUiTabBaseline(
+          tab,
+          mode: "post-restart-refreshed",
+          round: 1,
+        );
+        await Future<void>.delayed(const Duration(seconds: 3));
+        await _runUiTabBaseline(
+          tab,
+          mode: "post-restart-warm",
+          round: 1,
+        );
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "post-restart-ui-cache"},
+      );
+
+      for (final alias in const <String>[
+        "detail-album",
+        "detail-artist",
+        "bench-100",
+      ]) {
+        final detailType = alias == "detail-album"
+            ? "album"
+            : alias == "detail-artist"
+            ? "artist"
+            : "playlist";
+        await _runDetailBaseline(
+          targetAlias: alias,
+          detailType: detailType,
+          mode: "post-restart-refreshed",
+          refresh: true,
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await _runDetailBaseline(
+          targetAlias: alias,
+          detailType: detailType,
+          mode: "post-restart-warm",
+          refresh: false,
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "post-restart-detail-cache"},
+      );
+
+      await recorder.setSuiteStage("complete");
+      recorder.diagnostic(
+        "suite-complete",
+        values: {"phase": "full-baseline"},
+      );
+      await recorder.flushHostStream();
+    } catch (error) {
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "post-restart",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      await recorder.flushHostStream();
+    } finally {
+      _running = false;
     }
   }
 
