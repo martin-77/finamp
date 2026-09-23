@@ -33,6 +33,8 @@ def main():
     queue_restore_content = []
     startup_network = []
     startup_frames = []
+    startup_image_cache = []
+    phase_memory = []
     network_target_events = []
     recovered_runs = []
     phases = []
@@ -136,6 +138,19 @@ def main():
                 phase = values.get("phase")
                 if phase:
                     phases.append(phase)
+                    phase_memory.append({
+                        "phase": phase,
+                        "rssBytes": values.get("rssBytes"),
+                        "maxRssBytes": values.get("maxRssBytes"),
+                        "processElapsedMs": values.get("processElapsedMs"),
+                    })
+            elif name == "suite-complete":
+                phase_memory.append({
+                    "phase": "suite-complete",
+                    "rssBytes": values.get("rssBytes"),
+                    "maxRssBytes": values.get("maxRssBytes"),
+                    "processElapsedMs": values.get("processElapsedMs"),
+                })
             elif name in {
                 "startup-main-init-complete",
                 "startup-first-frame",
@@ -261,6 +276,8 @@ def main():
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
         "startupFrames": startup_frames,
+        "startupImageCache": startup_image_cache,
+        "phaseMemory": phase_memory,
         "networkTargetEvents": network_target_events,
         "queueRestores": queue_restores,
         "queueRestoreContent": queue_restore_content,
@@ -379,8 +396,8 @@ def main():
         "",
         "## Startup frames and memory",
         "",
-        "| Phase | Ready ms | Frames | >16.7 ms | >33.3 ms | >50 ms | Max frame ms | Max build ms | Max raster ms | RSS MiB | Max RSS MiB |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Phase | Ready ms | Frames | >16.7 ms | >33.3 ms | >50 ms | Max frame ms | Max build ms | Max raster ms | Image loads | Image failed | Image max concurrent | RSS MiB | Max RSS MiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     if startup_frames:
         for item in startup_frames:
@@ -396,11 +413,51 @@ def main():
                 f"{'' if not isinstance(frame_max, (int, float)) else round(frame_max / 1000.0, 3)} | "
                 f"{'' if not isinstance(build_max, (int, float)) else round(build_max / 1000.0, 3)} | "
                 f"{'' if not isinstance(raster_max, (int, float)) else round(raster_max / 1000.0, 3)} | "
+                f"{item.get('imageLoadStarted', '')} | "
+                f"{item.get('imageLoadFailed', '')} | "
+                f"{item.get('imageMaxConcurrentLoads', '')} | "
                 f"{'' if not isinstance(rss, (int, float)) else round(rss / (1024 * 1024), 3)} | "
                 f"{'' if not isinstance(max_rss, (int, float)) else round(max_rss / (1024 * 1024), 3)} |"
             )
     else:
-        lines.append("|  |  |  |  |  |  |  |  |  |  |  |")
+        lines.append("|  |  |  |  |  |  |  |  |  |  |  |  |  |  |")
+
+    lines.extend([
+        "",
+        "## Startup persistent image cache",
+        "",
+        "| Persistent entries | Mapped player entries |",
+        "|---:|---:|",
+    ])
+    if startup_image_cache:
+        for item in startup_image_cache:
+            lines.append(
+                f"| {item.get('persistentEntryCount', '')} | "
+                f"{item.get('mappedPlayerEntries', '')} |"
+            )
+    else:
+        lines.append("|  |  |")
+
+    lines.extend([
+        "",
+        "## Phase memory",
+        "",
+        "| Phase | RSS MiB | Max RSS MiB | Process elapsed ms |",
+        "|---|---:|---:|---:|",
+    ])
+    if phase_memory:
+        for item in phase_memory:
+            rss = item.get("rssBytes")
+            max_rss = item.get("maxRssBytes")
+            elapsed = item.get("processElapsedMs")
+            lines.append(
+                f"| {item.get('phase', '')} | "
+                f"{'' if not isinstance(rss, (int, float)) else round(rss / (1024 * 1024), 3)} | "
+                f"{'' if not isinstance(max_rss, (int, float)) else round(max_rss / (1024 * 1024), 3)} | "
+                f"{'' if not isinstance(elapsed, (int, float)) else round(elapsed, 3)} |"
+            )
+    else:
+        lines.append("|  |  |  |  |")
 
     lines.extend([
         "",
