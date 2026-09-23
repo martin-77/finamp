@@ -4,7 +4,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:finamp/services/censored_log.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path_helper;
 import 'package:path_provider/path_provider.dart';
 
@@ -306,12 +308,18 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
 
+    final censored = LogRecord(
+      Level.SEVERE,
+      error.toString(),
+      "PerformanceBenchmark",
+      error,
+      stackTrace,
+    ).censoredMessage;
     run.failure = {
       "type": "dart-error",
       "source": source,
       "errorType": error.runtimeType.toString(),
-      "message": _sanitizeError(error.toString()),
-      "stackTrace": _sanitizeStack(stackTrace.toString()),
+      "diagnostic": _sanitizeStack(censored),
       "lastStep": run.lastStep,
     };
     run.mark("uncaught-error", values: {"source": source});
@@ -328,11 +336,17 @@ class PerformanceBenchmarkService {
     if (run == null) return;
 
     run.result = result;
+    final censored = LogRecord(
+      Level.SEVERE,
+      error.toString(),
+      "PerformanceBenchmark",
+      error,
+      stackTrace,
+    ).censoredMessage;
     run.failure = {
       "type": result.name,
       "errorType": error.runtimeType.toString(),
-      "message": _sanitizeError(error.toString()),
-      "stackTrace": _sanitizeStack(stackTrace.toString()),
+      "diagnostic": _sanitizeStack(censored),
       "lastStep": step ?? run.lastStep,
     };
     run.mark("run-failed", values: {"result": result.name});
@@ -343,11 +357,6 @@ class PerformanceBenchmarkService {
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
     _activeRun = null;
-  }
-
-  String _sanitizeError(String value) {
-    final oneLine = value.replaceAll(RegExp(r'[\r\n]+'), ' ');
-    return oneLine.length <= 1000 ? oneLine : oneLine.substring(0, 1000);
   }
 
   String _sanitizeStack(String value) {
