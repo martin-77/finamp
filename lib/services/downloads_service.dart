@@ -1743,6 +1743,9 @@ class DownloadsService {
       "downloading": countState(DownloadItemState.downloading),
       "failed": countState(DownloadItemState.failed),
       "syncFailed": countState(DownloadItemState.syncFailed),
+      "needsRedownload": countState(DownloadItemState.needsRedownload),
+      "needsRedownloadComplete":
+          countState(DownloadItemState.needsRedownloadComplete),
       "pendingSyncTasks": pendingSyncTasks,
     };
   }
@@ -1807,12 +1810,18 @@ class DownloadsService {
     Stopwatch? stableSince;
 
     while (overall.elapsed < timeout) {
+      final state = getPerformanceBenchmarkQueueState();
       final active =
-          (downloadStatuses[DownloadItemState.enqueued] ?? 0) +
-          (downloadStatuses[DownloadItemState.downloading] ?? 0) +
-          (downloadStatuses[DownloadItemState.needsRedownload] ?? 0);
+          (state["enqueued"] ?? 0) +
+          (state["downloading"] ?? 0) +
+          (state["needsRedownload"] ?? 0) +
+          (state["needsRedownloadComplete"] ?? 0);
+      final pendingSyncTasks = state["pendingSyncTasks"] ?? 0;
 
-      if (active == 0 && !syncBuffer.isRunning && !_userDeleteRunning) {
+      if (active == 0 &&
+          pendingSyncTasks == 0 &&
+          !syncBuffer.isRunning &&
+          !_userDeleteRunning) {
         stableSince ??= Stopwatch()..start();
         if (stableSince.elapsed >= stableFor) {
           return;
