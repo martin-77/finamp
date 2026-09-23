@@ -313,6 +313,18 @@ class PerformanceBenchmarkService {
   int _startupNetworkDurationMicros = 0;
   int _startupNetworkDurationMicrosMax = 0;
 
+  bool _startupFrameCollectionOpen = true;
+  int _startupFrameCount = 0;
+  int _startupFramesOver16_7ms = 0;
+  int _startupFramesOver33_3ms = 0;
+  int _startupFramesOver50ms = 0;
+  int _startupFrameBuildMicrosMax = 0;
+  int _startupFrameRasterMicrosMax = 0;
+  int _startupFrameTotalMicrosMax = 0;
+  int _startupFrameBuildMicrosTotal = 0;
+  int _startupFrameRasterMicrosTotal = 0;
+  int _startupFrameTotalMicrosTotal = 0;
+
   int _imageLoadsInFlight = 0;
   int _imageLoadGeneration = 0;
   final StreamController<int> _imageLoadController =
@@ -659,13 +671,32 @@ class PerformanceBenchmarkService {
 
   void recordFrameTimings(List<FrameTiming> timings) {
     final run = _activeRun;
-    if (run == null) return;
 
     for (final timing in timings) {
       final buildMicros = timing.buildDuration.inMicroseconds;
       final rasterMicros = timing.rasterDuration.inMicroseconds;
       final totalMicros = timing.totalSpan.inMicroseconds;
 
+      if (_startupFrameCollectionOpen) {
+        _startupFrameCount++;
+        _startupFrameBuildMicrosTotal += buildMicros;
+        _startupFrameRasterMicrosTotal += rasterMicros;
+        _startupFrameTotalMicrosTotal += totalMicros;
+        if (buildMicros > _startupFrameBuildMicrosMax) {
+          _startupFrameBuildMicrosMax = buildMicros;
+        }
+        if (rasterMicros > _startupFrameRasterMicrosMax) {
+          _startupFrameRasterMicrosMax = rasterMicros;
+        }
+        if (totalMicros > _startupFrameTotalMicrosMax) {
+          _startupFrameTotalMicrosMax = totalMicros;
+        }
+        if (totalMicros > 16667) _startupFramesOver16_7ms++;
+        if (totalMicros > 33333) _startupFramesOver33_3ms++;
+        if (totalMicros > 50000) _startupFramesOver50ms++;
+      }
+
+      if (run == null) continue;
       incrementMetricBuffered("frameCount");
       incrementMetricBuffered("frameBuildMicrosTotal", buildMicros);
       incrementMetricBuffered("frameRasterMicrosTotal", rasterMicros);
@@ -684,6 +715,30 @@ class PerformanceBenchmarkService {
         incrementMetricBuffered("framesOver50ms");
       }
     }
+  }
+
+  void reportStartupFrameSummary(String phase) {
+    if (!enabled) return;
+    _startupFrameCollectionOpen = false;
+    diagnostic(
+      "startup-frame-summary",
+      values: {
+        "phase": phase,
+        "frameCount": _startupFrameCount,
+        "framesOver16_7ms": _startupFramesOver16_7ms,
+        "framesOver33_3ms": _startupFramesOver33_3ms,
+        "framesOver50ms": _startupFramesOver50ms,
+        "buildMicrosTotal": _startupFrameBuildMicrosTotal,
+        "rasterMicrosTotal": _startupFrameRasterMicrosTotal,
+        "frameMicrosTotal": _startupFrameTotalMicrosTotal,
+        "buildMicrosMax": _startupFrameBuildMicrosMax,
+        "rasterMicrosMax": _startupFrameRasterMicrosMax,
+        "frameMicrosMax": _startupFrameTotalMicrosMax,
+        "rssBytes": ProcessInfo.currentRss,
+        "maxRssBytes": ProcessInfo.maxRss,
+        "processElapsedMs": processElapsedMs,
+      },
+    );
   }
 
   void incrementMetric(String name, [int amount = 1]) {
