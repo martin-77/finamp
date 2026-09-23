@@ -171,7 +171,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     PagingState<int, FinampDisplayableOrPlayable> state,
   ) {
     final command = _activeBenchmarkTab;
-    if (command == null || state.isLoading || (state.items?.isEmpty ?? true)) {
+    if (command == null ||
+        !command.selected ||
+        state.isLoading ||
+        (state.items?.isEmpty ?? true)) {
       return;
     }
 
