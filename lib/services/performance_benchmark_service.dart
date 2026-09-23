@@ -233,6 +233,7 @@ class PerformanceBenchmarkService {
       return null;
     }
 
+    final capturedFailure = recovered["failure"];
     recovered["finished"] = true;
     recovered["result"] = PerformanceBenchmarkResult.unexpectedExit.name;
     recovered["recoveredAt"] = DateTime.now().toUtc().toIso8601String();
@@ -240,6 +241,7 @@ class PerformanceBenchmarkService {
       "type": "unexpected-exit",
       "message": "Previous benchmark process ended without completing the active run.",
       "lastStep": recovered["lastStep"],
+      if (capturedFailure != null) "capturedFailure": capturedFailure,
     };
 
     final id = recovered["id"] as String;
@@ -490,7 +492,9 @@ class PerformanceBenchmarkService {
     run.mark("run-end");
     run.stopwatch.stop();
     run.finished = true;
-    run.result = PerformanceBenchmarkResult.success;
+    run.result = run.failure == null
+        ? PerformanceBenchmarkResult.success
+        : PerformanceBenchmarkResult.failed;
 
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
