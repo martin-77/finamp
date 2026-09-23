@@ -33,6 +33,7 @@ class PerformanceBenchmarkSuiteRunner {
     _armed = true;
 
     final recorder = PerformanceBenchmarkService.instance;
+    unawaited(recorder.resetHostStream());
     recorder.diagnostic(
       "suite-armed",
       values: {"variant": PerformanceBenchmarkService.variant},
@@ -72,11 +73,17 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-phase-complete",
         values: {"phase": "authenticated-api-baseline"},
       );
+      recorder.diagnostic(
+        "suite-complete",
+        values: {"phase": "authenticated-api-baseline"},
+      );
+      await recorder.flushHostStream();
     } catch (error) {
       recorder.diagnostic(
         "suite-error",
         values: {"errorType": error.runtimeType.toString()},
       );
+      await recorder.flushHostStream();
     } finally {
       _running = false;
     }
