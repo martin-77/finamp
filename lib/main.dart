@@ -368,20 +368,29 @@ Future<void> _setupDownloadsHelper() async {
   await downloadsService.startQueues();
 
   if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
-    if (PerformanceBenchmarkService.enabled) {
-      PerformanceBenchmarkService.instance.diagnostic(
-        "startup-background-work-suppressed",
-        values: {"task": "default-playlist-metadata-download"},
-      );
-    } else {
-      GetIt.instance<FinampUserHelper>().runUserHook(() async {
+    GetIt.instance<FinampUserHelper>().runUserHook(() async {
+      if (PerformanceBenchmarkService.enabled) {
+        try {
+          await PerformanceBenchmarkService.instance.runStartupTask(
+            "default-playlist-metadata-download",
+            downloadsService.addDefaultPlaylistInfoDownload,
+          );
+          PerformanceBenchmarkService.instance
+              .markStartupPlaylistMetadataWorkRan();
+        } catch (e) {
+          _mainLog.severe(
+            "Benchmark startup playlist metadata download failed: $e",
+          );
+          rethrow;
+        }
+      } else {
         await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
           // log error without snackbar, we don't want users to be greeted with errors on first launch
           _mainLog.severe("Failed to download playlist metadata: $e");
         });
         FinampSetters.setHasDownloadedPlaylistInfo(true);
-      });
-    }
+      }
+    });
   }
 }
 
