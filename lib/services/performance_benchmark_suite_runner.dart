@@ -45,6 +45,9 @@ class PerformanceBenchmarkSuiteRunner {
   bool _armed = false;
   bool _running = false;
 
+  bool get _smoke => PerformanceBenchmarkService.smoke;
+  int get _startupRepeatCount => _smoke ? 1 : 3;
+
   static const _mainStageOrder = <String>[
     "main-running",
     "main-targets-done",
@@ -590,7 +593,7 @@ class PerformanceBenchmarkSuiteRunner {
         },
       );
 
-      if (repeat < 3) {
+      if (repeat < _startupRepeatCount) {
         final nextRepeat = repeat + 1;
         final nextStage = "startup-repeat-$nextRepeat-running";
         await recorder.setSuiteStage(nextStage);
@@ -689,14 +692,17 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (!_postStageAtOrAfter(stage, "post-ui-done")) {
-        for (final tab in const <String>[
-          "home",
-          "albums",
-          "artists",
-          "playlists",
-          "tracks",
-          "genres",
-        ]) {
+        final tabs = _smoke
+            ? const <String>["albums", "tracks"]
+            : const <String>[
+                "home",
+                "albums",
+                "artists",
+                "playlists",
+                "tracks",
+                "genres",
+              ];
+        for (final tab in tabs) {
           await _runUiTabBaseline(
             tab,
             mode: "post-restart-refreshed",
@@ -723,12 +729,15 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (!_postStageAtOrAfter(stage, "post-detail-done")) {
-        for (final alias in const <String>[
-          "detail-album",
-          "detail-artist",
-          "detail-genre",
-          "bench-100",
-        ]) {
+        final aliases = _smoke
+            ? const <String>["detail-album", "bench-10"]
+            : const <String>[
+                "detail-album",
+                "detail-artist",
+                "detail-genre",
+                "bench-100",
+              ];
+        for (final alias in aliases) {
           final detailType = alias == "detail-album"
               ? "album"
               : alias == "detail-artist"
@@ -773,7 +782,7 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.setSuiteStage("complete");
       recorder.diagnostic(
         "suite-complete",
-        values: {"phase": "full-baseline"},
+        values: {"phase": _smoke ? "smoke" : "full-baseline"},
       );
       GetIt.instance<KeepScreenOnHelper>()
           .setPerformanceBenchmarkOverride(false);
@@ -1251,11 +1260,15 @@ class PerformanceBenchmarkSuiteRunner {
   Future<void> _runUiTabBaselines() async {
     final recorder = PerformanceBenchmarkService.instance;
 
-    const rounds = <List<String>>[
-      ["home", "albums", "artists", "playlists", "tracks", "genres"],
-      ["genres", "tracks", "playlists", "artists", "albums", "home"],
-      ["playlists", "home", "albums", "genres", "artists", "tracks"],
-    ];
+    final rounds = _smoke
+        ? const <List<String>>[
+            ["home", "albums", "artists", "playlists", "tracks", "genres"],
+          ]
+        : const <List<String>>[
+            ["home", "albums", "artists", "playlists", "tracks", "genres"],
+            ["genres", "tracks", "playlists", "artists", "albums", "home"],
+            ["playlists", "home", "albums", "genres", "artists", "tracks"],
+          ];
 
     // Fixed delays are only stabilization boundaries and are deliberately
     // outside measured runs. "refreshed-view" means provider refresh inside
@@ -1398,12 +1411,16 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final api = GetIt.instance<JellyfinApiHelper>();
 
-    const queries = <(String, String, bool)>[
-      ("iron-maiden", "Iron Maiden", true),
-      ("metallica", "Metallica", true),
-      ("kettcar", "Kettcar", true),
-      ("broad-m", "m", false),
-    ];
+    final queries = _smoke
+        ? const <(String, String, bool)>[
+            ("iron-maiden", "Iron Maiden", true),
+          ]
+        : const <(String, String, bool)>[
+            ("iron-maiden", "Iron Maiden", true),
+            ("metallica", "Metallica", true),
+            ("kettcar", "Kettcar", true),
+            ("broad-m", "m", false),
+          ];
     const tabs = <String>["artists", "albums", "tracks"];
 
     for (final queryEntry in queries) {
@@ -1627,7 +1644,8 @@ class PerformanceBenchmarkSuiteRunner {
         schedulerCooldown: const Duration(seconds: 2),
       );
 
-      for (var page = 2; page <= 11; page++) {
+      final lastPage = _smoke ? 3 : 11;
+      for (var page = 2; page <= lastPage; page++) {
         await recorder.startRun(
           scenario: "ui-next-page-$requestedTab",
           variant: PerformanceBenchmarkService.variant,
@@ -1814,11 +1832,15 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     var stage = currentStage ?? "main-playback-done";
 
-    final entries = const <(String, int, String)>[
-      ("bench-10", 10, "main-download-bench10-done"),
-      ("bench-100", 100, "main-download-bench100-done"),
-      ("bench-1000", 1000, "main-download-bench1000-done"),
-    ];
+    final entries = _smoke
+        ? const <(String, int, String)>[
+            ("bench-10", 10, "main-download-bench10-done"),
+          ]
+        : const <(String, int, String)>[
+            ("bench-10", 10, "main-download-bench10-done"),
+            ("bench-100", 100, "main-download-bench100-done"),
+            ("bench-1000", 1000, "main-download-bench1000-done"),
+          ];
 
     for (final entry in entries) {
       final (alias, expectedTracks, completedStage) = entry;
@@ -2216,6 +2238,18 @@ class PerformanceBenchmarkSuiteRunner {
       await Future<void>.delayed(const Duration(seconds: 1));
     }
 
+    if (_smoke && targetAlias == "bench-10") {
+      final persistedQueueCount =
+          await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
+      recorder.diagnostic(
+        "smoke-queue-persisted",
+        values: {
+          "targetAlias": targetAlias,
+          "trackCount": persistedQueueCount,
+        },
+      );
+    }
+
     await _cleanupDownloadedBenchmarkTarget(
       targetAlias: targetAlias,
       stub: stub,
@@ -2264,7 +2298,8 @@ class PerformanceBenchmarkSuiteRunner {
     );
     await _settleUi();
 
-    for (var page = 2; page <= 4; page++) {
+    final offlineLastPage = _smoke ? 2 : 4;
+    for (var page = 2; page <= offlineLastPage; page++) {
       await recorder.startRun(
         scenario: "offline-next-page-tracks",
         variant: PerformanceBenchmarkService.variant,
@@ -2311,7 +2346,10 @@ class PerformanceBenchmarkSuiteRunner {
     );
     await _settleUi();
 
-    for (final letter in const <String>["#", "A", "G", "M", "Z"]) {
+    final offlineLetters = _smoke
+        ? const <String>["A", "Z"]
+        : const <String>["#", "A", "G", "M", "Z"];
+    for (final letter in offlineLetters) {
       await recorder.startRun(
         scenario: "offline-alphabet-jump-tracks-$letter",
         variant: PerformanceBenchmarkService.variant,
@@ -2347,7 +2385,10 @@ class PerformanceBenchmarkSuiteRunner {
       );
     }
 
-    for (final letter in const <String>["#", "A", "G", "M", "Z"]) {
+    final offlineLetters = _smoke
+        ? const <String>["A", "Z"]
+        : const <String>["#", "A", "G", "M", "Z"];
+    for (final letter in offlineLetters) {
       await recorder.startRun(
         scenario: "offline-alphabet-jump-tracks-$letter",
         variant: PerformanceBenchmarkService.variant,
@@ -2703,11 +2744,10 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _runSearchDrilldownBaselines() async {
-    for (final queryAlias in const <String>[
-      "iron-maiden",
-      "metallica",
-      "kettcar",
-    ]) {
+    final queryAliases = _smoke
+        ? const <String>["iron-maiden"]
+        : const <String>["iron-maiden", "metallica", "kettcar"];
+    for (final queryAlias in queryAliases) {
       await _runSearchDrilldown(queryAlias);
       await _settleUi(
         schedulerCooldown: const Duration(seconds: 4),
@@ -2947,7 +2987,12 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _runPlaybackBaselines() async {
-    const targets = <(String, String)>[
+    final targets = _smoke
+        ? const <(String, String)>[
+            ("detail-track", "track"),
+            ("bench-10", "playlist"),
+          ]
+        : const <(String, String)>[
       ("detail-track", "track"),
       ("detail-album", "album"),
       ("detail-artist", "artist"),
@@ -2965,7 +3010,7 @@ class PerformanceBenchmarkSuiteRunner {
       ("bench-100", "playlist"),
       ("bench-1000", "playlist"),
       ("bench-10000", "playlist"),
-    ];
+          ];
 
     for (final entry in targets) {
       final (alias, type) = entry;
@@ -3149,7 +3194,16 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _runDetailBaselines() async {
-    const aliases = <(String, String)>[
+    final aliases = _smoke
+        ? const <(String, String)>[
+            ("detail-album", "album"),
+            ("detail-artist", "artist"),
+            ("detail-genre", "genre"),
+            ("search-artist-iron-maiden", "artist"),
+            ("search-album-iron-maiden", "album"),
+            ("bench-10", "playlist"),
+          ]
+        : const <(String, String)>[
       ("detail-album", "album"),
       ("detail-artist", "artist"),
       ("detail-genre", "genre"),
@@ -3163,7 +3217,7 @@ class PerformanceBenchmarkSuiteRunner {
       ("bench-100", "playlist"),
       ("bench-1000", "playlist"),
       ("bench-10000", "playlist"),
-    ];
+          ];
 
     for (final entry in aliases) {
       final (alias, detailType) = entry;
@@ -3322,7 +3376,9 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
 
     const tabs = <String>["tracks", "artists", "albums"];
-    const letters = <String>["#", "A", "G", "M", "Z"];
+    final letters = _smoke
+        ? const <String>["A", "Z"]
+        : const <String>["#", "A", "G", "M", "Z"];
 
     for (final requestedTab in tabs) {
       // Refresh once outside the measured jump runs. The first sequence then
@@ -3519,7 +3575,8 @@ class PerformanceBenchmarkSuiteRunner {
         localUri.host.isNotEmpty &&
         localUri.host != "0.0.0.0";
 
-    for (var round = 1; round <= 3; round++) {
+    final roundCount = _smoke ? 1 : 3;
+    for (var round = 1; round <= roundCount; round++) {
       for (final target in const <String>["public", "local", "active"]) {
         if (target == "local" && !localConfigured) {
           recorder.diagnostic(
@@ -3590,7 +3647,18 @@ class PerformanceBenchmarkSuiteRunner {
     final api = GetIt.instance<JellyfinApiHelper>();
     final recorder = PerformanceBenchmarkService.instance;
 
-    const rounds = <List<(String, String, ArtistType?)>>[
+    final rounds = _smoke
+        ? const <List<(String, String, ArtistType?)>>[
+            [
+              ("artists-performing", "MusicArtist", ArtistType.artist),
+              ("artists-album", "MusicArtist", ArtistType.albumArtist),
+              ("albums", "MusicAlbum", null),
+              ("tracks", "Audio", null),
+              ("playlists", "Playlist", null),
+              ("genres", "MusicGenre", null),
+            ],
+          ]
+        : const <List<(String, String, ArtistType?)>>[
       [
         ("artists-performing", "MusicArtist", ArtistType.artist),
         ("artists-album", "MusicArtist", ArtistType.albumArtist),
@@ -3615,7 +3683,7 @@ class PerformanceBenchmarkSuiteRunner {
         ("albums", "MusicAlbum", null),
         ("playlists", "Playlist", null),
       ],
-    ];
+          ];
 
     for (var round = 0; round < rounds.length; round++) {
       recorder.diagnostic(
@@ -3626,12 +3694,19 @@ class PerformanceBenchmarkSuiteRunner {
       for (final collection in rounds[round]) {
         final (scenarioName, itemType, artistType) = collection;
 
-        for (final request in const <(int, String)>[
-          (25, "size-25"),
-          (100, "size-100-first"),
-          (100, "size-100-warm"),
-          (500, "size-500"),
-        ]) {
+        final requests = _smoke
+            ? const <(int, String)>[
+                (25, "size-25"),
+                (100, "size-100-first"),
+                (100, "size-100-warm"),
+              ]
+            : const <(int, String)>[
+                (25, "size-25"),
+                (100, "size-100-first"),
+                (100, "size-100-warm"),
+                (500, "size-500"),
+              ];
+        for (final request in requests) {
           final (limit, mode) = request;
           await recorder.startRun(
             scenario: "collection-page-$scenarioName",
