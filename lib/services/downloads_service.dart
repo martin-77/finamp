@@ -375,14 +375,21 @@ class DownloadsService {
 
     // Wait a few seconds to not slow initial library load
     _finampUserHelper.runUserHook(() async {
-      await Future<void>.delayed(const Duration(seconds: 10));
-      try {
-        await syncBuffer.executeSyncs();
-        await deleteBuffer.executeDeletes();
-        await downloadTaskQueue.executeDownloads();
-      } catch (e) {
-        _downloadsLogger.severe("Error $e while restarting download/delete queues on startup.");
-      }
+      await PerformanceBenchmarkService.instance.runStartupTask(
+        "download-queue-startup",
+        () async {
+          await Future<void>.delayed(const Duration(seconds: 10));
+          try {
+            await syncBuffer.executeSyncs();
+            await deleteBuffer.executeDeletes();
+            await downloadTaskQueue.executeDownloads();
+          } catch (e) {
+            _downloadsLogger.severe(
+              "Error $e while restarting download/delete queues on startup.",
+            );
+          }
+        },
+      );
     });
   }
 
