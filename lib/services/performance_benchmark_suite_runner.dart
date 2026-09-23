@@ -1676,11 +1676,16 @@ class PerformanceBenchmarkSuiteRunner {
         "player-playing",
         timeout: const Duration(minutes: 3),
       );
+      final usefulBufferFuture = recorder.waitForEvent(
+        "player-useful-buffer-ready",
+        timeout: const Duration(minutes: 3),
+      );
       final firstPositionFuture = recorder.waitForEvent(
         "player-first-position-advance",
         timeout: const Duration(minutes: 3),
       );
       unawaited(playingFuture.catchError((_) {}));
+      unawaited(usefulBufferFuture.catchError((_) {}));
       unawaited(firstPositionFuture.catchError((_) {}));
 
       await recorder.runStep(
@@ -1693,6 +1698,11 @@ class PerformanceBenchmarkSuiteRunner {
         name: "wait-player-playing",
         timeout: const Duration(minutes: 3),
         operation: () => playingFuture,
+      );
+      await recorder.runStep(
+        name: "wait-useful-buffer",
+        timeout: const Duration(minutes: 3),
+        operation: () => usefulBufferFuture,
       );
       await recorder.runStep(
         name: "wait-first-position",
