@@ -98,6 +98,12 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "deep-paging"},
       );
 
+      await _runSearchBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "search"},
+      );
+
       await _runAlphabetBaselines();
       recorder.diagnostic(
         "suite-phase-complete",
@@ -363,6 +369,156 @@ class PerformanceBenchmarkSuiteRunner {
     } catch (_) {
       // runStep persists the failed/timeout run before rethrowing.
     }
+  }
+
+  Future<void> _runSearchBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final api = GetIt.instance<JellyfinApiHelper>();
+
+    const queries = <String, String>{
+      "iron-maiden": "Iron Maiden",
+      "metallica": "Metallica",
+      "kettcar": "Kettcar",
+    };
+    const tabs = <String>["artists", "albums", "tracks"];
+
+    for (final queryEntry in queries.entries) {
+      final queryAlias = queryEntry.key;
+      final query = queryEntry.value;
+
+      // Resolve a deterministic private artist -> album -> track chain once
+      // for later detail/playback scenarios. Only aliases are exported.
+      final artistResult = await api.getItemsWithTotalRecordCount(
+        includeItemTypes: "MusicArtist",
+        searchTerm: query,
+        recursive: true,
+        limit: 25,
+      );
+      final artistMatches = (artistResult.items ?? const <BaseItemDto>[])
+          .where(
+            (item) =>
+                item.name?.trim().toLowerCase() ==
+                query.trim().toLowerCase(),
+          )
+          .toList();
+
+      recorder.diagnostic(
+        "search-target-discovery",
+        values: {
+          "queryAlias": queryAlias,
+          "artistMatches": artistMatches.length,
+        },
+      );
+
+      if (artistMatches.length == 1) {
+        final artist = artistMatches.single;
+        await recorder.saveTarget(
+          alias: "search-artist-$queryAlias",
+          itemType: "MusicArtist",
+          itemId: artist.id.raw,
+        );
+
+        final albums = await api.getItems(
+          parentItem: artist,
+          includeItemTypes: "MusicAlbum",
+          recursive: true,
+        );
+        if (albums != null && albums.isNotEmpty) {
+          final album = albums.first;
+          await recorder.saveTarget(
+            alias: "search-album-$queryAlias",
+            itemType: "MusicAlbum",
+            itemId: album.id.raw,
+          );
+
+          final tracks = await api.getItems(
+            parentItem: album,
+            includeItemTypes: "Audio",
+            recursive: true,
+          );
+          if (tracks != null && tracks.isNotEmpty) {
+            await recorder.saveTarget(
+              alias: "search-track-$queryAlias",
+              itemType: "Audio",
+              itemId: tracks.first.id.raw,
+            );
+          }
+        }
+      }
+
+      for (final tab in tabs) {
+        // Return to the unfiltered list first. This is outside the measured run
+        // and prevents the previous query from becoming hidden setup work.
+        await recorder.requestSearch(
+          contentType: tab,
+          queryAlias: "clear",
+          query: "",
+          timeout: const Duration(seconds: 120),
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+
+        await recorder.startRun(
+          scenario: "ui-search-$tab",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "query-first",
+          targetAlias: queryAlias,
+          targetType: tab,
+        );
+        try {
+          recorder.metric("queryLength", query.length);
+          await recorder.runStep(
+            name: "search",
+            timeout: const Duration(seconds: 120),
+            operation: () => recorder.requestSearch(
+              contentType: tab,
+              queryAlias: queryAlias,
+              query: query,
+              timeout: const Duration(seconds: 115),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+
+        await Future<void>.delayed(const Duration(seconds: 2));
+
+        await recorder.startRun(
+          scenario: "ui-search-$tab",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "query-warm",
+          targetAlias: queryAlias,
+          targetType: tab,
+        );
+        try {
+          recorder.metric("queryLength", query.length);
+          await recorder.runStep(
+            name: "search",
+            timeout: const Duration(seconds: 60),
+            operation: () => recorder.requestSearch(
+              contentType: tab,
+              queryAlias: queryAlias,
+              query: query,
+              timeout: const Duration(seconds: 55),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
+    }
+
+    // Restore normal browsing before the next phase.
+    await recorder.requestSearch(
+      contentType: "tracks",
+      queryAlias: "clear",
+      query: "",
+      timeout: const Duration(seconds: 120),
+    );
+    await Future<void>.delayed(const Duration(seconds: 3));
   }
 
   Future<void> _runPagingBaselines() async {
