@@ -55,6 +55,7 @@ import 'package:finamp/services/network_manager.dart';
 import 'package:finamp/services/offline_listen_helper.dart';
 import 'package:finamp/services/playback_history_service.dart';
 import 'package:finamp/services/performance_benchmark_service.dart';
+import 'package:finamp/services/performance_benchmark_suite_runner.dart';
 import 'package:finamp/services/playon_service.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/theme_provider.dart';
@@ -238,6 +239,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
   // Integration testing will launch the widgets itself, so just return
   if (!integrationTesting) {
     runApp(const Finamp());
+    PerformanceBenchmarkSuiteRunner.instance.arm();
   }
 }
 
