@@ -1600,9 +1600,11 @@ class PerformanceBenchmarkSuiteRunner {
             "errorType": error.runtimeType.toString(),
           },
         );
-        // Preserve the rest of the comprehensive baseline whenever cleanup is
-        // possible. Cleanup failure itself remains fatal.
+        // A sub-run may fail explicitly and still return normally. Reaching
+        // this catch means harness/lifecycle work failed outside that measured
+        // run, so cleanup first and then abort without writing a done stage.
         await _recoverPendingDownloadCleanup();
+        rethrow;
       }
 
       await recorder.setSuiteStage(completedStage);
