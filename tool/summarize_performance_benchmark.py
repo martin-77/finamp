@@ -45,6 +45,12 @@ PUBLIC_NUMERIC_METRIC_DENYLIST = {
     # playlist cardinality or a tight approximation of it.
     "playlistItemsSeen",
     "playlistPagesFetched",
+
+    # Deep paging can reach the terminal page. Together with the requested
+    # page ordinal/size these counters can reveal an exact private collection
+    # cardinality, so keep them out of public summaries even for older JSONL.
+    "pageItemsAdded",
+    "pageSize",
 }
 
 
