@@ -30,7 +30,18 @@ def main():
                     "pageSize": 83,
                     "rssDeltaBytes": 123456,
                 },
-                "events": [],
+                "events": [
+                    {
+                        "name": "alphabet-jump-page-requested",
+                        "elapsedMicros": 500_000,
+                        "values": {},
+                    },
+                    {
+                        "name": "safe-milestone",
+                        "elapsedMicros": 750_000,
+                        "values": {},
+                    },
+                ],
             },
         },
         {
@@ -202,6 +213,9 @@ def main():
         assert "itemsAdded" not in metrics
         assert "pageItemsAdded" not in metrics
         assert "pageSize" not in metrics
+        event_milestones = group["eventMilestones"]
+        assert "alphabet-jump-page-requested" not in event_milestones
+        assert "safe-milestone" in event_milestones
 
         environments = summary["runtimeEnvironments"]
         assert len(environments) == 1
