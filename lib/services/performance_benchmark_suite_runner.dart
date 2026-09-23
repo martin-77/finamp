@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/models/jellyfin_models.dart';
+import 'package:finamp/models/music_models.dart';
 import 'package:finamp/screens/album_screen.dart';
 import 'package:finamp/screens/artist_screen.dart';
 import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
+import 'package:finamp/services/queue_service.dart';
+import 'package:finamp/services/music_providers.dart';
 import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -97,9 +100,15 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "detail-screens"},
       );
 
+      await _runPlaybackBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "queue-playback"},
+      );
+
       recorder.diagnostic(
         "full-suite-incomplete",
-        values: {"nextPhase": "search-paging-playback-download"},
+        values: {"nextPhase": "search-paging-download-restart"},
       );
       await recorder.flushHostStream();
     } catch (error) {
@@ -343,6 +352,127 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       // runStep persists the failed/timeout run before rethrowing.
+    }
+  }
+
+  Future<void> _runPlaybackBaselines() async {
+    const targets = <(String, String)>[
+      ("detail-track", "track"),
+      ("detail-album", "album"),
+      ("detail-artist", "artist"),
+      ("bench-10", "playlist"),
+      ("bench-100", "playlist"),
+      ("bench-1000", "playlist"),
+      ("bench-10000", "playlist"),
+    ];
+
+    for (final entry in targets) {
+      final (alias, type) = entry;
+      await _runPlaybackBaseline(
+        targetAlias: alias,
+        playableType: type,
+        mode: "online-first",
+      );
+      await Future<void>.delayed(const Duration(seconds: 4));
+      await _runPlaybackBaseline(
+        targetAlias: alias,
+        playableType: type,
+        mode: "online-warm",
+      );
+      await Future<void>.delayed(const Duration(seconds: 4));
+    }
+  }
+
+  Future<void> _runPlaybackBaseline({
+    required String targetAlias,
+    required String playableType,
+    required String mode,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final target = await recorder.getTarget(targetAlias);
+    if (target == null) {
+      recorder.diagnostic(
+        "playback-target-missing",
+        values: {
+          "targetAlias": targetAlias,
+          "targetType": playableType,
+        },
+      );
+      return;
+    }
+
+    final container = GetIt.instance<ProviderContainer>();
+    final item = await container.read(
+      itemByIdProvider(BaseItemId(target.itemId)).future,
+    );
+    if (item == null) {
+      recorder.diagnostic(
+        "playback-target-unresolvable",
+        values: {
+          "targetAlias": targetAlias,
+          "targetType": playableType,
+        },
+      );
+      return;
+    }
+
+    final FinampPlayable playable = switch (playableType) {
+      "track" => Track.fromItem(item),
+      "album" => Album.fromItem(item),
+      "artist" => Artist.fromItem(item),
+      "playlist" => Playlist.fromItem(item),
+      _ => throw UnsupportedError("Unsupported playback type $playableType"),
+    };
+
+    await recorder.startRun(
+      scenario: "playback-startup-$playableType",
+      variant: PerformanceBenchmarkService.variant,
+      mode: mode,
+      targetAlias: targetAlias,
+      targetType: playableType,
+    );
+
+    try {
+      final playingFuture = recorder.waitForEvent(
+        "player-playing",
+        timeout: const Duration(minutes: 3),
+      );
+      final firstPositionFuture = recorder.waitForEvent(
+        "player-first-position-advance",
+        timeout: const Duration(minutes: 3),
+      );
+
+      final slice = await recorder.runStep(
+        name: "playable-slice-provider",
+        timeout: const Duration(minutes: 5),
+        operation: () => container.read(
+          getPlayableSliceProvider(
+            item: playable,
+            startingOffset: 0,
+          ).future,
+        ),
+      );
+
+      await recorder.runStep(
+        name: "queue-and-player-start",
+        timeout: const Duration(minutes: 10),
+        operation: () => GetIt.instance<QueueService>().startSlicePlayback(slice),
+      );
+
+      await recorder.runStep(
+        name: "wait-player-playing",
+        timeout: const Duration(minutes: 3),
+        operation: () => playingFuture,
+      );
+      await recorder.runStep(
+        name: "wait-first-position",
+        timeout: const Duration(minutes: 3),
+        operation: () => firstPositionFuture,
+      );
+
+      await recorder.finishRun();
+    } catch (_) {
+      // runStep persists failures/timeouts.
     }
   }
 
