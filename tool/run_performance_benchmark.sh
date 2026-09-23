@@ -19,7 +19,7 @@ summary_md="$out_dir/finamp-benchmark-$timestamp-summary.md"
 app_path="build/ios/iphoneos/Runner.app"
 remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
-timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-86400}"
+timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-259200}"
 
 log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
