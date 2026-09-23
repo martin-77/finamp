@@ -1751,6 +1751,91 @@ class DownloadsService {
     };
   }
 
+  /// Benchmark-only wait for a collection download to reach a terminal state.
+  /// Exports only aggregate counts; media ids/names/paths never leave the device.
+  Future<Map<String, int>> waitForPerformanceBenchmarkDownload({
+    required DownloadStub stub,
+    required int expectedTracks,
+    Duration timeout = const Duration(hours: 2),
+  }) async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark download waiting is only available in benchmark mode",
+      );
+    }
+
+    final benchmark = PerformanceBenchmarkService.instance;
+    final stopwatch = Stopwatch()..start();
+    var previousComplete = -1;
+
+    while (stopwatch.elapsed < timeout) {
+      final progress = getPerformanceBenchmarkCollectionProgress(stub);
+      final complete = progress["completeTracks"] ?? 0;
+      final failed = progress["failedTracks"] ?? 0;
+      final active = progress["activeTracks"] ?? 0;
+      final total = progress["totalTracks"] ?? 0;
+
+      if (complete != previousComplete) {
+        benchmark.metric("downloadCompleteTracks", complete);
+        benchmark.metric("downloadGraphTracks", total);
+        benchmark.metric("downloadFailedTracks", failed);
+        benchmark.metric("downloadActiveTracks", active);
+        previousComplete = complete;
+      }
+
+      if (failed > 0) {
+        throw StateError(
+          "Benchmark download reached a failed terminal state",
+        );
+      }
+
+      if (total == expectedTracks &&
+          complete == expectedTracks &&
+          active == 0) {
+        benchmark.mark(
+          "download-all-tracks-complete",
+          values: {
+            "expectedTracks": expectedTracks,
+            "completeTracks": complete,
+          },
+        );
+        return progress;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+
+    throw TimeoutException(
+      "Benchmark collection download did not complete",
+      timeout,
+    );
+  }
+
+  /// Benchmark-only wait until the target is no longer user-downloaded.
+  Future<void> waitForPerformanceBenchmarkCleanup({
+    required DownloadStub stub,
+    Duration timeout = const Duration(minutes: 10),
+  }) async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark cleanup waiting is only available in benchmark mode",
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    while (stopwatch.elapsed < timeout) {
+      if (!getStatus(stub, null).isDownloaded) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+
+    throw TimeoutException(
+      "Benchmark download cleanup did not finish",
+      timeout,
+    );
+  }
+
   /// Returns the size of a download by recursively calculating the size of all
   /// required children.  Used to display item sizes on downloads screen.
   Future<int> getFileSize(DownloadStub item) =>
