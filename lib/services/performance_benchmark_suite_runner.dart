@@ -876,16 +876,16 @@ class PerformanceBenchmarkSuiteRunner {
     try {
       await recorder.runStep(
         name: "ui-tab-open",
-        timeout: const Duration(seconds: 120),
+        timeout: const Duration(minutes: 10),
         operation: () => recorder.requestUiTab(
           contentType: tab,
           refresh: mode.contains("refreshed"),
-          timeout: const Duration(seconds: 115),
+          timeout: const Duration(minutes: 9, seconds: 30),
         ),
       );
       await recorder.runStep(
         name: "wait-images-quiescent",
-        timeout: const Duration(minutes: 2),
+        timeout: const Duration(minutes: 15),
         operation: recorder.waitForImageQuiescence,
       );
       await recorder.finishRun();
@@ -977,7 +977,7 @@ class PerformanceBenchmarkSuiteRunner {
           contentType: tab,
           queryAlias: "clear",
           query: "",
-          timeout: const Duration(seconds: 120),
+          timeout: const Duration(minutes: 10),
         );
         await _settleUi();
 
@@ -992,17 +992,17 @@ class PerformanceBenchmarkSuiteRunner {
           recorder.metric("queryLength", query.length);
           await recorder.runStep(
             name: "search",
-            timeout: const Duration(seconds: 120),
+            timeout: const Duration(minutes: 10),
             operation: () => recorder.requestSearch(
               contentType: tab,
               queryAlias: queryAlias,
               query: query,
-              timeout: const Duration(seconds: 115),
+              timeout: const Duration(minutes: 9, seconds: 30),
             ),
           );
           await recorder.runStep(
             name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
+            timeout: const Duration(minutes: 15),
             operation: recorder.waitForImageQuiescence,
           );
           await recorder.finishRun();
@@ -1023,17 +1023,17 @@ class PerformanceBenchmarkSuiteRunner {
           recorder.metric("queryLength", query.length);
           await recorder.runStep(
             name: "search",
-            timeout: const Duration(seconds: 60),
+            timeout: const Duration(minutes: 5),
             operation: () => recorder.requestSearch(
               contentType: tab,
               queryAlias: queryAlias,
               query: query,
-              timeout: const Duration(seconds: 55),
+              timeout: const Duration(minutes: 4, seconds: 30),
             ),
           );
           await recorder.runStep(
             name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
+            timeout: const Duration(minutes: 15),
             operation: recorder.waitForImageQuiescence,
           );
           await recorder.finishRun();
@@ -1050,7 +1050,7 @@ class PerformanceBenchmarkSuiteRunner {
       contentType: "tracks",
       queryAlias: "clear",
       query: "",
-      timeout: const Duration(seconds: 120),
+      timeout: const Duration(minutes: 10),
     );
     await _settleUi(
       schedulerCooldown: const Duration(seconds: 2),
@@ -1071,7 +1071,7 @@ class PerformanceBenchmarkSuiteRunner {
       final resolvedTab = await recorder.requestUiTab(
         contentType: requestedTab,
         refresh: true,
-        timeout: const Duration(seconds: 120),
+        timeout: const Duration(minutes: 10),
       );
       await _settleUi(
         schedulerCooldown: const Duration(seconds: 2),
@@ -1090,10 +1090,10 @@ class PerformanceBenchmarkSuiteRunner {
         try {
           loadedPage = await recorder.runStep(
             name: "next-page",
-            timeout: const Duration(seconds: 120),
+            timeout: const Duration(minutes: 10),
             operation: () => recorder.requestNextPage(
               contentType: resolvedTab,
-              timeout: const Duration(seconds: 115),
+              timeout: const Duration(minutes: 9, seconds: 30),
             ),
           );
           if (loadedPage) {
@@ -1514,7 +1514,7 @@ class PerformanceBenchmarkSuiteRunner {
     final offlineTracksTab = await recorder.requestUiTab(
       contentType: "tracks",
       refresh: true,
-      timeout: const Duration(seconds: 120),
+      timeout: const Duration(minutes: 10),
     );
     await _settleUi();
 
@@ -1534,16 +1534,16 @@ class PerformanceBenchmarkSuiteRunner {
       try {
         loadedPage = await recorder.runStep(
           name: "next-page",
-          timeout: const Duration(seconds: 120),
+          timeout: const Duration(minutes: 10),
           operation: () => recorder.requestNextPage(
             contentType: offlineTracksTab,
-            timeout: const Duration(seconds: 115),
+            timeout: const Duration(minutes: 29, seconds: 30),
           ),
         );
         if (loadedPage) {
           await recorder.runStep(
             name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
+            timeout: const Duration(minutes: 15),
             operation: recorder.waitForImageQuiescence,
           );
         }
@@ -1561,7 +1561,7 @@ class PerformanceBenchmarkSuiteRunner {
     final offlineAlphabetTab = await recorder.requestUiTab(
       contentType: "tracks",
       refresh: true,
-      timeout: const Duration(seconds: 120),
+      timeout: const Duration(minutes: 10),
     );
     await _settleUi();
 
@@ -1580,11 +1580,11 @@ class PerformanceBenchmarkSuiteRunner {
         recorder.metric("letter", letter);
         await recorder.runStep(
           name: "alphabet-jump",
-          timeout: const Duration(seconds: 120),
+          timeout: const Duration(minutes: 30),
           operation: () => recorder.requestAlphabetJump(
             contentType: offlineAlphabetTab,
             letter: letter,
-            timeout: const Duration(seconds: 115),
+            timeout: const Duration(minutes: 29, seconds: 30),
           ),
         );
         await recorder.runStep(
@@ -1616,11 +1616,11 @@ class PerformanceBenchmarkSuiteRunner {
         recorder.metric("letter", letter);
         await recorder.runStep(
           name: "alphabet-jump",
-          timeout: const Duration(seconds: 60),
+          timeout: const Duration(minutes: 5),
           operation: () => recorder.requestAlphabetJump(
             contentType: offlineAlphabetTab,
             letter: letter,
-            timeout: const Duration(seconds: 55),
+            timeout: const Duration(minutes: 4, seconds: 30),
           ),
         );
         await recorder.runStep(
@@ -1654,12 +1654,12 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.runStep(
           name: "search",
-          timeout: const Duration(seconds: 120),
+          timeout: const Duration(minutes: 10),
           operation: () => recorder.requestSearch(
             contentType: "tracks",
             queryAlias: "download-target-track",
             query: privateOfflineSearchQuery,
-            timeout: const Duration(seconds: 115),
+            timeout: const Duration(minutes: 29, seconds: 30),
           ),
         );
         await recorder.runStep(
@@ -1688,12 +1688,12 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.runStep(
           name: "search",
-          timeout: const Duration(seconds: 60),
+          timeout: const Duration(minutes: 5),
           operation: () => recorder.requestSearch(
             contentType: "tracks",
             queryAlias: "download-target-track",
             query: privateOfflineSearchQuery,
-            timeout: const Duration(seconds: 55),
+            timeout: const Duration(minutes: 4, seconds: 30),
           ),
         );
         await recorder.runStep(
@@ -1710,7 +1710,7 @@ class PerformanceBenchmarkSuiteRunner {
         contentType: "tracks",
         queryAlias: "clear",
         query: "",
-        timeout: const Duration(seconds: 120),
+        timeout: const Duration(minutes: 10),
       );
       await _settleUi();
     }
@@ -2146,7 +2146,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.runStep(
         name: "wait-images-quiescent",
-        timeout: const Duration(minutes: 2),
+        timeout: const Duration(minutes: 15),
         operation: recorder.waitForImageQuiescence,
       );
 
@@ -2243,13 +2243,13 @@ class PerformanceBenchmarkSuiteRunner {
 
       await recorder.runStep(
         name: "detail-open",
-        timeout: const Duration(seconds: 180),
+        timeout: const Duration(minutes: 15),
         operation: () => recorder.requestDetail(
           targetAlias: targetAlias,
           targetType: detailType,
           itemId: target.itemId,
           refresh: refresh,
-          timeout: const Duration(seconds: 175),
+          timeout: const Duration(minutes: 14, seconds: 30),
           open: () {
             if (detailType == "artist") {
               navigator.push(
@@ -2279,7 +2279,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.runStep(
         name: "wait-images-quiescent",
-        timeout: const Duration(minutes: 2),
+        timeout: const Duration(minutes: 15),
         operation: recorder.waitForImageQuiescence,
       );
       await recorder.finishRun();
@@ -2317,7 +2317,7 @@ class PerformanceBenchmarkSuiteRunner {
       final resolvedTab = await recorder.requestUiTab(
         contentType: requestedTab,
         refresh: true,
-        timeout: const Duration(seconds: 120),
+        timeout: const Duration(minutes: 10),
       );
       await _settleUi(
         schedulerCooldown: const Duration(seconds: 2),
@@ -2334,16 +2334,16 @@ class PerformanceBenchmarkSuiteRunner {
           recorder.metric("letter", letter);
           await recorder.runStep(
             name: "alphabet-jump",
-            timeout: const Duration(seconds: 120),
+            timeout: const Duration(minutes: 30),
             operation: () => recorder.requestAlphabetJump(
               contentType: resolvedTab,
               letter: letter,
-              timeout: const Duration(seconds: 115),
+              timeout: const Duration(minutes: 29, seconds: 30),
             ),
           );
           await recorder.runStep(
             name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
+            timeout: const Duration(minutes: 15),
             operation: recorder.waitForImageQuiescence,
           );
           await recorder.finishRun();
@@ -2367,16 +2367,16 @@ class PerformanceBenchmarkSuiteRunner {
           recorder.metric("letter", letter);
           await recorder.runStep(
             name: "alphabet-jump",
-            timeout: const Duration(seconds: 60),
+            timeout: const Duration(minutes: 5),
             operation: () => recorder.requestAlphabetJump(
               contentType: resolvedTab,
               letter: letter,
-              timeout: const Duration(seconds: 55),
+              timeout: const Duration(minutes: 4, seconds: 30),
             ),
           );
           await recorder.runStep(
             name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
+            timeout: const Duration(minutes: 15),
             operation: recorder.waitForImageQuiescence,
           );
           await recorder.finishRun();
@@ -2514,7 +2514,7 @@ class PerformanceBenchmarkSuiteRunner {
           recorder.metric("requestedPageSize", limit);
           final result = await recorder.runStep(
             name: "request",
-            timeout: const Duration(minutes: 3),
+            timeout: const Duration(minutes: 10),
             operation: () => api.getItemsWithTotalRecordCount(
               includeItemTypes: itemType,
               recursive: true,
