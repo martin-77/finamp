@@ -15,8 +15,9 @@ No manual item-slot setup is required.
 The runner validates the fixed benchmark playlists `bench-10 [Smart]`,
 `bench-100 [Smart]`, `bench-1000 [Smart]` and `bench-10000 [Smart]`.
 It derives device-local album, artist, genre and track targets automatically.
-Search uses the fixed public query labels Iron Maiden, Metallica and Kettcar and
-derives a private artist -> album -> track chain for each.
+Search uses three locally supplied private query strings and derives a private
+artist -> album -> track chain for each. Only neutral aliases (`query-1`,
+`query-2`, `query-3`) and query length are exported.
 
 The benchmark export must not contain Jellyfin IDs, server URLs, user IDs,
 API keys, private item names, private artist/album names, local file paths or
@@ -107,7 +108,7 @@ and ids are never exported.
    - deterministic album
    - deterministic artist
    - deterministic genre
-   - search-derived artist/album chains for Iron Maiden, Metallica and Kettcar
+   - search-derived artist/album chains for the three locally configured queries
    - `bench-10`, `bench-100`, `bench-1000`, `bench-10000` playlist detail
    - navigation action -> shell rendered -> metadata/children ready -> first full content frame
    - refreshed/cold-provider and warm-provider repeats
@@ -118,7 +119,7 @@ and ids are never exported.
    - deterministic album
    - deterministic artist
    - deterministic genre
-   - search-derived track/album/artist chains for Iron Maiden, Metallica and Kettcar
+   - search-derived track/album/artist chains for the three locally configured queries
    - all four benchmark playlists
    - slice resolution, queue construction, queue length
    - player ready, playing, first position advance, useful buffering where available
@@ -195,7 +196,7 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown |
 | Home + main tabs | automated | rotated refreshed/warm rounds with first-rendered + quiescent timing |
 | deep paging | automated | repeated real UI next-page actions |
-| Search | automated | Iron Maiden, Metallica, Kettcar + broad query + search paging |
+| Search | automated | three locally configured private queries + broad query + search paging |
 | Artist → Album → Track | automated | deterministic private chain per named artist, cumulative drill-down and playback |
 | alphabet fast-scroller | automated | real `# → A → G → M → Z` path for Tracks/Artists/Albums, refreshed and warm-loaded |
 | details | automated | album, artist, genre and 10/100/1000/10000 playlist details |
@@ -244,7 +245,9 @@ project-file modification while still rejecting unrelated source changes.
 Before the multi-hour baseline, run the same harness with a reduced matrix:
 
 ```bash
-FINAMP_BENCH_SMOKE=true bash tool/bootstrap_performance_benchmark_macos.sh
+FINAMP_BENCH_SEARCH_QUERY_1='<private query 1>' \
+FINAMP_BENCH_SMOKE=true \
+bash tool/bootstrap_performance_benchmark_macos.sh
 ```
 
 Smoke mode is a compile-time matrix selector, not a second benchmark
@@ -256,7 +259,7 @@ work:
 - one main UI round instead of three
 - paging only through page 3 (offline paging through page 2)
 - alphabet jumps use `A -> Z`
-- search and drill-down use only the Iron Maiden target chain
+- search and drill-down use only `query-1`
 - online playback uses the deterministic track and `bench-10`
 - downloads/offline lifecycle use only `bench-10`
 - queue persistence/explicit restore uses the resulting 10-track queue
@@ -271,6 +274,21 @@ the default when `FINAMP_BENCH_SMOKE` is unset.
 
 A smoke `suite-complete` record uses `phase=smoke`; summary generation and
 privacy rules are otherwise identical to the full run.
+
+## Private search configuration
+
+Search strings are deliberately not committed to the branch and are not
+written to JSONL or summaries. Supply them only in the local shell environment:
+
+```bash
+export FINAMP_BENCH_SEARCH_QUERY_1='<private query 1>'
+export FINAMP_BENCH_SEARCH_QUERY_2='<private query 2>'
+export FINAMP_BENCH_SEARCH_QUERY_3='<private query 3>'
+```
+
+Smoke mode requires only query 1. Full mode requires all three. The iOS build
+receives them as compile-time Dart defines; host records contain only neutral
+query aliases and query lengths.
 
 ## Result privacy tiers
 
