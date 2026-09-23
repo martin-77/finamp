@@ -301,6 +301,12 @@ class PerformanceBenchmarkService {
       StreamController<int>.broadcast();
   String? _httpFirstRequestRunId;
   String? _httpFirstResponseRunId;
+  bool _startupPlaylistMetadataWorkRan = false;
+  int _startupNetworkRequestCount = 0;
+  int _startupNetworkResponseBytes = 0;
+  int _startupNetworkDurationMicros = 0;
+  int _startupNetworkDurationMicrosMax = 0;
+
   int _imageLoadsInFlight = 0;
   int _imageLoadGeneration = 0;
   final StreamController<int> _imageLoadController =
@@ -334,6 +340,28 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
       _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
+  bool get startupPlaylistMetadataWorkRan =>
+      _startupPlaylistMetadataWorkRan;
+
+  void markStartupPlaylistMetadataWorkRan() {
+    if (!enabled) return;
+    _startupPlaylistMetadataWorkRan = true;
+    diagnostic("startup-playlist-metadata-work-complete");
+  }
+
+  void reportStartupNetworkSummary() {
+    if (!enabled) return;
+    diagnostic(
+      "startup-network-summary",
+      values: {
+        "requestCount": _startupNetworkRequestCount,
+        "responseBytes": _startupNetworkResponseBytes,
+        "durationMicrosTotal": _startupNetworkDurationMicros,
+        "durationMicrosMax": _startupNetworkDurationMicrosMax,
+      },
+    );
+  }
+
   String? get startupSelectedContentType => _startupSelectedContentType;
 
   void setStartupSelectedContentType(String contentType) {
@@ -720,6 +748,7 @@ class PerformanceBenchmarkService {
 
   void networkRequestStarted() {
     if (!enabled) return;
+    _startupNetworkRequestCount++;
     _networkRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
@@ -744,12 +773,17 @@ class PerformanceBenchmarkService {
   }) {
     if (!enabled) return;
     if (responseBytes != null && responseBytes >= 0) {
+      _startupNetworkResponseBytes += responseBytes;
       incrementMetricBuffered("httpResponseBytes", responseBytes);
       incrementMetricBuffered("httpResponsesWithKnownBytes");
     } else {
       incrementMetricBuffered("httpResponsesUnknownBytes");
     }
     if (durationMicros != null && durationMicros >= 0) {
+      _startupNetworkDurationMicros += durationMicros;
+      if (durationMicros > _startupNetworkDurationMicrosMax) {
+        _startupNetworkDurationMicrosMax = durationMicros;
+      }
       incrementMetricBuffered(
         "httpDurationMicrosTotal",
         durationMicros,
