@@ -32,6 +32,7 @@ def main():
     queue_restores = []
     queue_restore_content = []
     startup_network = []
+    startup_frames = []
     network_target_events = []
     recovered_runs = []
     phases = []
@@ -124,6 +125,7 @@ def main():
             elif name in {
                 "network-target-ping",
                 "network-target-state-changed",
+                "network-target-changed",
             }:
                 network_target_events.append({
                     "name": name,
