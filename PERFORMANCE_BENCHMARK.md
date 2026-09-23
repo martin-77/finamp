@@ -283,3 +283,36 @@ The collector writes two files under `benchmark-results/`:
 JSONL is append-only while the run is executing, so completed events remain on
 the Mac even if the app crashes or is terminated by iOS. Device-local
 checkpointing remains enabled as a second recovery source.
+
+
+### Required post-download execution order
+
+For each of bench-10, bench-100 and bench-1000 the automated runner must use
+this exact lifecycle:
+
+```
+online baseline for target
+-> download target
+-> verify complete + record local byte size
+-> force Finamp offline mode
+-> local-downloaded-cold scenarios
+-> local-downloaded-warm scenarios
+-> restore previous offline setting
+-> cleanup downloaded target
+-> verify target is no longer downloaded
+```
+
+Cleanup is deliberately delayed until both local phases have completed.
+
+Local scenarios include, where supported by the target:
+
+- collection/detail resolution
+- queue construction
+- playback startup
+- first position advance
+- repeated playback startup
+- paging
+- alphabet jump through the real fast-scroller path
+
+The runner records the previous offline setting before changing it and restores
+that exact value afterwards, including after a handled benchmark failure.
