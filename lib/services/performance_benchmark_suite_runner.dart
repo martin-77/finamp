@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/models/jellyfin_models.dart';
@@ -103,6 +104,16 @@ class PerformanceBenchmarkSuiteRunner {
         "variant": PerformanceBenchmarkService.variant,
         "suiteRunId": PerformanceBenchmarkService.suiteRunId,
         "stage": stage ?? "fresh",
+      },
+    );
+    recorder.diagnostic(
+      "runtime-environment",
+      values: {
+        "operatingSystem": Platform.operatingSystem,
+        "operatingSystemVersion": Platform.operatingSystemVersion,
+        "dartVersion": Platform.version,
+        "processorCount": Platform.numberOfProcessors,
+        "variant": PerformanceBenchmarkService.variant,
       },
     );
 
