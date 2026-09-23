@@ -22,6 +22,8 @@ def main():
                 "result": "success",
                 "metrics": {
                     "alphabetJumpPagesLoaded": 47,
+                    "playlistItemsSeen": 123,
+                    "playlistPagesFetched": 4,
                     "pageItemsAdded": 100,
                     "rssDeltaBytes": 123456,
                 },
@@ -191,6 +193,8 @@ def main():
         metrics = group["numericMetrics"]
 
         assert "alphabetJumpPagesLoaded" not in metrics
+        assert "playlistItemsSeen" not in metrics
+        assert "playlistPagesFetched" not in metrics
         assert "pageItemsAdded" in metrics
 
         environments = summary["runtimeEnvironments"]
@@ -219,6 +223,8 @@ def main():
         markdown = md_out.read_text(encoding="utf-8")
         assert "4321" not in markdown
         assert "321" not in markdown
+        assert "playlistItemsSeen" not in markdown
+        assert "playlistPagesFetched" not in markdown
         assert "1000-4999" in markdown
         assert "100-999" in markdown
         assert "persistent-cache-startup" in markdown
