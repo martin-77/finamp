@@ -74,6 +74,21 @@ bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/I
   exit 1
 }
 
+production_bundle_id="com.unicornsonlsd.finamp-ios"
+allow_production_bundle="${FINAMP_BENCH_ALLOW_PRODUCTION_BUNDLE:-false}"
+if [[ "$bundle_id" == "$production_bundle_id" ]]; then
+  case "$allow_production_bundle" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+      log "WARNING: Explicit override allows benchmark installation over the normal Finamp bundle."
+      ;;
+    *)
+      log "ERROR: Refusing to install the destructive benchmark over the normal Finamp bundle ($production_bundle_id)."
+      log "Use a separate local benchmark bundle identifier. Only if replacement is intentional, set FINAMP_BENCH_ALLOW_PRODUCTION_BUNDLE=true."
+      exit 2
+      ;;
+  esac
+fi
+
 log ""
 log "==> Installing $bundle_id on device $device_id"
 xcrun devicectl device install app   --device "$device_id"   "$app_path" 2>&1 | tee -a "$raw_log"
