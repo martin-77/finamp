@@ -281,6 +281,11 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
 
   // Integration testing will launch the widgets itself, so just return
   if (!integrationTesting) {
+    if (PerformanceBenchmarkService.enabled) {
+      SchedulerBinding.instance.addTimingsCallback(
+        PerformanceBenchmarkService.instance.recordFrameTimings,
+      );
+    }
     PerformanceBenchmarkService.instance.diagnostic(
       "startup-main-init-complete",
       values: {
