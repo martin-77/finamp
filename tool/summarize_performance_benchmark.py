@@ -403,6 +403,11 @@ def main():
                     if values.get("toLocalTarget")
                     else "public"
                 )
+            if state is None and (
+                values.get("from") is not None
+                or values.get("to") is not None
+            ):
+                state = f"{values.get('from', '')} -> {values.get('to', '')}"
             lines.append(
                 f"| {item.get('name', '')} | {state or ''} | "
                 f"{values.get('success', '')} | {values.get('durationMs', '')} |"
