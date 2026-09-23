@@ -287,21 +287,15 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
         PerformanceBenchmarkService.instance.recordFrameTimings,
       );
     }
-    PerformanceBenchmarkService.instance.diagnostic(
+    await PerformanceBenchmarkService.instance.reportStartupMilestone(
       "startup-main-init-complete",
-      values: {
-        "processElapsedMs":
-            benchmarkStartupStopwatch.elapsedMicroseconds / 1000.0,
-      },
     );
     runApp(const Finamp());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      PerformanceBenchmarkService.instance.diagnostic(
-        "startup-first-frame",
-        values: {
-          "processElapsedMs":
-              benchmarkStartupStopwatch.elapsedMicroseconds / 1000.0,
-        },
+      unawaited(
+        PerformanceBenchmarkService.instance.reportStartupMilestone(
+          "startup-first-frame",
+        ),
       );
     });
     PerformanceBenchmarkSuiteRunner.instance.arm();
