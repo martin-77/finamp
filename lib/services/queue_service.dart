@@ -383,6 +383,25 @@ class QueueService {
     return info;
   }
 
+  /// Test-only explicit persistence hook for the performance harness.
+  ///
+  /// Normal Finamp keeps its periodic persistence behaviour. The benchmark
+  /// needs a deterministic disk checkpoint immediately before a planned
+  /// process restart so queue-restore startup cost is reproducible.
+  int persistPerformanceBenchmarkQueue() {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Explicit queue persistence is only available in benchmark mode",
+      );
+    }
+    final info = _saveCurrentQueue(withPosition: true);
+    PerformanceBenchmarkService.instance.diagnostic(
+      "queue-persisted-for-restart",
+      values: {"trackCount": info.trackCount},
+    );
+    return info.trackCount;
+  }
+
   Future<void> performInitialQueueLoad() async {
     if (_savedQueueState == SavedQueueState.preInit) {
       try {
@@ -390,6 +409,12 @@ class QueueService {
         archiveSavedQueue(inInit: true);
         var info = _queuesBox.get("latest");
         if (info != null) {
+          if (PerformanceBenchmarkService.enabled) {
+            PerformanceBenchmarkService.instance.diagnostic(
+              "queue-restore-found",
+              values: {"storedTrackCount": info.trackCount},
+            );
+          }
           var keys = _queuesBox.values.map((x) => DateTime.fromMillisecondsSinceEpoch(x.creation)).toList();
           keys.sort();
           _queueServiceLogger.finest("Stored queue dates: $keys");
