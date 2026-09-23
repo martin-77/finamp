@@ -98,7 +98,7 @@ Do not reuse DownloadItem:
 - indexed online metadata must exist even when nothing is downloaded;
 - deleting downloads must never remove online browse metadata;
 - download state has different lifecycle and consistency rules;
-- 400k+ library items need indexes chosen for browsing/search, not file state.
+- very large library items need indexes chosen for browsing/search, not file state.
 
 ## Initial population
 
@@ -120,7 +120,7 @@ Do not deserialize or retain the full library in memory.
 
 ## Incremental refresh
 
-A full 400k-item crawl on every launch is unacceptable.
+A full very large crawl on every launch is unacceptable.
 
 Preferred hierarchy:
 
@@ -210,7 +210,7 @@ Before and after each phase record:
 - index upsert time per 500 items
 - memory high-water mark while indexing
 
-Primary large-library target for development: approximately 400k tracks.
+Primary large-library target for development: a high-cardinality music library.
 
 ## PR decomposition
 
