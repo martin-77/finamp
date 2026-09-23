@@ -35,7 +35,7 @@ allowed_exact = {
 }
 allowed_prefixes = (
     "?? benchmark-results/",
-    "?? Build Runner_",
+    "?? \"Build Runner_",
 )
 for line in sys.stdin:
     line = line.rstrip("\n")
