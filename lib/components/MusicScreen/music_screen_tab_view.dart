@@ -160,11 +160,21 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _activeBenchmarkTab = command;
     _benchmarkTabDataMarked = false;
     _benchmarkTabFrameScheduled = false;
-    PerformanceBenchmarkService.instance.mark(
-      "ui-tab-refresh-start",
-      values: {"contentType": widget.contentType?.name},
-    );
-    ref.read(pageControl.notifier).refresh();
+    if (command.refresh) {
+      PerformanceBenchmarkService.instance.mark(
+        "ui-tab-refresh-start",
+        values: {"contentType": widget.contentType?.name},
+      );
+      ref.read(pageControl.notifier).refresh();
+    } else {
+      PerformanceBenchmarkService.instance.mark(
+        "ui-tab-warm-state-reused",
+        values: {
+          "contentType": widget.contentType?.name,
+          "loadedItems": ref.read(pageControl).items?.length ?? 0,
+        },
+      );
+    }
   }
 
   void _maybeCompleteBenchmarkTab(
