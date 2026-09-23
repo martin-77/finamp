@@ -3025,54 +3025,88 @@ class PerformanceBenchmarkSuiteRunner {
     final api = GetIt.instance<JellyfinApiHelper>();
     final recorder = PerformanceBenchmarkService.instance;
 
-    const collections = <(String, String)>[
-      ("artists", "MusicArtist"),
-      ("albums", "MusicAlbum"),
-      ("tracks", "Audio"),
-      ("playlists", "Playlist"),
-      ("genres", "MusicGenre"),
+    const rounds = <List<(String, String)>>[
+      [
+        ("artists", "MusicArtist"),
+        ("albums", "MusicAlbum"),
+        ("tracks", "Audio"),
+        ("playlists", "Playlist"),
+        ("genres", "MusicGenre"),
+      ],
+      [
+        ("genres", "MusicGenre"),
+        ("playlists", "Playlist"),
+        ("tracks", "Audio"),
+        ("albums", "MusicAlbum"),
+        ("artists", "MusicArtist"),
+      ],
+      [
+        ("tracks", "Audio"),
+        ("artists", "MusicArtist"),
+        ("genres", "MusicGenre"),
+        ("albums", "MusicAlbum"),
+        ("playlists", "Playlist"),
+      ],
     ];
 
-    for (final collection in collections) {
-      final (scenarioName, itemType) = collection;
+    for (var round = 0; round < rounds.length; round++) {
+      recorder.diagnostic(
+        "api-reference-round-start",
+        values: {"round": round + 1},
+      );
 
-      for (final request in const <(int, String)>[
-        (25, "size-25"),
-        (100, "size-100-first"),
-        (100, "size-100-warm"),
-        (500, "size-500"),
-      ]) {
-        final (limit, mode) = request;
-        await recorder.startRun(
-          scenario: "collection-page-$scenarioName",
-          variant: PerformanceBenchmarkService.variant,
-          mode: mode,
-          targetType: itemType,
-        );
+      for (final collection in rounds[round]) {
+        final (scenarioName, itemType) = collection;
 
-        try {
-          recorder.metric("requestedPageSize", limit);
-          final result = await recorder.runStep(
-            name: "request",
-            timeout: const Duration(minutes: 10),
-            operation: () => api.getItemsWithTotalRecordCount(
-              includeItemTypes: itemType,
-              recursive: true,
-              startIndex: 0,
-              limit: limit,
-            ),
+        for (final request in const <(int, String)>[
+          (25, "size-25"),
+          (100, "size-100-first"),
+          (100, "size-100-warm"),
+          (500, "size-500"),
+        ]) {
+          final (limit, mode) = request;
+          await recorder.startRun(
+            scenario: "collection-page-$scenarioName",
+            variant: PerformanceBenchmarkService.variant,
+            mode: mode,
+            targetType: itemType,
           );
 
-          recorder.metric("pageSize", result.items?.length ?? 0);
-          // Never export totalRecordCount: it would reveal private library
-          // cardinality. Page-size scaling is sufficient for this baseline.
-          await recorder.finishRun();
-        } catch (_) {
-          // runStep already finalized the failed/timeout run.
-        }
+          try {
+            recorder.metric("round", round + 1);
+            recorder.metric("requestedPageSize", limit);
+            final result = await recorder.runStep(
+              name: "request",
+              timeout: const Duration(minutes: 10),
+              operation: () => api.getItemsWithTotalRecordCount(
+                includeItemTypes: itemType,
+                recursive: true,
+                startIndex: 0,
+                limit: limit,
+              ),
+            );
 
-        await Future<void>.delayed(const Duration(seconds: 1));
+            recorder.metric("pageSize", result.items?.length ?? 0);
+            // Never export totalRecordCount: it would reveal private library
+            // cardinality. Page-size scaling is sufficient for this baseline.
+            await recorder.finishRun();
+          } catch (_) {
+            // runStep already finalized the failed/timeout run.
+          }
+
+          await recorder.waitForNetworkQuiescence(
+            quietPeriod: const Duration(milliseconds: 500),
+            timeout: const Duration(minutes: 10),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
       }
+
+      recorder.diagnostic(
+        "api-reference-round-complete",
+        values: {"round": round + 1},
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
     }
   }
 }
