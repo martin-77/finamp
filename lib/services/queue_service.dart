@@ -425,6 +425,11 @@ class QueueService {
 
     await stopAndClearQueue();
 
+    // archiveSavedQueue() runs as part of stopAndClearQueue(). Do not leave a
+    // benchmark-only copy in the saved-queue history: the snapshot creation
+    // timestamp is unique to the explicit benchmark persistence above.
+    await _queuesBox.delete(snapshot.creation.toString());
+
     // stopAndClearQueue may persist the now-empty active queue. Restore the
     // previously flushed benchmark snapshot after the clear has completed.
     await _queuesBox.put("latest", snapshot);
@@ -530,7 +535,12 @@ class QueueService {
       );
     }
 
+    final benchmarkSnapshot = _queuesBox.get("latest");
     await stopAndClearQueue();
+    if (benchmarkSnapshot != null) {
+      // Prevent the final clear from retaining the benchmark queue in history.
+      await _queuesBox.delete(benchmarkSnapshot.creation.toString());
+    }
     await _queuesBox.delete("latest");
     await _queuesBox.flush();
 
