@@ -421,14 +421,19 @@ class PerformanceBenchmarkSuiteRunner {
       await WidgetsBinding.instance.endOfFrame;
       await _ensureSuiteOnlineBaseline();
 
-      // Recover any stale cleanup marker from an older interrupted suite first.
-      await _recoverPendingDownloadCleanup();
-      await _clearPreviousBenchmarkArtifacts();
+      // Let normal startup and queue restoration settle before mutating
+      // benchmark-owned state. Otherwise a stale persisted queue could be
+      // restored concurrently with preconditioning cleanup.
       await _waitForStartupReady(
         phase: "suite-preconditioning",
         startupTaskTimeout: const Duration(minutes: 30),
         networkTimeout: const Duration(minutes: 30),
       );
+
+      // Recover stale benchmark cleanup only after the startup queues/services
+      // are quiescent, then remove any artifacts left by earlier benchmark runs.
+      await _recoverPendingDownloadCleanup();
+      await _clearPreviousBenchmarkArtifacts();
 
       final downloads = GetIt.instance<DownloadsService>();
       final metadataStub = DownloadStub.fromFinampCollection(
