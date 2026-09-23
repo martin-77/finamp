@@ -403,7 +403,10 @@ class PerformanceBenchmarkService {
     }
     diagnostic(
       "startup-screen-first-rendered-content",
-      values: {"contentType": contentType},
+      values: {
+        "contentType": contentType,
+        "processElapsedMs": processElapsedMs,
+      },
     );
     _startupScreenReady.complete();
   }
@@ -898,6 +901,7 @@ class PerformanceBenchmarkService {
           "network-quiescent",
           values: {
             "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+            "processElapsedMs": processElapsedMs,
           },
         );
         return;
@@ -942,6 +946,7 @@ class PerformanceBenchmarkService {
           "startup-quiescent",
           values: {
             "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+            "processElapsedMs": processElapsedMs,
           },
         );
         return;
