@@ -492,17 +492,19 @@ def main():
         "",
         "## Startup fully ready",
         "",
-        "| Phase | Process elapsed ms |",
-        "|---|---:|",
+        "| Phase | Dart-main elapsed ms | Native-launch elapsed ms |",
+        "|---|---:|---:|",
     ])
     if ready_events:
         for item in ready_events:
             values = item.get("values") or {}
+            native_elapsed = values.get("nativeLaunchElapsedMs")
             lines.append(
-                f"| {values.get('phase', '')} | {values.get('processElapsedMs', '')} |"
+                f"| {values.get('phase', '')} | {values.get('processElapsedMs', '')} | "
+                f"{'' if not isinstance(native_elapsed, (int, float)) else round(native_elapsed, 3)} |"
             )
     else:
-        lines.append("|  |  |")
+        lines.append("|  |  |  |")
 
     lines.extend([
         "",
