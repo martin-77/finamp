@@ -297,6 +297,10 @@ class PerformanceBenchmarkService {
   int _networkGeneration = 0;
   final StreamController<int> _networkRequestController =
       StreamController<int>.broadcast();
+  int _imageLoadsInFlight = 0;
+  int _imageLoadGeneration = 0;
+  final StreamController<int> _imageLoadController =
+      StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
@@ -618,6 +622,61 @@ class PerformanceBenchmarkService {
         },
       );
     }
+  }
+
+  void imageLoadStarted() {
+    if (!enabled) return;
+    _imageLoadsInFlight++;
+    _imageLoadGeneration++;
+    _imageLoadController.add(_imageLoadsInFlight);
+    incrementMetricBuffered("imageLoadStarted");
+    maxMetricBuffered("imageMaxConcurrentLoads", _imageLoadsInFlight);
+  }
+
+  void imageLoadCompleted({bool failed = false, bool synchronous = false}) {
+    if (!enabled) return;
+    if (_imageLoadsInFlight > 0) {
+      _imageLoadsInFlight--;
+    }
+    _imageLoadGeneration++;
+    _imageLoadController.add(_imageLoadsInFlight);
+    incrementMetricBuffered(
+      failed ? "imageLoadFailed" : "imageLoadCompleted",
+    );
+    if (synchronous) {
+      incrementMetricBuffered("imageLoadSynchronous");
+    }
+  }
+
+  Future<void> waitForImageQuiescence({
+    Duration quietPeriod = const Duration(milliseconds: 500),
+    Duration timeout = const Duration(minutes: 2),
+  }) async {
+    if (!enabled) return;
+
+    final overall = Stopwatch()..start();
+    while (overall.elapsed < timeout) {
+      if (_imageLoadsInFlight != 0) {
+        await _imageLoadController.stream
+            .firstWhere((pending) => pending == 0)
+            .timeout(timeout - overall.elapsed);
+      }
+
+      final generationAtZero = _imageLoadGeneration;
+      await Future<void>.delayed(quietPeriod);
+      if (_imageLoadsInFlight == 0 &&
+          _imageLoadGeneration == generationAtZero) {
+        mark(
+          "image-loads-quiescent",
+          values: {
+            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+          },
+        );
+        return;
+      }
+    }
+
+    throw TimeoutException("Image loads did not become quiescent", timeout);
   }
 
   void networkRequestStarted() {
