@@ -114,4 +114,5 @@ printf 'The app will be built, installed and launched via Xcode devicectl.\n'
 printf 'No Flutter mDNS / Dart VM service connection is required.\n\n'
 
 BENCH_VARIANT="$(git rev-parse --short=12 HEAD)"
-bash tool/run_performance_benchmark.sh "$DEVICE_ID" "$BENCH_VARIANT"
+BENCH_RUN_ID="$(date -u +"%Y%m%dT%H%M%SZ")"
+bash tool/run_performance_benchmark.sh "$DEVICE_ID" "$BENCH_VARIANT" "$BENCH_RUN_ID"
