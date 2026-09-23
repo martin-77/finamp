@@ -515,6 +515,11 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (!_stageAtOrAfter(stage, "main-playback-done")) {
+        await _runSearchDrilldownBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "artist-album-track-drilldown"},
+        );
         await _runPlaybackBaselines();
         recorder.diagnostic(
           "suite-phase-complete",
@@ -2157,6 +2162,194 @@ class PerformanceBenchmarkSuiteRunner {
         "failedTracks": progress["failedTracks"] ?? 0,
       },
     );
+  }
+
+  Future<void> _runSearchDrilldownBaselines() async {
+    for (final queryAlias in const <String>[
+      "iron-maiden",
+      "metallica",
+      "kettcar",
+    ]) {
+      await _runSearchDrilldown(queryAlias);
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 4),
+      );
+    }
+  }
+
+  Future<void> _runSearchDrilldown(String queryAlias) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final artistTarget =
+        await recorder.getTarget("search-artist-$queryAlias");
+    final albumTarget =
+        await recorder.getTarget("search-album-$queryAlias");
+    final trackTarget =
+        await recorder.getTarget("search-track-$queryAlias");
+
+    if (artistTarget == null || albumTarget == null || trackTarget == null) {
+      recorder.diagnostic(
+        "search-drilldown-target-missing",
+        values: {"queryAlias": queryAlias},
+      );
+      return;
+    }
+
+    final container = GetIt.instance<ProviderContainer>();
+    final artist = await container.read(
+      itemByIdProvider(BaseItemId(artistTarget.itemId)).future,
+    );
+    final album = await container.read(
+      itemByIdProvider(BaseItemId(albumTarget.itemId)).future,
+    );
+    final track = await container.read(
+      itemByIdProvider(BaseItemId(trackTarget.itemId)).future,
+    );
+    if (artist == null || album == null || track == null) {
+      recorder.diagnostic(
+        "search-drilldown-target-unresolvable",
+        values: {"queryAlias": queryAlias},
+      );
+      return;
+    }
+
+    final navigator = GlobalSnackbar.navigatorState;
+    if (navigator == null) {
+      recorder.diagnostic(
+        "search-drilldown-navigator-missing",
+        values: {"queryAlias": queryAlias},
+      );
+      return;
+    }
+
+    await recorder.startRun(
+      scenario: "artist-album-track-drilldown",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "online-sequential",
+      targetAlias: queryAlias,
+      targetType: "artist-album-track",
+    );
+
+    try {
+      await recorder.runStep(
+        name: "artist-open",
+        timeout: const Duration(minutes: 15),
+        operation: () => recorder.requestDetail(
+          targetAlias: "search-artist-$queryAlias",
+          targetType: "artist",
+          itemId: artistTarget.itemId,
+          refresh: true,
+          timeout: const Duration(minutes: 14, seconds: 30),
+          open: () {
+            navigator.push(
+              MaterialPageRoute<ArtistScreen>(
+                builder: (_) => ArtistScreen(widgetArtist: artist),
+              ),
+            );
+          },
+        ),
+      );
+      recorder.mark(
+        "drilldown-artist-ready",
+        values: {"queryAlias": queryAlias},
+      );
+      await _waitForUiQuiescence();
+
+      await recorder.runStep(
+        name: "album-open",
+        timeout: const Duration(minutes: 15),
+        operation: () => recorder.requestDetail(
+          targetAlias: "search-album-$queryAlias",
+          targetType: "album",
+          itemId: albumTarget.itemId,
+          refresh: true,
+          timeout: const Duration(minutes: 14, seconds: 30),
+          open: () {
+            navigator.push(
+              MaterialPageRoute<AlbumScreen>(
+                builder: (_) => AlbumScreen(parent: album),
+              ),
+            );
+          },
+        ),
+      );
+      recorder.mark(
+        "drilldown-album-ready",
+        values: {"queryAlias": queryAlias},
+      );
+      await _waitForUiQuiescence();
+
+      final playable = Track.fromItem(track);
+      final slice = await recorder.runStep(
+        name: "track-playable-slice",
+        timeout: const Duration(minutes: 5),
+        operation: () => container.read(
+          getPlayableSliceProvider(
+            item: playable,
+            startingOffset: 0,
+          ).future,
+        ),
+      );
+
+      final playingFuture = recorder.waitForEvent(
+        "player-playing",
+        timeout: const Duration(minutes: 3),
+      );
+      final usefulBufferFuture = recorder.waitForEvent(
+        "player-useful-buffer-ready",
+        timeout: const Duration(minutes: 3),
+      );
+      final firstPositionFuture = recorder.waitForEvent(
+        "player-first-position-advance",
+        timeout: const Duration(minutes: 3),
+      );
+      unawaited(playingFuture.catchError((_) {}));
+      unawaited(usefulBufferFuture.catchError((_) {}));
+      unawaited(firstPositionFuture.catchError((_) {}));
+
+      await recorder.runStep(
+        name: "track-start",
+        timeout: const Duration(minutes: 10),
+        operation: () =>
+            GetIt.instance<QueueService>().startSlicePlayback(slice),
+      );
+      await recorder.runStep(
+        name: "track-playing",
+        timeout: const Duration(minutes: 3),
+        operation: () => playingFuture,
+      );
+      await recorder.runStep(
+        name: "track-useful-buffer",
+        timeout: const Duration(minutes: 3),
+        operation: () => usefulBufferFuture,
+      );
+      await recorder.runStep(
+        name: "track-first-position",
+        timeout: const Duration(minutes: 3),
+        operation: () => firstPositionFuture,
+      );
+      recorder.mark(
+        "drilldown-track-playing",
+        values: {"queryAlias": queryAlias},
+      );
+      await recorder.finishRun();
+    } catch (error, stackTrace) {
+      if (recorder.activeRun != null) {
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: error,
+          stackTrace: stackTrace,
+          step: "artist-album-track-drilldown",
+        );
+      }
+    } finally {
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+        disableFade: true,
+      );
+      while (navigator.canPop()) {
+        navigator.pop();
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    }
   }
 
   Future<void> _runPlaybackBaselines() async {
