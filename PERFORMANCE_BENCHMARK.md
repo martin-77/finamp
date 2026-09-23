@@ -217,6 +217,39 @@ completion prerequisite. The host runner also emits explicit blocked/error
 termination and the app restores the suite-owned original offline state before
 those terminal records.
 
+## Smoke orchestration run
+
+Before the multi-hour baseline, run the same harness with a reduced matrix:
+
+```bash
+FINAMP_BENCH_SMOKE=true bash tool/bootstrap_performance_benchmark_macos.sh
+```
+
+Smoke mode is a compile-time matrix selector, not a second benchmark
+implementation. It uses the same startup, UI, paging, search, fast-scroller,
+detail, playback, download/offline, queue-restore, image-cache, restart,
+post-restart, metadata and summary code paths, but reduces repeated/scaling
+work:
+
+- one main UI round instead of three
+- paging only through page 3 (offline paging through page 2)
+- alphabet jumps use `A -> Z`
+- search and drill-down use only the Iron Maiden target chain
+- online playback uses the deterministic track and `bench-10`
+- downloads/offline lifecycle use only `bench-10`
+- queue persistence/explicit restore uses the resulting 10-track queue
+- one network-probe round
+- one direct-API ordering, omitting only the 500-item request
+- one persistent-cache startup repeat
+- post-restart UI/detail matrices use representative targets
+
+Target discovery still validates all fixed benchmark playlists so a smoke run
+cannot hide an invalid full-baseline fixture. The normal/full matrix remains
+the default when `FINAMP_BENCH_SMOKE` is unset.
+
+A smoke `suite-complete` record uses `phase=smoke`; summary generation and
+privacy rules are otherwise identical to the full run.
+
 ## Result privacy tiers
 
 - The append-only device/host JSONL is the diagnostic source of truth and may
