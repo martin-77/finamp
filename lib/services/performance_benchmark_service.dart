@@ -38,6 +38,27 @@ class PerformanceBenchmarkTarget {
   }
 }
 
+class PerformanceBenchmarkJumpCommand {
+  PerformanceBenchmarkJumpCommand({
+    required this.contentType,
+    required this.letter,
+  });
+
+  final String contentType;
+  final String letter;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkEvent {
   const PerformanceBenchmarkEvent({
     required this.name,
@@ -144,6 +165,11 @@ class PerformanceBenchmarkService {
   Box<String>? _box;
   PerformanceBenchmarkRun? _activeRun;
   int _runSequence = 0;
+  final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
+      StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
+
+  Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
+      _jumpController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   bool get hasActiveRun => _activeRun != null;
@@ -278,6 +304,31 @@ class PerformanceBenchmarkService {
     if (run == null) return;
     run.setMetric(name, value);
     unawaited(_persistActiveRun());
+  }
+
+  void incrementMetric(String name, [int amount = 1]) {
+    final run = _activeRun;
+    if (run == null) return;
+    final current = run.metrics[name];
+    run.setMetric(name, (current is int ? current : 0) + amount);
+    unawaited(_persistActiveRun());
+  }
+
+  Future<void> requestAlphabetJump({
+    required String contentType,
+    required String letter,
+    Duration timeout = const Duration(seconds: 90),
+  }) async {
+    final command = PerformanceBenchmarkJumpCommand(
+      contentType: contentType,
+      letter: letter,
+    );
+    mark(
+      "alphabet-jump-requested",
+      values: {"contentType": contentType, "letter": letter},
+    );
+    _jumpController.add(command);
+    await command.completed.timeout(timeout);
   }
 
   Future<void> _persistActiveRun() async {
