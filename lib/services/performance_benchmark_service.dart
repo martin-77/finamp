@@ -737,13 +737,33 @@ class PerformanceBenchmarkService {
     }
   }
 
-  void networkRequestCompleted({int? responseBytes}) {
+  void networkRequestCompleted({
+    int? responseBytes,
+    int? durationMicros,
+    int? statusCode,
+  }) {
     if (!enabled) return;
     if (responseBytes != null && responseBytes >= 0) {
       incrementMetricBuffered("httpResponseBytes", responseBytes);
       incrementMetricBuffered("httpResponsesWithKnownBytes");
     } else {
       incrementMetricBuffered("httpResponsesUnknownBytes");
+    }
+    if (durationMicros != null && durationMicros >= 0) {
+      incrementMetricBuffered(
+        "httpDurationMicrosTotal",
+        durationMicros,
+      );
+      maxMetricBuffered("httpDurationMicrosMax", durationMicros);
+      incrementMetricBuffered("httpResponsesTimed");
+    }
+    if (statusCode != null) {
+      final statusClass = statusCode ~/ 100;
+      if (statusClass >= 1 && statusClass <= 5) {
+        incrementMetricBuffered("httpStatus${statusClass}xx");
+      } else {
+        incrementMetricBuffered("httpStatusOther");
+      }
     }
 
     final run = _activeRun;
@@ -753,7 +773,11 @@ class PerformanceBenchmarkService {
       _httpFirstResponseRunId = run.id;
       mark(
         "http-first-response-complete",
-        values: {"responseBytesKnown": responseBytes != null},
+        values: {
+          "responseBytesKnown": responseBytes != null,
+          if (durationMicros != null) "durationMicros": durationMicros,
+          if (statusCode != null) "statusClass": statusCode ~/ 100,
+        },
       );
     }
 
