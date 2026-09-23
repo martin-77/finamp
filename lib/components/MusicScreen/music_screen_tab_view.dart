@@ -79,7 +79,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   StreamSubscription<void>? _downloadsRefreshStreamSubscription;
   StreamSubscription<PerformanceBenchmarkJumpCommand>? _benchmarkJumpSubscription;
   StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
+  StreamSubscription<PerformanceBenchmarkPageCommand>? _benchmarkPageSubscription;
   PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
+  PerformanceBenchmarkPageCommand? _activeBenchmarkPage;
+  int _benchmarkPageInitialCount = 0;
+  bool _benchmarkPageFrameScheduled = false;
   PerformanceBenchmarkTabCommand? _activeBenchmarkTab;
   bool _benchmarkTabDataMarked = false;
   bool _benchmarkTabFrameScheduled = false;
@@ -109,6 +113,41 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (pendingTabCommand != null) {
       _activateBenchmarkTab(pendingTabCommand);
     }
+
+    _benchmarkPageSubscription =
+        PerformanceBenchmarkService.instance.pageCommands.listen((command) {
+      if (widget.contentType?.name != command.contentType) return;
+      if (_activeBenchmarkPage != null) {
+        command.completeError(
+          StateError("Another benchmark page command is already active"),
+          StackTrace.current,
+        );
+        return;
+      }
+      final state = ref.read(pageControl);
+      if (!state.hasNextPage) {
+        PerformanceBenchmarkService.instance.mark(
+          "page-no-next-page",
+          values: {
+            "contentType": command.contentType,
+            "loadedItems": state.items?.length ?? 0,
+          },
+        );
+        command.complete();
+        return;
+      }
+      _activeBenchmarkPage = command;
+      _benchmarkPageInitialCount = state.items?.length ?? 0;
+      _benchmarkPageFrameScheduled = false;
+      PerformanceBenchmarkService.instance.mark(
+        "page-load-start",
+        values: {
+          "contentType": command.contentType,
+          "loadedItems": _benchmarkPageInitialCount,
+        },
+      );
+      ref.read(pageControl.notifier).newPage();
+    });
 
     _benchmarkJumpSubscription = PerformanceBenchmarkService.instance.jumpCommands.listen((command) {
       if (widget.contentType?.name != command.contentType) return;
@@ -215,6 +254,42 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       command.complete();
       _activeBenchmarkTab = null;
       _benchmarkTabFrameScheduled = false;
+    });
+  }
+
+  void _maybeCompleteBenchmarkPage(
+    PagingState<int, FinampDisplayableOrPlayable> state,
+  ) {
+    final command = _activeBenchmarkPage;
+    if (command == null || state.isLoading) return;
+
+    final loadedItems = state.items?.length ?? 0;
+    if (loadedItems <= _benchmarkPageInitialCount && state.hasNextPage) {
+      return;
+    }
+
+    if (_benchmarkPageFrameScheduled) return;
+    _benchmarkPageFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_activeBenchmarkPage, command)) return;
+      final current = ref.read(pageControl);
+      PerformanceBenchmarkService.instance.mark(
+        "page-first-rendered-content",
+        values: {
+          "contentType": command.contentType,
+          "loadedItems": current.items?.length ?? 0,
+          "itemsAdded":
+              (current.items?.length ?? 0) - _benchmarkPageInitialCount,
+          "hasNextPage": current.hasNextPage,
+        },
+      );
+      PerformanceBenchmarkService.instance.metric(
+        "pageItemsAdded",
+        (current.items?.length ?? 0) - _benchmarkPageInitialCount,
+      );
+      command.complete();
+      _activeBenchmarkPage = null;
+      _benchmarkPageFrameScheduled = false;
     });
   }
 
@@ -348,6 +423,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _downloadsRefreshStreamSubscription?.cancel();
     _benchmarkJumpSubscription?.cancel();
     _benchmarkTabSubscription?.cancel();
+    _benchmarkPageSubscription?.cancel();
+    _activeBenchmarkPage?.completeError(
+      StateError("Music screen disposed during benchmark page measurement"),
+      StackTrace.current,
+    );
     _activeBenchmarkTab?.completeError(
       StateError("Music screen disposed during benchmark tab measurement"),
       StackTrace.current,
@@ -381,6 +461,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     widget.refresh?.callback = _refresh;
     final benchmarkPageState = ref.watch(pageControl);
     _maybeCompleteBenchmarkTab(benchmarkPageState);
+    _maybeCompleteBenchmarkPage(benchmarkPageState);
     if (letterToSearch != null) {
       scrollToLetter(letterToSearch!);
     }
