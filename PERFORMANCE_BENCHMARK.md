@@ -297,7 +297,9 @@ query aliases and query lengths.
   must still be safe against disclosure of the private library cardinality.
   Exact list-growth counters such as loaded items, page items added, response
   page size and alphabet pages loaded stay device-local and are stripped from
-  every host-facing record, including nested final/recovered run JSON.
+  every host-facing record, including nested final/recovered run JSON. Repeated
+  per-page alphabet request events are suppressed as well, so their event count
+  cannot reconstruct the redacted page count.
 - The generated JSON/Markdown summary is the shareable/public-facing result.
   It retains a second denylist for cardinality-sensitive metrics and buckets
   image-cache scale instead of exposing exact counts.
