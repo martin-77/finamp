@@ -120,7 +120,6 @@ import 'setup_logging.dart';
 
 final _mainLog = Logger("Main()");
 late DateTime startTime;
-late Stopwatch benchmarkStartupStopwatch;
 
 final providerScopeKey = GlobalKey();
 
@@ -137,7 +136,6 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
 
   try {
     startTime = DateTime.now();
-    benchmarkStartupStopwatch = Stopwatch()..start();
     PerformanceBenchmarkService.instance.startProcessStopwatch();
     await setupLogging();
     await _setupEdgeToEdgeOverlayStyle();
