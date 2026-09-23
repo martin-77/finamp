@@ -247,6 +247,7 @@ class PerformanceBenchmarkService {
     final id = recovered["id"] as String;
     await box.put("$_runKeyPrefix$id", jsonEncode(recovered));
     await box.delete(_activeRunKey);
+    _emitHostRecord("run-recovered", {"run": recovered});
     _logger.warning(
       "BENCH RUN $id recovered as unexpected-exit "
       "lastStep=${recovered["lastStep"]}",
@@ -291,6 +292,9 @@ class PerformanceBenchmarkService {
       "BENCH RUN ${run.id} scenario=${run.scenario} "
       "variant=${run.variant} mode=${run.mode}",
     );
+    _emitHostRecord("run-start", {
+      "run": run.toJson(),
+    });
     return run;
   }
 
@@ -298,6 +302,13 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
     run.mark(name, values: values);
+    _emitHostRecord("event", {
+      "runId": run.id,
+      "scenario": run.scenario,
+      "variant": run.variant,
+      "mode": run.mode,
+      "event": run.events.last.toJson(),
+    });
     unawaited(_persistActiveRun());
   }
 
@@ -305,6 +316,14 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
     run.setMetric(name, value);
+    _emitHostRecord("metric", {
+      "runId": run.id,
+      "scenario": run.scenario,
+      "variant": run.variant,
+      "mode": run.mode,
+      "name": name,
+      "value": value,
+    });
     unawaited(_persistActiveRun());
   }
 
@@ -312,7 +331,16 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
     final current = run.metrics[name];
-    run.setMetric(name, (current is int ? current : 0) + amount);
+    final value = (current is int ? current : 0) + amount;
+    run.setMetric(name, value);
+    _emitHostRecord("metric", {
+      "runId": run.id,
+      "scenario": run.scenario,
+      "variant": run.variant,
+      "mode": run.mode,
+      "name": name,
+      "value": value,
+    });
     unawaited(_persistActiveRun());
   }
 
@@ -338,6 +366,21 @@ class PerformanceBenchmarkService {
     if (run == null) return;
     final box = await _getBox();
     await box.put(_activeRunKey, jsonEncode(run.toJson()));
+  }
+
+  void _emitHostRecord(
+    String type,
+    Map<String, Object?> payload,
+  ) {
+    final record = <String, Object?>{
+      "type": type,
+      "emittedAt": DateTime.now().toUtc().toIso8601String(),
+      ...payload,
+    };
+    // Intentionally machine-readable for the macOS host-side benchmark collector.
+    // Do not include media names, item ids, URLs, tokens or user identifiers.
+    // ignore: avoid_print
+    print("BENCH_JSON ${jsonEncode(record)}");
   }
 
   Future<T> runStep<T>({
@@ -425,6 +468,7 @@ class PerformanceBenchmarkService {
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
+    _emitHostRecord("run-end", {"run": run.toJson()});
     _activeRun = null;
   }
 
@@ -499,6 +543,7 @@ class PerformanceBenchmarkService {
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
+    _emitHostRecord("run-end", {"run": run.toJson()});
     _activeRun = null;
     return run;
   }
