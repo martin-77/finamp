@@ -1458,21 +1458,22 @@ class PerformanceBenchmarkSuiteRunner {
           refresh: refresh,
           timeout: const Duration(seconds: 175),
           open: () {
-            switch (detailType) {
-              case "artist":
-                navigator.push(
-                  MaterialPageRoute<ArtistScreen>(
-                    builder: (_) => ArtistScreen(widgetArtist: item),
-                  ),
-                );
-              case "album" || "playlist":
-                navigator.push(
-                  MaterialPageRoute<AlbumScreen>(
-                    builder: (_) => AlbumScreen(parent: item),
-                  ),
-                );
-              default:
-                throw UnsupportedError("Unsupported detail type $detailType");
+            if (detailType == "artist") {
+              navigator.push(
+                MaterialPageRoute<ArtistScreen>(
+                  builder: (_) => ArtistScreen(widgetArtist: item),
+                ),
+              );
+            } else if (detailType == "album" || detailType == "playlist") {
+              navigator.push(
+                MaterialPageRoute<AlbumScreen>(
+                  builder: (_) => AlbumScreen(parent: item),
+                ),
+              );
+            } else {
+              throw UnsupportedError(
+                "Unsupported benchmark detail type",
+              );
             }
           },
         ),
