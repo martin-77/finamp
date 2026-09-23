@@ -562,6 +562,7 @@ class PerformanceBenchmarkSuiteRunner {
     String tab, {
     required String mode,
     required int round,
+    bool allowPendingDownloadCleanup = false,
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
 
@@ -570,6 +571,7 @@ class PerformanceBenchmarkSuiteRunner {
       variant: PerformanceBenchmarkService.variant,
       mode: mode,
       targetType: tab,
+      allowPendingDownloadCleanup: allowPendingDownloadCleanup,
     );
     recorder.metric("round", round);
 
@@ -948,6 +950,15 @@ class PerformanceBenchmarkSuiteRunner {
       rethrow;
     }
 
+    final onlineTracks = await GetIt.instance<JellyfinApiHelper>().getItems(
+      parentItem: item,
+      includeItemTypes: "Audio",
+      recursive: true,
+      limit: 1,
+    );
+    final privateOfflineSearchQuery =
+        (onlineTracks?.isNotEmpty ?? false) ? onlineTracks!.first.name : null;
+
     final previousOffline = FinampSettingsHelper.finampSettings.isOffline;
     try {
       FinampSetters.setIsOffline(true);
@@ -956,6 +967,120 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"targetAlias": targetAlias},
       );
       await Future<void>.delayed(const Duration(seconds: 2));
+
+      await _runUiTabBaseline(
+        "tracks",
+        mode: "local-downloaded-refreshed",
+        round: 1,
+        allowPendingDownloadCleanup: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await _runUiTabBaseline(
+        "tracks",
+        mode: "local-downloaded-warm",
+        round: 1,
+        allowPendingDownloadCleanup: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      final offlineTracksTab = await recorder.requestUiTab(
+        contentType: "tracks",
+        refresh: true,
+        timeout: const Duration(seconds: 120),
+      );
+      for (var page = 2; page <= 4; page++) {
+        await recorder.startRun(
+          scenario: "offline-next-page-tracks",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "local-downloaded",
+          targetAlias: targetAlias,
+          targetType: offlineTracksTab,
+          allowPendingDownloadCleanup: true,
+        );
+        recorder.metric("requestedPageOrdinal", page);
+        try {
+          await recorder.runStep(
+            name: "next-page",
+            timeout: const Duration(seconds: 120),
+            operation: () => recorder.requestNextPage(
+              contentType: offlineTracksTab,
+              timeout: const Duration(seconds: 115),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+
+      if (privateOfflineSearchQuery != null &&
+          privateOfflineSearchQuery.trim().isNotEmpty) {
+        await recorder.startRun(
+          scenario: "offline-search-tracks",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "local-downloaded-first",
+          targetAlias: targetAlias,
+          targetType: "tracks",
+          allowPendingDownloadCleanup: true,
+        );
+        try {
+          recorder.metric(
+            "queryLength",
+            privateOfflineSearchQuery.length,
+          );
+          await recorder.runStep(
+            name: "search",
+            timeout: const Duration(seconds: 120),
+            operation: () => recorder.requestSearch(
+              contentType: "tracks",
+              queryAlias: "download-target-track",
+              query: privateOfflineSearchQuery,
+              timeout: const Duration(seconds: 115),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await recorder.startRun(
+          scenario: "offline-search-tracks",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "local-downloaded-warm",
+          targetAlias: targetAlias,
+          targetType: "tracks",
+          allowPendingDownloadCleanup: true,
+        );
+        try {
+          recorder.metric(
+            "queryLength",
+            privateOfflineSearchQuery.length,
+          );
+          await recorder.runStep(
+            name: "search",
+            timeout: const Duration(seconds: 60),
+            operation: () => recorder.requestSearch(
+              contentType: "tracks",
+              queryAlias: "download-target-track",
+              query: privateOfflineSearchQuery,
+              timeout: const Duration(seconds: 55),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+
+        await recorder.requestSearch(
+          contentType: "tracks",
+          queryAlias: "clear",
+          query: "",
+          timeout: const Duration(seconds: 120),
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
 
       await _runDetailBaseline(
         targetAlias: targetAlias,
