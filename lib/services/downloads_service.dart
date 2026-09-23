@@ -8,6 +8,7 @@ import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -435,6 +436,9 @@ class DownloadsService {
     required DownloadProfile transcodeProfile,
     BaseItemId? viewId,
   }) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    benchmark.mark("download-add-start");
+    benchmark.metric("downloadTargetType", stub.type.name);
     // Comment https://github.com/jmshrv/finamp/issues/134#issuecomment-1563441355
     // suggests this does not make a request and always returns failure
     /*if (downloadLocation.needsPermission) {
@@ -456,7 +460,9 @@ class DownloadsService {
       syncItemDownloadSettings(canonItem);
     });
 
+    benchmark.mark("download-sync-start");
     await resync(stub, viewId);
+    benchmark.mark("download-sync-planning-complete");
   }
 
   /// Removes the anchor link to an item and sync deletes it.  This will allow the
@@ -521,6 +527,8 @@ class DownloadsService {
     var requiredByCount = _isar.downloadItems.filter().requires((q) => q.isarIdEqualTo(stub.isarId)).countSync();
     try {
       bool required = requiredByCount != 0;
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.mark("download-resync-start");
       _downloadsLogger.info("Starting sync of ${stub.name}.");
       if (forceSync) {
         forceFullSync = true;
@@ -529,10 +537,13 @@ class DownloadsService {
         syncBuffer.addAll(required ? [stub.isarId] : [], required ? [] : [stub.isarId], viewId);
       });
       await syncBuffer.executeSyncs();
+      benchmark.mark("download-sync-graph-complete");
       _downloadsLogger.info("Moving to deletes for ${stub.name}.");
       await deleteBuffer.executeDeletes();
+      benchmark.mark("download-delete-phase-complete");
       _downloadsLogger.info("Triggering enqueues for ${stub.name}.");
       unawaited(downloadTaskQueue.executeDownloads());
+      benchmark.mark("download-transfer-enqueued");
 
       _downloadsLogger.info("Sync of ${stub.name} complete.");
     } catch (error, stackTrace) {
