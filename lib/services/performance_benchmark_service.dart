@@ -520,6 +520,8 @@ class PerformanceBenchmarkService {
       stopwatch: stopwatch,
       startedAt: now,
     );
+    run.setMetric("rssStartBytes", ProcessInfo.currentRss);
+    run.setMetric("maxRssBytesAtStart", ProcessInfo.maxRss);
     run.mark("run-start");
     _activeRun = run;
     await _persistActiveRun();
@@ -1141,6 +1143,13 @@ class PerformanceBenchmarkService {
       "errorType": error.runtimeType.toString(),
       "lastStep": step ?? run.lastStep,
     };
+    final rssEnd = ProcessInfo.currentRss;
+    run.setMetric("rssEndBytes", rssEnd);
+    run.setMetric("maxRssBytesAtEnd", ProcessInfo.maxRss);
+    final rssStart = run.metrics["rssStartBytes"];
+    if (rssStart is int) {
+      run.setMetric("rssDeltaBytes", rssEnd - rssStart);
+    }
     run.mark(
       "run-failed",
       values: {
@@ -1231,6 +1240,13 @@ class PerformanceBenchmarkService {
 
     for (final entry in metrics.entries) {
       run.setMetric(entry.key, entry.value);
+    }
+    final rssEnd = ProcessInfo.currentRss;
+    run.setMetric("rssEndBytes", rssEnd);
+    run.setMetric("maxRssBytesAtEnd", ProcessInfo.maxRss);
+    final rssStart = run.metrics["rssStartBytes"];
+    if (rssStart is int) {
+      run.setMetric("rssDeltaBytes", rssEnd - rssStart);
     }
     run.mark("run-end");
     run.stopwatch.stop();
