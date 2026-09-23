@@ -184,7 +184,19 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
       // If we want full quality player images, retrieve them via the image cache instead of linking directly.
       // In most cases, the initial null value will only be seen by the precache logic.
       Future.sync(() async {
-        FileInfo imageFile = await _imageCache.downloadFile(imageUrl.toString(), key: key);
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.imageLoadStarted();
+        FileInfo imageFile;
+        try {
+          imageFile = await _imageCache.downloadFile(
+            imageUrl.toString(),
+            key: key,
+          );
+          benchmark.imageLoadCompleted();
+        } catch (_) {
+          benchmark.imageLoadCompleted(failed: true);
+          rethrow;
+        }
         if (blurhashKey) {
           // The default validTill length is 7 days.  Images fetched by blurhash cannot change, as that would change the
           // blurhash, so update vaildTill to one year.
@@ -245,11 +257,48 @@ class CachedImage extends ImageProvider<CachedImage> {
     _ => throw UnsupportedError("Unsupported base image provider $_base"),
   };
 
-  @override
-  ImageStreamCompleter loadBuffer(CachedImage key, DecoderBufferCallback decode) => _base.loadBuffer(key._base, decode);
+  ImageStreamCompleter _trackBenchmarkLoad(
+    ImageStreamCompleter completer,
+  ) {
+    final benchmark = PerformanceBenchmarkService.instance;
+    if (!PerformanceBenchmarkService.enabled) {
+      return completer;
+    }
+
+    benchmark.imageLoadStarted();
+    var completed = false;
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (image, synchronousCall) {
+        if (completed) return;
+        completed = true;
+        benchmark.imageLoadCompleted(synchronous: synchronousCall);
+        completer.removeListener(listener);
+      },
+      onError: (Object error, StackTrace? stackTrace) {
+        if (completed) return;
+        completed = true;
+        benchmark.imageLoadCompleted(failed: true);
+        completer.removeListener(listener);
+      },
+    );
+    completer.addListener(listener);
+    return completer;
+  }
 
   @override
-  ImageStreamCompleter loadImage(CachedImage key, ImageDecoderCallback decode) => _base.loadImage(key._base, decode);
+  ImageStreamCompleter loadBuffer(
+    CachedImage key,
+    DecoderBufferCallback decode,
+  ) =>
+      _trackBenchmarkLoad(_base.loadBuffer(key._base, decode));
+
+  @override
+  ImageStreamCompleter loadImage(
+    CachedImage key,
+    ImageDecoderCallback decode,
+  ) =>
+      _trackBenchmarkLoad(_base.loadImage(key._base, decode));
 
   @override
   Future<CachedImage> obtainKey(ImageConfiguration configuration) => SynchronousFuture<CachedImage>(this);
