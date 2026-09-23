@@ -1411,6 +1411,13 @@ class PerformanceBenchmarkSuiteRunner {
         "download-target-missing",
         values: {"targetAlias": targetAlias},
       );
+      await _recordUnavailableTargetRun(
+        scenario: "download-lifecycle",
+        mode: "online-download",
+        targetAlias: targetAlias,
+        targetType: "playlist",
+        step: "target-missing",
+      );
       return true;
     }
 
@@ -1421,6 +1428,13 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.diagnostic(
         "download-target-unresolvable",
         values: {"targetAlias": targetAlias},
+      );
+      await _recordUnavailableTargetRun(
+        scenario: "download-lifecycle",
+        mode: "online-download",
+        targetAlias: targetAlias,
+        targetType: "playlist",
+        step: "target-unresolvable",
       );
       return true;
     }
@@ -2224,6 +2238,13 @@ class PerformanceBenchmarkSuiteRunner {
         "search-drilldown-target-missing",
         values: {"queryAlias": queryAlias},
       );
+      await _recordUnavailableTargetRun(
+        scenario: "artist-album-track-drilldown",
+        mode: "online-sequential",
+        targetAlias: queryAlias,
+        targetType: "artist-album-track",
+        step: "target-missing",
+      );
       return;
     }
 
@@ -2242,6 +2263,13 @@ class PerformanceBenchmarkSuiteRunner {
         "search-drilldown-target-unresolvable",
         values: {"queryAlias": queryAlias},
       );
+      await _recordUnavailableTargetRun(
+        scenario: "artist-album-track-drilldown",
+        mode: "online-sequential",
+        targetAlias: queryAlias,
+        targetType: "artist-album-track",
+        step: "target-unresolvable",
+      );
       return;
     }
 
@@ -2250,6 +2278,13 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.diagnostic(
         "search-drilldown-navigator-missing",
         values: {"queryAlias": queryAlias},
+      );
+      await _recordUnavailableTargetRun(
+        scenario: "artist-album-track-drilldown",
+        mode: "online-sequential",
+        targetAlias: queryAlias,
+        targetType: "artist-album-track",
+        step: "navigator-missing",
       );
       return;
     }
@@ -2339,7 +2374,6 @@ class PerformanceBenchmarkSuiteRunner {
         "player-first-position-advance",
         timeout: const Duration(minutes: 3),
       );
-      unawaited(readyFuture.catchError((_) {}));
       unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
       unawaited(usefulBufferFuture.catchError((_) {}));
@@ -2564,6 +2598,7 @@ class PerformanceBenchmarkSuiteRunner {
         "player-first-position-advance",
         timeout: const Duration(minutes: 3),
       );
+      unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
       unawaited(usefulBufferFuture.catchError((_) {}));
       unawaited(firstPositionFuture.catchError((_) {}));
