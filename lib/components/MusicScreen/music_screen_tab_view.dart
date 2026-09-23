@@ -76,6 +76,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   final _isarDownloader = GetIt.instance<DownloadsService>();
   StreamSubscription<void>? _musicScreenRefreshStreamSubscription;
   StreamSubscription<void>? _downloadsRefreshStreamSubscription;
+  StreamSubscription<PerformanceBenchmarkJumpCommand>? _benchmarkJumpSubscription;
+  PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
 
   late AutoScrollController controller;
   String? letterToSearch;
@@ -95,13 +97,34 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _downloadsRefreshStreamSubscription = _isarDownloader.offlineDeletesStream.listen((event) {
       _refresh();
     });
+    _benchmarkJumpSubscription = PerformanceBenchmarkService.instance.jumpCommands.listen((command) {
+      if (widget.contentType?.name != command.contentType) return;
+      if (_activeBenchmarkJump != null) {
+        command.completeError(
+          StateError("Another benchmark alphabet jump is already active"),
+          StackTrace.current,
+        );
+        return;
+      }
+      _activeBenchmarkJump = command;
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.mark(
+        "alphabet-jump-start",
+        values: {
+          "contentType": command.contentType,
+          "letter": command.letter,
+        },
+      );
+      benchmark.metric("alphabetJumpPagesLoaded", 0);
+      unawaited(scrollToLetter(command.letter));
+    });
 
     super.initState();
   }
 
   // Scrolls the list to the first occurrence of the letter in the list
   // If clicked in the # element, it goes to the first or last one item, depending on sort order
-  void scrollToLetter(String letter) async {
+  Future<void> scrollToLetter(String letter) async {
     if (letter.isEmpty) return;
 
     letterToSearch = letter;
@@ -155,6 +178,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
 
         letterToSearch = null;
+        _completeBenchmarkJump();
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
@@ -168,6 +192,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
 
         letterToSearch = null;
+        _completeBenchmarkJump();
         return;
       }
     }
@@ -175,12 +200,18 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     timer?.cancel();
     if (!state.hasNextPage) {
       letterToSearch = null;
+      _completeBenchmarkJump();
     } else {
       timer = Timer(const Duration(seconds: 8), () {
         // If page loading takes too long, cancel search and allow image loading.
         letterToSearch = null;
       });
 
+      PerformanceBenchmarkService.instance.incrementMetric("alphabetJumpPagesLoaded");
+      PerformanceBenchmarkService.instance.mark(
+        "alphabet-jump-page-requested",
+        values: {"loadedItems": itemList.length},
+      );
       ref.read(pageControl.notifier).newPage();
     }
     if (MediaQuery.disableAnimationsOf(context)) {
@@ -203,10 +234,27 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     return duration;
   }
 
+  void _completeBenchmarkJump() {
+    final command = _activeBenchmarkJump;
+    if (command == null) return;
+    final state = ref.read(pageControl);
+    PerformanceBenchmarkService.instance.mark(
+      "alphabet-jump-complete",
+      values: {"loadedItems": state.items?.length ?? 0},
+    );
+    command.complete();
+    _activeBenchmarkJump = null;
+  }
+
   @override
   void dispose() {
     _musicScreenRefreshStreamSubscription?.cancel();
     _downloadsRefreshStreamSubscription?.cancel();
+    _benchmarkJumpSubscription?.cancel();
+    _activeBenchmarkJump?.completeError(
+      StateError("Music screen disposed during benchmark alphabet jump"),
+      StackTrace.current,
+    );
     //_pagingController.dispose();
     timer?.cancel();
     super.dispose();
