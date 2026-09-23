@@ -111,52 +111,63 @@ print_progress() {
   local progress
   progress="$(python3 - "$jsonl" <<'PY'
 import json
+import os
 import sys
 
 path = sys.argv[1]
 last = None
+window = 2 * 1024 * 1024
 
-with open(path, "r", encoding="utf-8") as handle:
-    for raw in handle:
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            record = json.loads(raw)
-        except Exception:
-            continue
+with open(path, "rb") as handle:
+    size = os.fstat(handle.fileno()).st_size
+    start = max(0, size - window)
+    handle.seek(start)
+    data = handle.read()
 
-        kind = record.get("type")
-        if kind == "run-start":
-            run = record.get("run") or {}
+if start > 0:
+    newline = data.find(b"\n")
+    data = data[newline + 1:] if newline >= 0 else b""
+
+for raw in data.decode("utf-8", errors="ignore").splitlines():
+    raw = raw.strip()
+    if not raw:
+        continue
+    try:
+        record = json.loads(raw)
+    except Exception:
+        continue
+
+    kind = record.get("type")
+    if kind == "run-start":
+        run = record.get("run") or {}
+        last = (
+            "RUN",
+            run.get("scenario", ""),
+            run.get("mode", ""),
+            run.get("targetAlias") or run.get("targetType") or "",
+        )
+    elif kind == "run-end":
+        run = record.get("run") or {}
+        last = (
+            "DONE",
+            run.get("scenario", ""),
+            run.get("mode", ""),
+            run.get("result", ""),
+        )
+    elif kind == "diagnostic":
+        name = record.get("name")
+        values = record.get("values") or {}
+        if name == "suite-phase-complete":
+            last = ("PHASE", values.get("phase", ""), "", "")
+        elif name == "host-restart-requested":
             last = (
-                "RUN",
-                run.get("scenario", ""),
-                run.get("mode", ""),
-                run.get("targetAlias") or run.get("targetType") or "",
+                "RESTART",
+                values.get("reason", ""),
+                values.get("nextStage", ""),
+                "",
             )
-        elif kind == "run-end":
-            run = record.get("run") or {}
-            last = (
-                "DONE",
-                run.get("scenario", ""),
-                run.get("mode", ""),
-                run.get("result", ""),
-            )
-        elif kind == "diagnostic":
-            name = record.get("name")
-            values = record.get("values") or {}
-            if name == "suite-phase-complete":
-                last = ("PHASE", values.get("phase", ""), "", "")
-            elif name == "host-restart-requested":
-                last = (
-                    "RESTART",
-                    values.get("reason", ""),
-                    values.get("nextStage", ""),
-                    "",
-                )
-            elif name == "startup-fully-ready":
-                last = ("STARTUP", values.get("phase", ""), "", "")
+        elif name == "startup-fully-ready":
+            last = ("STARTUP", values.get("phase", ""), "", "")
 
 if last is not None:
     print("|".join(str(x) for x in last))
