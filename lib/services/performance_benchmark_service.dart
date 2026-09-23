@@ -236,6 +236,8 @@ class PerformanceBenchmarkService {
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
       StreamController<PerformanceBenchmarkTabCommand>.broadcast();
+  final StreamController<String> _eventNameController =
+      StreamController<String>.broadcast();
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
@@ -376,6 +378,7 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
     run.mark(name, values: values);
+    _eventNameController.add(name);
     _emitHostRecord("event", {
       "runId": run.id,
       "scenario": run.scenario,
@@ -416,6 +419,15 @@ class PerformanceBenchmarkService {
       "value": value,
     });
     unawaited(_persistActiveRun());
+  }
+
+  Future<void> waitForEvent(
+    String name, {
+    Duration timeout = const Duration(seconds: 60),
+  }) {
+    return _eventNameController.stream
+        .firstWhere((eventName) => eventName == name)
+        .timeout(timeout);
   }
 
   Future<String> requestUiTab({
