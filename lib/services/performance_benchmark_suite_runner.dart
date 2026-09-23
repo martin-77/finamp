@@ -146,6 +146,7 @@ class PerformanceBenchmarkSuiteRunner {
           },
         );
         recorder.stopHeartbeat();
+        await recorder.flushHostStream();
         return;
       }
       GetIt.instance<FinampUserHelper>().runUserHook(() {
