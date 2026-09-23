@@ -70,6 +70,11 @@ class PerformanceBenchmarkSuiteRunner {
         quietPeriod: const Duration(seconds: 3),
         timeout: const Duration(minutes: 3),
       );
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(seconds: 3),
+        timeout: const Duration(minutes: 3),
+      );
+      recorder.diagnostic("startup-baseline-complete");
 
       final targetsReady = await _discoverAndValidateTargets();
       if (!targetsReady) {
