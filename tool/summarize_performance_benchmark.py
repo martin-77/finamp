@@ -36,6 +36,13 @@ def cardinality_bucket(value):
     return "10000+"
 
 
+PUBLIC_EVENT_DENYLIST = {
+    # Repeated page-request milestones expose internal list-growth structure and
+    # are stripped from new host JSONL. Keep legacy JSONL summaries consistent.
+    "alphabet-jump-page-requested",
+}
+
+
 PUBLIC_NUMERIC_METRIC_DENYLIST = {
     # Combined with known page size, this can approximate private library
     # cardinality for late alphabet targets such as Z.
@@ -300,6 +307,8 @@ def main():
                     )
             for event in run.get("events") or []:
                 event_name = event.get("name")
+                if event_name in PUBLIC_EVENT_DENYLIST:
+                    continue
                 elapsed = event.get("elapsedMicros")
                 if isinstance(event_name, str) and isinstance(elapsed, int):
                     event_elapsed[event_name].append(elapsed)
