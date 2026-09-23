@@ -2398,19 +2398,19 @@ class PerformanceBenchmarkSuiteRunner {
 
       final readyFuture = recorder.waitForEvent(
         "player-processing-ready",
-        timeout: playerStateTimeout,
+        timeout: const Duration(minutes: 3),
       );
       final playingFuture = recorder.waitForEvent(
         "player-playing",
-        timeout: playerStateTimeout,
+        timeout: const Duration(minutes: 3),
       );
       final usefulBufferFuture = recorder.waitForEvent(
         "player-useful-buffer-ready",
-        timeout: playerStateTimeout,
+        timeout: const Duration(minutes: 3),
       );
       final firstPositionFuture = recorder.waitForEvent(
         "player-first-position-advance",
-        timeout: playerStateTimeout,
+        timeout: const Duration(minutes: 3),
       );
       unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
