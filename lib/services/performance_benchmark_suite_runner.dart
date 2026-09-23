@@ -206,27 +206,68 @@ class PerformanceBenchmarkSuiteRunner {
       "genres",
     ];
 
+    // Do not include stabilization time in any benchmark result. The first real
+    // UI run otherwise inherits startup/background work, while subsequent tabs
+    // benefit from that work already being complete.
+    recorder.diagnostic(
+      "ui-stabilization-start",
+      values: {"seconds": 10},
+    );
+    await Future<void>.delayed(const Duration(seconds: 10));
+    recorder.diagnostic("ui-stabilization-complete");
+
     for (final tab in tabs) {
-      await recorder.startRun(
-        scenario: "ui-tab-first-rendered-content-$tab",
-        variant: PerformanceBenchmarkService.variant,
-        mode: "online",
-        targetType: tab,
+      await _runUiTabBaseline(tab, mode: "cold-view");
+
+      recorder.diagnostic(
+        "ui-tab-cooldown-start",
+        values: {"contentType": tab, "seconds": 5},
+      );
+      await Future<void>.delayed(const Duration(seconds: 5));
+      recorder.diagnostic(
+        "ui-tab-cooldown-complete",
+        values: {"contentType": tab},
       );
 
-      try {
-        await recorder.runStep(
-          name: "ui-tab-open",
-          timeout: const Duration(seconds: 90),
-          operation: () => recorder.requestUiTab(
-            contentType: tab,
-            timeout: const Duration(seconds: 85),
-          ),
-        );
-        await recorder.finishRun();
-      } catch (_) {
-        // runStep persists the failed/timeout run before rethrowing.
-      }
+      await _runUiTabBaseline(tab, mode: "warm-view");
+
+      recorder.diagnostic(
+        "ui-tab-cooldown-start",
+        values: {"contentType": tab, "seconds": 5},
+      );
+      await Future<void>.delayed(const Duration(seconds: 5));
+      recorder.diagnostic(
+        "ui-tab-cooldown-complete",
+        values: {"contentType": tab},
+      );
+    }
+  }
+
+  Future<void> _runUiTabBaseline(
+    String tab, {
+    required String mode,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    await recorder.startRun(
+      scenario: "ui-tab-first-rendered-content-$tab",
+      variant: PerformanceBenchmarkService.variant,
+      mode: mode,
+      targetType: tab,
+    );
+
+    try {
+      await recorder.runStep(
+        name: "ui-tab-open",
+        timeout: const Duration(seconds: 120),
+        operation: () => recorder.requestUiTab(
+          contentType: tab,
+          timeout: const Duration(seconds: 115),
+        ),
+      );
+      await recorder.finishRun();
+    } catch (_) {
+      // runStep persists the failed/timeout run before rethrowing.
     }
   }
 
