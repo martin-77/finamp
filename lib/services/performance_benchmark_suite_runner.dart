@@ -2378,6 +2378,31 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _recordUnavailableTargetRun({
+    required String scenario,
+    required String mode,
+    required String targetAlias,
+    required String targetType,
+    required String step,
+    bool allowPendingDownloadCleanup = false,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    await recorder.startRun(
+      scenario: scenario,
+      variant: PerformanceBenchmarkService.variant,
+      mode: mode,
+      targetAlias: targetAlias,
+      targetType: targetType,
+      allowPendingDownloadCleanup: allowPendingDownloadCleanup,
+    );
+    await recorder.failActiveRun(
+      result: PerformanceBenchmarkResult.failed,
+      error: StateError("Benchmark target is unavailable"),
+      stackTrace: StackTrace.current,
+      step: step,
+    );
+  }
+
   Future<void> _runPlaybackBaselines() async {
     const targets = <(String, String)>[
       ("detail-track", "track"),
@@ -2438,6 +2463,14 @@ class PerformanceBenchmarkSuiteRunner {
           "targetType": playableType,
         },
       );
+      await _recordUnavailableTargetRun(
+        scenario: "playback-startup-$playableType",
+        mode: mode,
+        targetAlias: targetAlias,
+        targetType: playableType,
+        step: "target-missing",
+        allowPendingDownloadCleanup: allowPendingDownloadCleanup,
+      );
       return;
     }
 
@@ -2452,6 +2485,14 @@ class PerformanceBenchmarkSuiteRunner {
           "targetAlias": targetAlias,
           "targetType": playableType,
         },
+      );
+      await _recordUnavailableTargetRun(
+        scenario: "playback-startup-$playableType",
+        mode: mode,
+        targetAlias: targetAlias,
+        targetType: playableType,
+        step: "target-unresolvable",
+        allowPendingDownloadCleanup: allowPendingDownloadCleanup,
       );
       return;
     }
@@ -2600,6 +2641,14 @@ class PerformanceBenchmarkSuiteRunner {
           "targetType": detailType,
         },
       );
+      await _recordUnavailableTargetRun(
+        scenario: "detail-first-rendered-content-$detailType",
+        mode: mode,
+        targetAlias: targetAlias,
+        targetType: detailType,
+        step: "target-missing",
+        allowPendingDownloadCleanup: allowPendingDownloadCleanup,
+      );
       return;
     }
 
@@ -2614,6 +2663,14 @@ class PerformanceBenchmarkSuiteRunner {
           "targetAlias": targetAlias,
           "targetType": detailType,
         },
+      );
+      await _recordUnavailableTargetRun(
+        scenario: "detail-first-rendered-content-$detailType",
+        mode: mode,
+        targetAlias: targetAlias,
+        targetType: detailType,
+        step: "target-unresolvable",
+        allowPendingDownloadCleanup: allowPendingDownloadCleanup,
       );
       return;
     }
