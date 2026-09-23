@@ -284,6 +284,12 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "post-restart-detail-cache"},
       );
 
+      await _runOneTimePlaylistMetadataBaseline();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "one-time-playlist-metadata-sync"},
+      );
+
       await recorder.setSuiteStage("complete");
       recorder.diagnostic(
         "suite-complete",
@@ -2044,6 +2050,88 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       await Future<void>.delayed(const Duration(seconds: 5));
+    }
+  }
+
+  Future<void> _runOneTimePlaylistMetadataBaseline() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final downloads = GetIt.instance<DownloadsService>();
+    final stub = DownloadStub.fromFinampCollection(
+      FinampCollection(type: FinampCollectionType.allPlaylistsMetadata),
+    );
+    const targetAlias = "all-playlists-metadata";
+
+    await recorder.saveTarget(
+      alias: targetAlias,
+      itemType: "finampCollection",
+      itemId: stub.id,
+    );
+
+    if (downloads.getStatus(stub, null).isDownloaded) {
+      await downloads.deleteDownload(stub: stub);
+      await downloads.waitForPerformanceBenchmarkCleanup(
+        stub: stub,
+        timeout: const Duration(minutes: 20),
+      );
+    }
+
+    await recorder.startRun(
+      scenario: "one-time-playlist-metadata-download",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "isolated-first-run",
+      targetAlias: targetAlias,
+      targetType: "playlist-metadata",
+    );
+
+    try {
+      await recorder.runStep(
+        name: "metadata-sync-plan-and-enqueue",
+        timeout: const Duration(minutes: 30),
+        operation: downloads.addDefaultPlaylistInfoDownload,
+      );
+      await recorder.runStep(
+        name: "metadata-transfer-until-idle",
+        timeout: const Duration(hours: 3),
+        operation: () =>
+            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          stableFor: const Duration(seconds: 5),
+          timeout: const Duration(hours: 2, minutes: 55),
+        ),
+      );
+      await recorder.finishRun();
+    } catch (_) {
+      rethrow;
+    }
+
+    await recorder.startRun(
+      scenario: "one-time-playlist-metadata-cleanup",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "cleanup",
+      targetAlias: targetAlias,
+      targetType: "playlist-metadata",
+      allowPendingDownloadCleanup: true,
+    );
+    try {
+      await recorder.runStep(
+        name: "metadata-delete",
+        timeout: const Duration(minutes: 30),
+        operation: () => downloads.deleteDownload(stub: stub),
+      );
+      await recorder.runStep(
+        name: "metadata-cleanup-verify",
+        timeout: const Duration(minutes: 30),
+        operation: () => downloads.waitForPerformanceBenchmarkCleanup(
+          stub: stub,
+          timeout: const Duration(minutes: 25),
+        ),
+      );
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: "",
+        required: false,
+      );
+      await recorder.finishRun();
+    } catch (_) {
+      rethrow;
     }
   }
 
