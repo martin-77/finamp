@@ -119,9 +119,20 @@ def main():
                     "buildMicrosMax": values.get("buildMicrosMax"),
                     "rasterMicrosMax": values.get("rasterMicrosMax"),
                     "frameMicrosMax": values.get("frameMicrosMax"),
+                    "imageLoadStarted": values.get("imageLoadStarted"),
+                    "imageLoadCompleted": values.get("imageLoadCompleted"),
+                    "imageLoadFailed": values.get("imageLoadFailed"),
+                    "imageLoadSynchronous": values.get("imageLoadSynchronous"),
+                    "imageMaxConcurrentLoads": values.get("imageMaxConcurrentLoads"),
                     "rssBytes": values.get("rssBytes"),
                     "maxRssBytes": values.get("maxRssBytes"),
                     "processElapsedMs": values.get("processElapsedMs"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name == "startup-image-cache-index-loaded":
+                startup_image_cache.append({
+                    "persistentEntryCount": values.get("persistentEntryCount"),
+                    "mappedPlayerEntries": values.get("mappedPlayerEntries"),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name in {
@@ -151,6 +162,11 @@ def main():
                     "maxRssBytes": values.get("maxRssBytes"),
                     "processElapsedMs": values.get("processElapsedMs"),
                 })
+                diagnostics.append({
+                    "name": name,
+                    "emittedAt": record.get("emittedAt"),
+                    "values": values,
+                })
             elif name in {
                 "startup-main-init-complete",
                 "startup-first-frame",
@@ -161,7 +177,6 @@ def main():
                 "startup-fully-ready",
                 "startup-baseline-complete",
                 "host-restart-requested",
-                "suite-complete",
             }:
                 diagnostics.append({
                     "name": name,
