@@ -67,7 +67,7 @@ trap 'rm -rf "$pull_root"' EXIT INT TERM
 
 start_epoch="$(date +%s)"
 last_size=-1
-restart_done=0
+handled_planned_restarts=0
 recovery_restarts=0
 max_recovery_restarts="${FINAMP_BENCH_MAX_RECOVERY_RESTARTS:-3}"
 heartbeat_stall_seconds="${FINAMP_BENCH_HEARTBEAT_STALL_SECONDS:-180}"
@@ -110,16 +110,18 @@ while true; do
       benchmark_started=1
     fi
 
-    if [[ "$restart_done" -eq 0 ]] && grep -q '"name":"host-restart-requested"' "$jsonl"; then
+    planned_restart_count="$(grep -c '"name":"host-restart-requested"' "$jsonl" || true)"
+    if (( planned_restart_count > handled_planned_restarts )); then
+      handled_planned_restarts="$planned_restart_count"
       log ""
-      log "==> Full suite requested a real process restart"
-      log "Relaunching the installed app with the same persistent container/cache..."
+      log "==> Full suite requested planned process restart #$handled_planned_restarts"
+      log "Relaunching the installed app with the same auth/settings/container..."
       xcrun devicectl device process launch \
         --device "$device_id" \
         --terminate-existing \
         "$bundle_id" 2>&1 | tee -a "$raw_log"
-      restart_done=1
-      sleep 3
+      last_stream_change_epoch="$(date +%s)"
+      sleep 5
     fi
 
     if grep -q '"name":"suite-complete"' "$jsonl"; then
