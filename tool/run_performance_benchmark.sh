@@ -21,9 +21,9 @@ remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
 timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-259200}"
 smoke_define="${FINAMP_BENCH_SMOKE:-false}"
-case "${smoke_define,,}" in
-  1|true|yes|on) smoke_define="true" ;;
-  0|false|no|off|"") smoke_define="false" ;;
+case "$smoke_define" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) smoke_define="true" ;;
+  0|false|FALSE|False|no|NO|No|off|OFF|Off|"") smoke_define="false" ;;
   *) echo "FINAMP_BENCH_SMOKE must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
 esac
 
