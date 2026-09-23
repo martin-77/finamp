@@ -29,6 +29,126 @@ Per-target measurements may include:
 - queue length
 - result count
 
+## Automated full baseline contract
+
+The benchmark is intentionally long-running. A baseline is only considered
+complete when the entire matrix below has executed successfully, or a scenario
+has produced an explicit failed/timeout/unexpectedExit result.
+
+The suite must not silently skip a phase because a previous phase warmed a
+cache. Every result records its execution class.
+
+### Stable benchmark targets
+
+The Jellyfin server contains these fixed benchmark playlists:
+
+- `bench-10 [Smart]` -> alias `bench-10`
+- `bench-100 [Smart]` -> alias `bench-100`
+- `bench-1000 [Smart]` -> alias `bench-1000`
+- `bench-10000 [Smart]` -> alias `bench-10000`
+
+The runner validates the exact track count before doing destructive or
+target-specific work. It derives deterministic album/artist/track detail
+targets locally from these playlists and stores only private local ids. Names
+and ids are never exported.
+
+### Full execution matrix
+
+1. **Process/startup**
+   - cold process / cold benchmark data
+   - cold process / warm persistent cache
+   - warm process / cold view
+   - warm view
+   - storage, providers, audio service, `runApp`, first frame, MusicScreen usable
+
+2. **Direct API reference layer**
+   - Artists / Albums / Tracks / Playlists / Genres first page
+   - repeated warm request
+   - page-size scaling
+   - request count / bytes / decode-provider timing where instrumented
+
+3. **Real MusicScreen UI**
+   - Artists / Albums / Tracks / Playlists / Genres
+   - refreshed-view and warm-view
+   - three rotated deterministic orders
+   - tab selected -> data ready -> first rendered content
+   - repeated page loads
+
+4. **Real alphabet fast-scroller**
+   - Tracks / Artists / Albums
+   - exact sequence `# -> A -> G -> M -> Z`
+   - pages added, loaded item count and elapsed time per jump
+   - run once from a refreshed first page and once from warm loaded state
+   - do not synthesize a direct server query
+
+5. **Search**
+   - real MusicScreen search path
+   - broad one-character query
+   - deterministic private target-derived query
+   - repeated warm query
+   - result count, requests, bytes and first rendered result
+
+6. **Detail screens**
+   - deterministic album
+   - deterministic artist
+   - `bench-10`, `bench-100`, `bench-1000`, `bench-10000` playlist detail
+   - navigation action -> shell rendered -> metadata/children ready -> first full content frame
+   - refreshed/cold-provider and warm-provider repeats
+   - child count and provider/API work
+
+7. **Queue and playback**
+   - one track
+   - deterministic album
+   - deterministic artist
+   - all four benchmark playlists
+   - slice resolution, queue construction, queue length
+   - player ready, playing, first position advance, useful buffering where available
+   - repeat warm playback
+   - playlist scaling 10/100/1000/10000
+
+8. **Downloads**
+   - `bench-10`, `bench-100`, `bench-1000`
+   - clean-state validation
+   - planning graph / enqueue
+   - first transfer / first completed track / full completion
+   - failures, real downloaded bytes, duration and throughput
+   - no `bench-10000` download
+
+9. **Downloaded/offline lifecycle**
+   - verify downloaded target and actual local bytes
+   - save prior offline setting
+   - force Finamp offline
+   - local-downloaded-cold detail/queue/playback
+   - local-downloaded-warm repeat
+   - relevant paging/search paths against local metadata
+   - restore exact prior offline setting
+   - cleanup
+   - verify no benchmark download state remains
+
+10. **Cache/systemic diagnostics**
+    - first-use vs repeated provider work
+    - image/cache warm-up effects
+    - persistent metadata/cache effects across process restart
+    - isolate first-run work from steady-state work
+    - report cache hits/misses where available
+    - keep unmeasured stabilization boundaries separate from benchmark duration
+
+11. **Host restart orchestration**
+    - the macOS runner relaunches the already installed build for true
+      cold-process and warm-persistent-cache phases
+    - phase/checkpoint state persists in the app container
+    - crashes, Jetsam and manual termination resume at the earliest safe phase
+    - download cleanup has priority over resuming benchmark work
+
+12. **Summary**
+    - raw runs remain in JSONL
+    - per-scenario median / p90 / failure count
+    - no total private library cardinality
+    - benchmark target track counts and downloaded bytes are allowed
+
+The suite-complete marker must refer to this entire matrix. Intermediate
+sub-suites emit phase-complete markers but must not emit suite-complete.
+
 ## Benchmark scenarios
 
 ### Startup
