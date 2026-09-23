@@ -520,9 +520,11 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     PerformanceBenchmarkRun? activePlaybackBenchmarkRun() {
       final run = PerformanceBenchmarkService.instance.activeRun;
-      if (run == null ||
-          !run.scenario.startsWith("playback-startup-") ||
-          !run.events.any(
+      final isPlaybackBenchmark = run != null &&
+          (run.scenario.startsWith("playback-startup-") ||
+              run.scenario == "artist-album-track-drilldown");
+      if (!isPlaybackBenchmark ||
+          !run!.events.any(
             (event) => event.name == "playback-action-received",
           )) {
         return null;
