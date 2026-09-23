@@ -513,6 +513,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     super.build(context);
     widget.refresh?.callback = _refresh;
     final benchmarkPageState = ref.watch(pageControl);
+    _maybeReportStartupScreenReady(benchmarkPageState);
     _maybeCompleteBenchmarkTab(benchmarkPageState);
     _maybeCompleteBenchmarkPage(benchmarkPageState);
     _maybeCompleteBenchmarkSearch(benchmarkPageState);
