@@ -73,9 +73,15 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-phase-complete",
         values: {"phase": "authenticated-api-baseline"},
       );
+
+      await _runUiTabBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "ui-tab-baseline"},
+      );
       recorder.diagnostic(
         "suite-complete",
-        values: {"phase": "authenticated-api-baseline"},
+        values: {"phase": "ui-tab-baseline"},
       );
       await recorder.flushHostStream();
     } catch (error) {
@@ -187,6 +193,41 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     return allValid;
+  }
+
+  Future<void> _runUiTabBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    const tabs = <String>[
+      "albums",
+      "artists",
+      "playlists",
+      "tracks",
+      "genres",
+    ];
+
+    for (final tab in tabs) {
+      await recorder.startRun(
+        scenario: "ui-tab-first-rendered-content-$tab",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "online",
+        targetType: tab,
+      );
+
+      try {
+        await recorder.runStep(
+          name: "ui-tab-open",
+          timeout: const Duration(seconds: 90),
+          operation: () => recorder.requestUiTab(
+            contentType: tab,
+            timeout: const Duration(seconds: 85),
+          ),
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists the failed/timeout run before rethrowing.
+      }
+    }
   }
 
   Future<void> _runCollectionFirstPageBaselines() async {
