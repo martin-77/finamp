@@ -1100,9 +1100,9 @@ class PerformanceBenchmarkSuiteRunner {
               );
               if (loadedPage) {
                 await recorder.runStep(
-                  name: "wait-images-quiescent",
-                  timeout: const Duration(minutes: 15),
-                  operation: recorder.waitForImageQuiescence,
+                  name: "wait-ui-quiescent",
+                  timeout: const Duration(minutes: 16),
+                  operation: _waitForUiQuiescence,
                 );
               }
               await recorder.finishRun();
@@ -1174,9 +1174,9 @@ class PerformanceBenchmarkSuiteRunner {
           );
           if (loadedPage) {
             await recorder.runStep(
-              name: "wait-images-quiescent",
-              timeout: const Duration(minutes: 2),
-              operation: recorder.waitForImageQuiescence,
+              name: "wait-ui-quiescent",
+              timeout: const Duration(minutes: 16),
+              operation: _waitForUiQuiescence,
             );
           }
           await recorder.finishRun();
@@ -1677,9 +1677,9 @@ class PerformanceBenchmarkSuiteRunner {
           ),
         );
         await recorder.runStep(
-          name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 15),
-          operation: recorder.waitForImageQuiescence,
+          name: "wait-ui-quiescent",
+          timeout: const Duration(minutes: 16),
+          operation: _waitForUiQuiescence,
         );
         await recorder.finishRun();
       } catch (_) {
@@ -1713,9 +1713,9 @@ class PerformanceBenchmarkSuiteRunner {
           ),
         );
         await recorder.runStep(
-          name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 15),
-          operation: recorder.waitForImageQuiescence,
+          name: "wait-ui-quiescent",
+          timeout: const Duration(minutes: 16),
+          operation: _waitForUiQuiescence,
         );
         await recorder.finishRun();
       } catch (_) {
@@ -1752,9 +1752,9 @@ class PerformanceBenchmarkSuiteRunner {
           ),
         );
         await recorder.runStep(
-          name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 15),
-          operation: recorder.waitForImageQuiescence,
+          name: "wait-ui-quiescent",
+          timeout: const Duration(minutes: 16),
+          operation: _waitForUiQuiescence,
         );
         await recorder.finishRun();
       } catch (_) {
@@ -1786,9 +1786,9 @@ class PerformanceBenchmarkSuiteRunner {
           ),
         );
         await recorder.runStep(
-          name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 15),
-          operation: recorder.waitForImageQuiescence,
+          name: "wait-ui-quiescent",
+          timeout: const Duration(minutes: 16),
+          operation: _waitForUiQuiescence,
         );
         await recorder.finishRun();
       } catch (_) {
