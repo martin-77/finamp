@@ -1955,6 +1955,93 @@ class DownloadsService {
     );
   }
 
+  /// Benchmark-only sequential read reference for downloaded local files.
+  ///
+  /// This intentionally bypasses Finamp metadata/queue/player work so the
+  /// benchmark can distinguish storage throughput from application overhead.
+  /// File paths and item names remain device-local and are never returned.
+  Future<Map<String, int>> readPerformanceBenchmarkFiles(
+    DownloadStub stub,
+  ) async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark filesystem reads are only available in benchmark mode",
+      );
+    }
+
+    final locationMap =
+        FinampSettingsHelper.finampSettings.downloadLocationsMap;
+    final result = await GetIt.instance<JellyfinApiHelper>().runInIsolate(
+      _readPerformanceBenchmarkFilesBackground(
+        stub.isarId,
+        locationMap,
+      ),
+    );
+    return Map<String, int>.from(result as Map);
+  }
+
+  static Future<Map<String, int>> Function(dynamic)
+      _readPerformanceBenchmarkFilesBackground(
+    int isarId,
+    Map<String, DownloadLocation> locationMap,
+  ) {
+    return (dynamic _) async {
+      final root = GetIt.instance<Isar>().downloadItems.getSync(isarId);
+      if (root == null) {
+        return <String, int>{
+          "fileCount": 0,
+          "bytes": 0,
+          "durationMicros": 0,
+        };
+      }
+
+      final required = <DownloadItem>{};
+      final info = <DownloadItem>{};
+      _getFileChildren(root, required, info, true);
+      final allItems = <DownloadItem>[
+        ...required,
+        ...info.difference(required),
+      ];
+
+      var fileCount = 0;
+      var bytes = 0;
+      final stopwatch = Stopwatch()..start();
+
+      for (final item in allItems) {
+        if (item.path == null ||
+            item.fileTranscodingProfile?.downloadLocationId == null) {
+          continue;
+        }
+        if (item.type != DownloadItemType.track &&
+            item.type != DownloadItemType.image) {
+          continue;
+        }
+        if (!item.state.isComplete) continue;
+
+        final location =
+            locationMap[item.fileTranscodingProfile!.downloadLocationId];
+        if (location == null) continue;
+
+        final file = File(
+          path_helper.join(location.currentPath, item.path!),
+        );
+        if (!await file.exists()) continue;
+
+        fileCount++;
+        await for (final chunk in file.openRead()) {
+          bytes += chunk.length;
+        }
+      }
+
+      stopwatch.stop();
+      return <String, int>{
+        "fileCount": fileCount,
+        "bytes": bytes,
+        "durationMicros": stopwatch.elapsedMicroseconds,
+      };
+    };
+  }
+
   /// Returns the size of a download by recursively calculating the size of all
   /// required children.  Used to display item sizes on downloads screen.
   Future<int> getFileSize(DownloadStub item) =>
