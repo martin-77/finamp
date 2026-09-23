@@ -772,6 +772,36 @@ class PerformanceBenchmarkService {
     }
   }
 
+  void reportStartupPhaseResult(String phase) {
+    if (!enabled) return;
+    diagnostic(
+      "startup-phase-result",
+      values: {
+        "phase": phase,
+        "fullyReadyMs": processElapsedMs,
+        "requestCount": _startupNetworkRequestCount,
+        "responseBytes": _startupNetworkResponseBytes,
+        "httpDurationMicrosTotal": _startupNetworkDurationMicros,
+        "httpDurationMicrosMax": _startupNetworkDurationMicrosMax,
+        "workerOperationCount": _startupWorkerOperationCount,
+        "workerOperationFailed": _startupWorkerOperationFailed,
+        "workerDurationMicrosTotal": _startupWorkerDurationMicros,
+        "workerDurationMicrosMax": _startupWorkerDurationMicrosMax,
+        "frameCount": _startupFrameCount,
+        "framesOver16_7ms": _startupFramesOver16_7ms,
+        "framesOver33_3ms": _startupFramesOver33_3ms,
+        "framesOver50ms": _startupFramesOver50ms,
+        "frameMicrosMax": _startupFrameTotalMicrosMax,
+        "imageLoadStarted": _startupImageLoadStarted,
+        "imageLoadCompleted": _startupImageLoadCompleted,
+        "imageLoadFailed": _startupImageLoadFailed,
+        "imageMaxConcurrentLoads": _startupImageMaxConcurrentLoads,
+        "rssBytes": ProcessInfo.currentRss,
+        "maxRssBytes": ProcessInfo.maxRss,
+      },
+    );
+  }
+
   void reportStartupFrameSummary(String phase) {
     if (!enabled || !_startupFrameCollectionOpen) return;
     _startupFrameCollectionOpen = false;
