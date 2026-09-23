@@ -1786,6 +1786,48 @@ class DownloadsService {
     };
   }
 
+  /// Benchmark-only wait until no queued/running file transfer remains.
+  ///
+  /// Intended for isolated benchmark phases such as the automatic all-playlist
+  /// metadata/image sync where the root collection can become complete before
+  /// all informational image transfers have finished.
+  Future<void> waitForPerformanceBenchmarkDownloadSystemIdle({
+    Duration stableFor = const Duration(seconds: 3),
+    Duration timeout = const Duration(hours: 3),
+  }) async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark download waiting is only available in benchmark mode",
+      );
+    }
+
+    final overall = Stopwatch()..start();
+    Stopwatch? stableSince;
+
+    while (overall.elapsed < timeout) {
+      final active =
+          (downloadStatuses[DownloadItemState.enqueued] ?? 0) +
+          (downloadStatuses[DownloadItemState.downloading] ?? 0) +
+          (downloadStatuses[DownloadItemState.needsRedownload] ?? 0);
+
+      if (active == 0 && !syncBuffer.isRunning && !_userDeleteRunning) {
+        stableSince ??= Stopwatch()..start();
+        if (stableSince.elapsed >= stableFor) {
+          return;
+        }
+      } else {
+        stableSince = null;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+
+    throw TimeoutException(
+      "Benchmark download system did not become idle",
+      timeout,
+    );
+  }
+
   /// Benchmark-only wait for a collection download to reach a terminal state.
   /// Exports only aggregate counts; media ids/names/paths never leave the device.
   Future<Map<String, int>> waitForPerformanceBenchmarkDownload({
