@@ -228,25 +228,33 @@ class _ArtistScreenContentState extends ConsumerState<ArtistScreenContent> {
         )
         .valueOrNull;
 
-    final allTracks = ref.watch(
-      getArtistTracksProvider(
-        artist: widget.parent,
-        libraryFilter: widget.library?.id,
-        genreFilter: sortConfig.genreFilter?.id,
-        sortAndFilterConfiguration: albumsSortConfig,
-        sortLikeAlbums: true,
-      ).future,
+    final allTracksProvider = getArtistTracksProvider(
+      artist: widget.parent,
+      libraryFilter: widget.library?.id,
+      genreFilter: sortConfig.genreFilter?.id,
+      sortAndFilterConfiguration: albumsSortConfig,
+      sortLikeAlbums: true,
     );
+    final allTracksAsync = ref.watch(allTracksProvider).valueOrNull;
+    final allTracks = ref.watch(allTracksProvider.future);
 
     final isLoading = topTracksAsync == null || albumArtistAlbumsAsync == null || performingArtistAlbumsAsync == null;
+    final benchmarkDetailReady =
+        !isLoading &&
+        allPerformingArtistTracksAsync != null &&
+        allTracksAsync != null;
 
     final benchmarkCommand = _benchmarkDetailCommand;
-    if (benchmarkCommand != null && !isLoading) {
+    if (benchmarkCommand != null && benchmarkDetailReady) {
       final benchmark = PerformanceBenchmarkService.instance;
       final visibleChildCount =
           topTracksAsync!.length +
           albumArtistAlbumsAsync!.length +
           performingArtistAlbumsAsync!.length;
+      benchmark.metric(
+        "artistResolvedTrackCount",
+        allTracksAsync!.length,
+      );
       if (!_benchmarkDetailDataMarked) {
         _benchmarkDetailDataMarked = true;
         benchmark.mark(
