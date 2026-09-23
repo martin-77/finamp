@@ -553,10 +553,13 @@ class PerformanceBenchmarkSuiteRunner {
       if (!_stageAtOrAfter(stage, "main-targets-done")) {
         final targetsReady = await _discoverAndValidateTargets();
         if (!targetsReady) {
+          await _restoreSuiteOriginalOfflineState();
           recorder.diagnostic(
             "suite-blocked",
             values: {"reason": "benchmark-target-validation"},
           );
+          recorder.stopHeartbeat();
+          await recorder.flushHostStream();
           return;
         }
         await recorder.setSuiteStage("main-targets-done");
