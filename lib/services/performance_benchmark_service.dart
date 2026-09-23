@@ -257,6 +257,10 @@ class PerformanceBenchmarkService {
     "FINAMP_PERFORMANCE_BENCHMARK",
     defaultValue: false,
   );
+  static const bool smoke = bool.fromEnvironment(
+    "FINAMP_BENCH_SMOKE",
+    defaultValue: false,
+  );
   static const String variant = String.fromEnvironment(
     "FINAMP_BENCH_VARIANT",
     defaultValue: "unknown",
