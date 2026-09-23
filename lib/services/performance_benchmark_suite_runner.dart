@@ -1414,16 +1414,20 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final api = GetIt.instance<JellyfinApiHelper>();
 
-    final queries = _smoke
-        ? const <(String, String, bool)>[
-            ("iron-maiden", "Iron Maiden", true),
-          ]
-        : const <(String, String, bool)>[
-            ("iron-maiden", "Iron Maiden", true),
-            ("metallica", "Metallica", true),
-            ("kettcar", "Kettcar", true),
-            ("broad-m", "m", false),
-          ];
+    final configuredQueries = <(String, String, bool)>[
+      ("query-1", PerformanceBenchmarkService.searchQuery1, true),
+      if (!_smoke) ...[
+        ("query-2", PerformanceBenchmarkService.searchQuery2, true),
+        ("query-3", PerformanceBenchmarkService.searchQuery3, true),
+        ("broad-1", "m", false),
+      ],
+    ];
+    for (final (alias, query, _) in configuredQueries) {
+      if (query.trim().isEmpty) {
+        throw StateError("Benchmark search query $alias is not configured");
+      }
+    }
+    final queries = configuredQueries;
     const tabs = <String>["artists", "albums", "tracks"];
 
     for (final queryEntry in queries) {
@@ -1456,7 +1460,7 @@ class PerformanceBenchmarkSuiteRunner {
       if (deriveTargetChain && artistMatches.length == 1) {
         final artist = artistMatches.single;
         await recorder.saveTarget(
-          alias: "search-artist-$queryAlias",
+          alias: "$queryAlias-artist",
           itemType: "MusicArtist",
           itemId: artist.id.raw,
         );
@@ -1472,7 +1476,7 @@ class PerformanceBenchmarkSuiteRunner {
         if (albums != null && albums.isNotEmpty) {
           final album = albums.first;
           await recorder.saveTarget(
-            alias: "search-album-$queryAlias",
+            alias: "$queryAlias-album",
             itemType: "MusicAlbum",
             itemId: album.id.raw,
           );
@@ -1486,7 +1490,7 @@ class PerformanceBenchmarkSuiteRunner {
           );
           if (tracks != null && tracks.isNotEmpty) {
             await recorder.saveTarget(
-              alias: "search-track-$queryAlias",
+              alias: "$queryAlias-track",
               itemType: "Audio",
               itemId: tracks.first.id.raw,
             );
@@ -2758,8 +2762,8 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _runSearchDrilldownBaselines() async {
     final queryAliases = _smoke
-        ? const <String>["iron-maiden"]
-        : const <String>["iron-maiden", "metallica", "kettcar"];
+        ? const <String>["query-1"]
+        : const <String>["query-1", "query-2", "query-3"];
     for (final queryAlias in queryAliases) {
       await _runSearchDrilldown(queryAlias);
       await _settleUi(
@@ -2771,11 +2775,11 @@ class PerformanceBenchmarkSuiteRunner {
   Future<void> _runSearchDrilldown(String queryAlias) async {
     final recorder = PerformanceBenchmarkService.instance;
     final artistTarget =
-        await recorder.getTarget("search-artist-$queryAlias");
+        await recorder.getTarget("$queryAlias-artist");
     final albumTarget =
-        await recorder.getTarget("search-album-$queryAlias");
+        await recorder.getTarget("$queryAlias-album");
     final trackTarget =
-        await recorder.getTarget("search-track-$queryAlias");
+        await recorder.getTarget("$queryAlias-track");
 
     if (artistTarget == null || albumTarget == null || trackTarget == null) {
       recorder.diagnostic(
@@ -2846,7 +2850,7 @@ class PerformanceBenchmarkSuiteRunner {
         name: "artist-open",
         timeout: const Duration(minutes: 15),
         operation: () => recorder.requestDetail(
-          targetAlias: "search-artist-$queryAlias",
+          targetAlias: "$queryAlias-artist",
           targetType: "artist",
           itemId: artistTarget.itemId,
           refresh: true,
@@ -2870,7 +2874,7 @@ class PerformanceBenchmarkSuiteRunner {
         name: "album-open",
         timeout: const Duration(minutes: 15),
         operation: () => recorder.requestDetail(
-          targetAlias: "search-album-$queryAlias",
+          targetAlias: "$queryAlias-album",
           targetType: "album",
           itemId: albumTarget.itemId,
           refresh: true,
@@ -3010,15 +3014,15 @@ class PerformanceBenchmarkSuiteRunner {
             ("detail-album", "album"),
             ("detail-artist", "artist"),
             ("detail-genre", "genre"),
-            ("search-track-iron-maiden", "track"),
-            ("search-album-iron-maiden", "album"),
-            ("search-artist-iron-maiden", "artist"),
-            ("search-track-metallica", "track"),
-            ("search-album-metallica", "album"),
-            ("search-artist-metallica", "artist"),
-            ("search-track-kettcar", "track"),
-            ("search-album-kettcar", "album"),
-            ("search-artist-kettcar", "artist"),
+            ("query-1-track", "track"),
+            ("query-1-album", "album"),
+            ("query-1-artist", "artist"),
+            ("query-2-track", "track"),
+            ("query-2-album", "album"),
+            ("query-2-artist", "artist"),
+            ("query-3-track", "track"),
+            ("query-3-album", "album"),
+            ("query-3-artist", "artist"),
             ("bench-10", "playlist"),
             ("bench-100", "playlist"),
             ("bench-1000", "playlist"),
@@ -3212,20 +3216,20 @@ class PerformanceBenchmarkSuiteRunner {
             ("detail-album", "album"),
             ("detail-artist", "artist"),
             ("detail-genre", "genre"),
-            ("search-artist-iron-maiden", "artist"),
-            ("search-album-iron-maiden", "album"),
+            ("query-1-artist", "artist"),
+            ("query-1-album", "album"),
             ("bench-10", "playlist"),
           ]
         : const <(String, String)>[
             ("detail-album", "album"),
             ("detail-artist", "artist"),
             ("detail-genre", "genre"),
-            ("search-artist-iron-maiden", "artist"),
-            ("search-album-iron-maiden", "album"),
-            ("search-artist-metallica", "artist"),
-            ("search-album-metallica", "album"),
-            ("search-artist-kettcar", "artist"),
-            ("search-album-kettcar", "album"),
+            ("query-1-artist", "artist"),
+            ("query-1-album", "album"),
+            ("query-2-artist", "artist"),
+            ("query-2-album", "album"),
+            ("query-3-artist", "artist"),
+            ("query-3-album", "album"),
             ("bench-10", "playlist"),
             ("bench-100", "playlist"),
             ("bench-1000", "playlist"),
