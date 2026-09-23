@@ -144,6 +144,8 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
           ? ref.read(finampSettingsProvider.defaultArtistType).tabType
           : targetTab;
 
+      _tabController?.index = index;
+      command.markSelected();
       PerformanceBenchmarkService.instance.mark(
         "ui-tab-selected",
         values: {
@@ -151,8 +153,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
           "contentType": contentTab.name,
         },
       );
-
-      _tabController?.animateTo(index);
+      setState(() {});
     });
   }
 
