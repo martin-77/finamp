@@ -231,9 +231,10 @@ installation. It refuses the normal Finamp identifier
 be enabled only with:
 
 ```bash
+FINAMP_BENCH_SEARCH_QUERY_1='<private query 1>' \
 FINAMP_BENCH_ALLOW_PRODUCTION_BUNDLE=true \
-  FINAMP_BENCH_SMOKE=true \
-  bash tool/bootstrap_performance_benchmark_macos.sh
+FINAMP_BENCH_SMOKE=true \
+bash tool/bootstrap_performance_benchmark_macos.sh
 ```
 
 The safer setup is to keep a machine-local Xcode project change with a distinct
@@ -559,7 +560,8 @@ playback benchmark.
 Every benchmark event and metric is emitted immediately on stdout as one
 machine-readable line prefixed with `BENCH_JSON `.
 
-On macOS, normally start the complete preflight/build/device workflow with:
+On macOS, first export the three private search queries as shown above, then
+start the complete preflight/build/device workflow with:
 
 `bash tool/bootstrap_performance_benchmark_macos.sh`
 
