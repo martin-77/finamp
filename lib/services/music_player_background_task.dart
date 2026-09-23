@@ -1421,16 +1421,30 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
   /// Syncs the list of MediaItems (_queue) with the internal queue of the player.
   /// Called by onAddQueueItem and onUpdateQueue.
   Future<AudioSource> _queueItemToAudioSource(FinampQueueItem queueItem) async {
-    if (queueItem.item.extras!["downloadedTrackPath"] == null) {
+    final extras = queueItem.item.extras!;
+    final downloadedTrackPath = extras["downloadedTrackPath"] as String?;
+    final isOffline = extras["isOffline"] as bool? ?? false;
+    final shouldTranscode = extras["shouldTranscode"] as bool? ?? false;
+
+    if (downloadedTrackPath == null) {
       // If downloadedTrack wasn't passed, we assume that the item is not
       // downloaded.
 
       // If offline, we throw an error so that we don't accidentally stream from
       // the internet. See the big comment in _trackUri() to see why this was
       // passed in extras.
-      if (queueItem.item.extras!["isOffline"] as bool) {
+      if (isOffline) {
         return Future.error("Offline mode enabled but downloaded track not found.");
       } else {
+        final user = GetIt.instance<FinampUserHelper>().currentUser;
+        final usesLocalTarget =
+            user?.isLocal == true && user?.preferLocalNetwork == true;
+        PerformanceBenchmarkService.instance.reportPlaybackSourceSelected(
+          source: "server",
+          serverTarget: usesLocalTarget ? "local" : "public",
+          transcoded: shouldTranscode,
+          offline: false,
+        );
         final trackUri = await _trackUri(queueItem.item);
         return AudioSource.uri(trackUri, tag: queueItem);
         // if (queueItem.item.extras!["shouldTranscode"] == true) {
@@ -1442,7 +1456,11 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
     } else {
       // We have to deserialise this because Dart is stupid and can't handle
       // sending classes through isolates.
-      final downloadedTrackPath = queueItem.item.extras!["downloadedTrackPath"] as String;
+      PerformanceBenchmarkService.instance.reportPlaybackSourceSelected(
+        source: "downloaded-file",
+        transcoded: false,
+        offline: isOffline,
+      );
 
       // Path verification and stuff is done in AudioServiceHelper, so this path
       // should be valid.
