@@ -281,6 +281,10 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkDetailCommand? _activeDetailCommand;
   PerformanceBenchmarkSearchCommand? _activeSearchCommand;
   int _runSequence = 0;
+  int _startupPendingTasks = 0;
+  int _startupGeneration = 0;
+  final StreamController<int> _startupTaskController =
+      StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
@@ -478,6 +482,86 @@ class PerformanceBenchmarkService {
       "value": value,
     });
     unawaited(_persistActiveRun());
+  }
+
+  Future<T> runStartupTask<T>(
+    String taskName,
+    Future<T> Function() operation,
+  ) async {
+    if (!enabled) return operation();
+
+    _startupPendingTasks++;
+    _startupGeneration++;
+    _startupTaskController.add(_startupPendingTasks);
+    diagnostic(
+      "startup-task-start",
+      values: {
+        "task": taskName,
+        "pendingTasks": _startupPendingTasks,
+      },
+    );
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      return await operation();
+    } finally {
+      stopwatch.stop();
+      _startupPendingTasks--;
+      _startupGeneration++;
+      _startupTaskController.add(_startupPendingTasks);
+      diagnostic(
+        "startup-task-complete",
+        values: {
+          "task": taskName,
+          "pendingTasks": _startupPendingTasks,
+          "durationMs": stopwatch.elapsedMicroseconds / 1000.0,
+        },
+      );
+    }
+  }
+
+  Future<void> waitForStartupQuiescence({
+    Duration quietPeriod = const Duration(seconds: 3),
+    Duration timeout = const Duration(minutes: 3),
+  }) async {
+    if (!enabled) return;
+
+    final overall = Stopwatch()..start();
+    diagnostic(
+      "startup-quiescence-wait-start",
+      values: {
+        "pendingTasks": _startupPendingTasks,
+        "quietPeriodMs": quietPeriod.inMilliseconds,
+      },
+    );
+
+    while (overall.elapsed < timeout) {
+      if (_startupPendingTasks != 0) {
+        await _startupTaskController.stream
+            .firstWhere((pending) => pending == 0)
+            .timeout(timeout - overall.elapsed);
+      }
+
+      final generationAtZero = _startupGeneration;
+      await Future<void>.delayed(quietPeriod);
+
+      if (_startupPendingTasks == 0 &&
+          _startupGeneration == generationAtZero) {
+        overall.stop();
+        diagnostic(
+          "startup-quiescent",
+          values: {
+            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+          },
+        );
+        return;
+      }
+    }
+
+    throw TimeoutException(
+      "Startup tasks did not become quiescent",
+      timeout,
+    );
   }
 
   Future<void> waitForEvent(
