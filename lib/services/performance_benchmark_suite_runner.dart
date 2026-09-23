@@ -1328,6 +1328,11 @@ class PerformanceBenchmarkSuiteRunner {
     );
     await Future<void>.delayed(const Duration(seconds: 3));
 
+    // The detail experiment needs its own guaranteed cold image state. The
+    // albums list above may already have rendered the deterministic target.
+    await clearPerformanceBenchmarkImageCache();
+    await Future<void>.delayed(const Duration(seconds: 2));
+
     await _runDetailBaseline(
       targetAlias: "detail-album",
       detailType: "album",
