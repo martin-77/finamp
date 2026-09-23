@@ -675,72 +675,99 @@ class PerformanceBenchmarkSuiteRunner {
       values: {"targetAlias": alias},
     );
 
-    // Cleanup must be online so queued deletes can finish.
-    FinampSetters.setIsOffline(false);
-    await Future<void>.delayed(const Duration(seconds: 1));
+    final previousOffline =
+        FinampSettingsHelper.finampSettings.isOffline;
+    try {
+      // Cleanup must be online so queued deletes can finish. This is a
+      // temporary operational state only; restore the exact prior value below.
+      if (previousOffline) {
+        FinampSetters.setIsOffline(false);
+        await Hive.box("FinampSettings").flush();
+        await recorder.waitForNetworkQuiescence(
+          quietPeriod: const Duration(milliseconds: 750),
+          timeout: const Duration(minutes: 5),
+        );
+      }
 
-    final storedItemId = requirement["targetItemId"] as String?;
-    final storedItemType = requirement["targetItemType"] as String?;
-    final target = storedItemId != null
-        ? PerformanceBenchmarkTarget(
-            alias: alias,
-            itemType: storedItemType ?? "",
-            itemId: storedItemId,
-          )
-        : await recorder.getTarget(alias) ??
-            await recorder.getLegacyTargetForCleanup(alias);
-    if (target == null) {
-      recorder.diagnostic(
-        "download-cleanup-recovery-target-missing",
-        values: {"targetAlias": alias},
+      final storedItemId = requirement["targetItemId"] as String?;
+      final storedItemType = requirement["targetItemType"] as String?;
+      final target = storedItemId != null
+          ? PerformanceBenchmarkTarget(
+              alias: alias,
+              itemType: storedItemType ?? "",
+              itemId: storedItemId,
+            )
+          : await recorder.getTarget(alias) ??
+              await recorder.getLegacyTargetForCleanup(alias);
+      if (target == null) {
+        recorder.diagnostic(
+          "download-cleanup-recovery-target-missing",
+          values: {"targetAlias": alias},
+        );
+        await recorder.setDownloadCleanupRequired(
+          targetAlias: alias,
+          required: false,
+        );
+        return;
+      }
+
+      final downloads = GetIt.instance<DownloadsService>();
+      final DownloadStub stub;
+
+      if ((target.itemType == "finampCollection" ||
+              storedItemType == DownloadItemType.finampCollection.name) &&
+          alias == "all-playlists-metadata") {
+        stub = DownloadStub.fromFinampCollection(
+          FinampCollection(
+            type: FinampCollectionType.allPlaylistsMetadata,
+          ),
+        );
+      } else {
+        final container = GetIt.instance<ProviderContainer>();
+        final item = await container.read(
+          itemByIdProvider(BaseItemId(target.itemId)).future,
+        );
+        if (item == null) {
+          throw StateError(
+            "Benchmark cleanup target could not be resolved",
+          );
+        }
+        stub = DownloadStub.fromItem(
+          type: DownloadItemType.collection,
+          item: item,
+        );
+      }
+
+      await downloads.deleteDownload(stub: stub);
+      await downloads.waitForPerformanceBenchmarkCleanup(
+        stub: stub,
+        timeout: const Duration(minutes: 10),
+      );
+      await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        stableFor: const Duration(seconds: 2),
+        timeout: const Duration(minutes: 10),
       );
       await recorder.setDownloadCleanupRequired(
         targetAlias: alias,
         required: false,
       );
-      return;
-    }
 
-    final downloads = GetIt.instance<DownloadsService>();
-    final DownloadStub stub;
-
-    if ((target.itemType == "finampCollection" ||
-            storedItemType == DownloadItemType.finampCollection.name) &&
-        alias == "all-playlists-metadata") {
-      stub = DownloadStub.fromFinampCollection(
-        FinampCollection(
-          type: FinampCollectionType.allPlaylistsMetadata,
-        ),
+      recorder.diagnostic(
+        "download-cleanup-recovery-complete",
+        values: {"targetAlias": alias},
       );
-    } else {
-      final container = GetIt.instance<ProviderContainer>();
-      final item = await container.read(
-        itemByIdProvider(BaseItemId(target.itemId)).future,
-      );
-      if (item == null) {
-        throw StateError(
-          "Benchmark cleanup target could not be resolved",
+    } finally {
+      final currentOffline =
+          FinampSettingsHelper.finampSettings.isOffline;
+      if (currentOffline != previousOffline) {
+        FinampSetters.setIsOffline(previousOffline);
+        await Hive.box("FinampSettings").flush();
+        recorder.diagnostic(
+          "download-cleanup-recovery-offline-restored",
+          values: {"offline": previousOffline},
         );
       }
-      stub = DownloadStub.fromItem(
-        type: DownloadItemType.collection,
-        item: item,
-      );
     }
-    await downloads.deleteDownload(stub: stub);
-    await downloads.waitForPerformanceBenchmarkCleanup(
-      stub: stub,
-      timeout: const Duration(minutes: 10),
-    );
-    await recorder.setDownloadCleanupRequired(
-      targetAlias: alias,
-      required: false,
-    );
-
-    recorder.diagnostic(
-      "download-cleanup-recovery-complete",
-      values: {"targetAlias": alias},
-    );
   }
 
   Future<bool> _discoverAndValidateTargets() async {
