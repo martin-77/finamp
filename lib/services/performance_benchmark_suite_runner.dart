@@ -1203,7 +1203,10 @@ class PerformanceBenchmarkSuiteRunner {
     final existingStatus = downloads.getStatus(stub, expectedTracks);
     if (existingStatus.isDownloaded) {
       await downloads.deleteDownload(stub: stub);
-      await _waitForDownloadRemoved(downloads, stub);
+      await downloads.waitForPerformanceBenchmarkCleanup(
+        stub: stub,
+        timeout: const Duration(minutes: 10),
+      );
     }
 
     final internalLocation =
@@ -1549,22 +1552,6 @@ class PerformanceBenchmarkSuiteRunner {
         return;
       }
 
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    }
-  }
-
-  Future<void> _waitForDownloadRemoved(
-    DownloadsService downloads,
-    DownloadStub stub,
-  ) async {
-    while (true) {
-      final info = await downloads.getCollectionInfo(
-        id: BaseItemId(stub.id),
-      );
-      final status = downloads.getStatus(stub, null);
-      if (info == null || !status.isDownloaded) {
-        return;
-      }
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
   }
