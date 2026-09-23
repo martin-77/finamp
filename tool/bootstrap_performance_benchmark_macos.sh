@@ -108,13 +108,10 @@ fi
 step "Selected device: $DEVICE_ID"
 mkdir -p "$OUT_DIR"
 
-step "Starting Finamp benchmark build in PROFILE mode"
+step "Starting Finamp benchmark in PROFILE mode"
 printf 'Results will be written continuously under %s/\n' "$OUT_DIR"
-printf 'Keep this terminal open for the whole run. Ctrl-C stops the app/collector.\n\n'
+printf 'The app will be built, installed and launched via Xcode devicectl.\n'
+printf 'No Flutter mDNS / Dart VM service connection is required.\n\n'
 
 BENCH_VARIANT="$(git rev-parse --short=12 HEAD)"
-bash tool/run_performance_benchmark.sh \
-  -d "$DEVICE_ID" \
-  --profile \
-  --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
-  --dart-define=FINAMP_BENCH_VARIANT="$BENCH_VARIANT"
+bash tool/run_performance_benchmark.sh "$DEVICE_ID" "$BENCH_VARIANT"
