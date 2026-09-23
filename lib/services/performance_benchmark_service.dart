@@ -46,12 +46,12 @@ class PerformanceBenchmarkJumpCommand {
 
   final String contentType;
   final String letter;
-  final Completer<bool> _completer = Completer<bool>();
+  final Completer<void> _completer = Completer<void>();
 
-  Future<bool> get completed => _completer.future;
+  Future<void> get completed => _completer.future;
 
-  void complete(bool loadedPage) {
-    if (!_completer.isCompleted) _completer.complete(loadedPage);
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
   }
 
   void completeError(Object error, StackTrace stackTrace) {
@@ -116,12 +116,12 @@ class PerformanceBenchmarkPageCommand {
   PerformanceBenchmarkPageCommand({required this.contentType});
 
   final String contentType;
-  final Completer<void> _completer = Completer<void>();
+  final Completer<bool> _completer = Completer<bool>();
 
-  Future<void> get completed => _completer.future;
+  Future<bool> get completed => _completer.future;
 
-  void complete() {
-    if (!_completer.isCompleted) _completer.complete();
+  void complete(bool loadedPage) {
+    if (!_completer.isCompleted) _completer.complete(loadedPage);
   }
 
   void completeError(Object error, StackTrace stackTrace) {
