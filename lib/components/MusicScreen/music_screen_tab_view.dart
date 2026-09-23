@@ -135,7 +135,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             "loadedItems": state.items?.length ?? 0,
           },
         );
-        command.complete();
+        command.complete(false);
         return;
       }
       _activeBenchmarkPage = command;
@@ -289,7 +289,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         "pageItemsAdded",
         (current.items?.length ?? 0) - _benchmarkPageInitialCount,
       );
-      command.complete();
+      command.complete(true);
       _activeBenchmarkPage = null;
       _benchmarkPageFrameScheduled = false;
     });
