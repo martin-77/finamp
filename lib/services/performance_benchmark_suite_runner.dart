@@ -906,12 +906,26 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _runDownloadAndOfflineBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
     for (final entry in const <(String, int)>[
       ("bench-10", 10),
       ("bench-100", 100),
       ("bench-1000", 1000),
     ]) {
-      await _runDownloadLifecycle(entry.$1, entry.$2);
+      try {
+        await _runDownloadLifecycle(entry.$1, entry.$2);
+      } catch (error) {
+        recorder.diagnostic(
+          "download-target-phase-error",
+          values: {
+            "targetAlias": entry.$1,
+            "errorType": error.runtimeType.toString(),
+          },
+        );
+        // Preserve the rest of the comprehensive baseline whenever cleanup is
+        // possible. Cleanup failure itself remains fatal.
+        await _recoverPendingDownloadCleanup();
+      }
       await Future<void>.delayed(const Duration(seconds: 5));
     }
   }
