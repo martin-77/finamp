@@ -57,6 +57,7 @@ class PerformanceBenchmarkSuiteRunner {
     "main-download-bench100-done",
     "main-download-bench1000-done",
     "main-download-done",
+    "main-queue-restore-done",
     "main-image-cache-done",
   ];
 
@@ -499,6 +500,16 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.setSuiteStage("main-download-done");
         stage = "main-download-done";
+      }
+
+      if (!_stageAtOrAfter(stage, "main-queue-restore-done")) {
+        await _runLargeQueueRestoreBaseline();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "large-queue-restore"},
+        );
+        await recorder.setSuiteStage("main-queue-restore-done");
+        stage = "main-queue-restore-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-image-cache-done")) {
