@@ -17,6 +17,7 @@ import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/music_providers.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +55,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
   final Map<ContentType, SortAndFilterController> sortAndFilterControllerMap = {};
 
   TabController? _tabController;
+  StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
 
   final _audioServiceHelper = GetIt.instance<AudioServiceHelper>();
   final _jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
@@ -110,10 +112,53 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
   @override
   void initState() {
     super.initState();
+    _benchmarkTabSubscription =
+        PerformanceBenchmarkService.instance.tabCommands.listen((command) {
+      if (!mounted || widget.singleTabConfig != null) return;
+
+      final tabs = ref
+          .read(finampSettingsProvider.tabOrder)
+          .where((e) => ref.read(finampSettingsProvider.showTabs(e)) ?? false)
+          .toList();
+
+      int index = tabs.indexWhere((tab) {
+        if (command.contentType == "artists") {
+          return tab == ContentType.genericArtists ||
+              tab == ContentType.albumArtists ||
+              tab == ContentType.performingArtists;
+        }
+        return tab.name == command.contentType;
+      });
+
+      if (index < 0) {
+        command.completeError(
+          StateError("Requested benchmark tab is not visible"),
+          StackTrace.current,
+        );
+        return;
+      }
+
+      final targetTab = tabs[index];
+      final contentTab = targetTab == ContentType.genericArtists
+          ? ref.read(finampSettingsProvider.defaultArtistType).tabType
+          : targetTab;
+
+      PerformanceBenchmarkService.instance.mark(
+        "ui-tab-selected",
+        values: {
+          "requestedContentType": command.contentType,
+          "contentType": contentTab.name,
+        },
+      );
+
+      refreshMap[contentTab]?.call();
+      _tabController?.animateTo(index);
+    });
   }
 
   @override
   void dispose() {
+    _benchmarkTabSubscription?.cancel();
     _tabController?.dispose();
     textEditingController.dispose();
     super.dispose();
