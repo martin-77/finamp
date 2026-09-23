@@ -1279,13 +1279,13 @@ class PerformanceBenchmarkService {
     );
     run.stopwatch.stop();
     run.finished = true;
+    _activeRun = null;
 
     await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
     _emitHostRecord("run-end", {"run": run.toJson()});
-    _activeRun = null;
   }
 
   Future<void> saveOriginalOfflineState(bool value) async {
@@ -1392,13 +1392,13 @@ class PerformanceBenchmarkService {
     run.result = run.failure == null
         ? PerformanceBenchmarkResult.success
         : PerformanceBenchmarkResult.failed;
+    _activeRun = null;
 
     await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
     _emitHostRecord("run-end", {"run": run.toJson()});
-    _activeRun = null;
     return run;
   }
 
@@ -1416,12 +1416,12 @@ class PerformanceBenchmarkService {
     run.stopwatch.stop();
     run.finished = true;
     run.result = PerformanceBenchmarkResult.cancelled;
+    _activeRun = null;
     await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
     _emitHostRecord("run-end", {"run": run.toJson()});
-    _activeRun = null;
   }
 
   Future<List<Map<String, dynamic>>> getRuns() async {
