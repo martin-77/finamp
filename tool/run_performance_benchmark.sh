@@ -105,6 +105,90 @@ max_recovery_restarts="${FINAMP_BENCH_MAX_RECOVERY_RESTARTS:-3}"
 heartbeat_stall_seconds="${FINAMP_BENCH_HEARTBEAT_STALL_SECONDS:-600}"
 benchmark_started=0
 last_stream_change_epoch="$(date +%s)"
+last_progress_signature=""
+
+print_progress() {
+  local progress
+  progress="$(python3 - "$jsonl" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+last = None
+
+with open(path, "r", encoding="utf-8") as handle:
+    for raw in handle:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            record = json.loads(raw)
+        except Exception:
+            continue
+
+        kind = record.get("type")
+        if kind == "run-start":
+            run = record.get("run") or {}
+            last = (
+                "RUN",
+                run.get("scenario", ""),
+                run.get("mode", ""),
+                run.get("targetAlias") or run.get("targetType") or "",
+            )
+        elif kind == "run-end":
+            run = record.get("run") or {}
+            last = (
+                "DONE",
+                run.get("scenario", ""),
+                run.get("mode", ""),
+                run.get("result", ""),
+            )
+        elif kind == "diagnostic":
+            name = record.get("name")
+            values = record.get("values") or {}
+            if name == "suite-phase-complete":
+                last = ("PHASE", values.get("phase", ""), "", "")
+            elif name == "host-restart-requested":
+                last = (
+                    "RESTART",
+                    values.get("reason", ""),
+                    values.get("nextStage", ""),
+                    "",
+                )
+            elif name == "startup-fully-ready":
+                last = ("STARTUP", values.get("phase", ""), "", "")
+
+if last is not None:
+    print("|".join(str(x) for x in last))
+PY
+)"
+  if [[ -n "$progress" && "$progress" != "$last_progress_signature" ]]; then
+    last_progress_signature="$progress"
+    IFS='|' read -r kind first second third <<< "$progress"
+    case "$kind" in
+      RUN)
+        if [[ -n "$third" ]]; then
+          log "Progress: running $first [$second] target=$third"
+        else
+          log "Progress: running $first [$second]"
+        fi
+        ;;
+      DONE)
+        log "Progress: finished $first [$second] result=$third"
+        ;;
+      PHASE)
+        log "Progress: phase complete: $first"
+        ;;
+      RESTART)
+        log "Progress: restart requested: $first -> $second"
+        ;;
+      STARTUP)
+        log "Progress: startup ready: $first"
+        ;;
+    esac
+  fi
+}
+
 
 while true; do
   now_epoch="$(date +%s)"
@@ -179,6 +263,7 @@ PY
       log "Pulled benchmark stream: ${size} bytes"
       last_size="$size"
       last_stream_change_epoch="$(date +%s)"
+      print_progress
     fi
 
     if grep -q '"name":"suite-authenticated"' "$jsonl" ||
