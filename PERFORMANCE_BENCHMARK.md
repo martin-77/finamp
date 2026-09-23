@@ -57,11 +57,13 @@ and ids are never exported.
 ### Full execution matrix
 
 1. **Process/startup**
-   - cold process / cold benchmark data
+   - realistic first process including Finamp's normal automatic playlist-metadata background work
+   - controlled cold process after benchmark-owned first-process metadata state is cleaned up
    - cold process / warm persistent cache
    - warm process / cold view
    - warm view
-   - storage, providers, audio service, `runApp`, first frame, MusicScreen usable
+   - storage, providers, audio service, `runApp`, first frame, selected MusicScreen content usable
+   - startup network request count/bytes/duration and queue-restore cost
 
 2. **Direct API reference layer**
    - Artists / Albums / Tracks / Playlists / Genres first page
@@ -147,7 +149,9 @@ and ids are never exported.
     - download cleanup has priority over resuming benchmark work
 
 12. **One-time playlist metadata/image sync**
-    - measured only after normal and post-restart cache comparisons
+    - the real automatic workload is included once in the fresh startup process
+    - after that first process its benchmark-owned metadata state is cleaned before controlled cold/warm comparisons
+    - the same workload is measured again in isolation after normal and post-restart cache comparisons
     - reproduces Finamp's automatic first-run playlist metadata workload
     - waits for the entire downloader to become idle, not only for the root node
     - exports duration/request work but no playlist names, image counts or ids
@@ -332,13 +336,15 @@ Every active run is checkpointed persistently after benchmark events and metric
 updates. If the next app start finds an unfinished run, it is finalized as
 `unexpectedExit` with the last completed benchmark step.
 
-Uncaught Flutter and Dart errors are attached to the active run using Finamp's
-existing log censorship before they are persisted. This preserves diagnostic
-context without exporting server URLs, access tokens or user identifiers.
+Uncaught Flutter and Dart errors are attached to the active run using only
+the error type, source and last benchmark step. Exception messages and stack
+traces remain in normal local Finamp logs and are deliberately excluded from
+benchmark JSON because they can contain media names, ids, server URLs, tokens
+or local paths.
 
 Long-running benchmark operations should use the benchmark step timeout helper.
-Timed out steps are stored as `timeout`, including the last step and censored
-diagnostic information.
+Timed out steps are stored as `timeout` with the last step and error type,
+without exporting exception text or stack traces.
 
 Native process termination such as iOS Jetsam cannot be read directly from the
 application sandbox. It is represented by the persistent `unexpectedExit`
@@ -406,16 +412,25 @@ playback benchmark.
 Every benchmark event and metric is emitted immediately on stdout as one
 machine-readable line prefixed with `BENCH_JSON `.
 
-When the app is launched from macOS, use:
+On macOS, normally start the complete preflight/build/device workflow with:
 
-`tool/run_performance_benchmark.sh -d <device-id> --profile`
+`bash tool/bootstrap_performance_benchmark_macos.sh`
 
-The collector writes two files under `benchmark-results/`:
+If more than one physical iOS device is connected, pass the intended Flutter
+device id as the only argument. The bootstrap resolves dependencies, runs the
+static preflight, installs CocoaPods, builds a profile app and then delegates
+to the lower-level collector.
+
+The collector writes the raw stream plus generated summaries under
+`benchmark-results/`:
 
 - `finamp-benchmark-<timestamp>.log`: complete Flutter/device output
 - `finamp-benchmark-<timestamp>.jsonl`: benchmark records only
+- `finamp-benchmark-<timestamp>-summary.json`: aggregated machine-readable results
+- `finamp-benchmark-<timestamp>-summary.md`: human-readable hotspot summary
 
-JSONL is append-only while the run is executing, so completed events remain on
+JSONL is copied repeatedly while the run is executing, and the device-side
+stream is append-only. Completed records therefore remain recoverable after
 the Mac even if the app crashes or is terminated by iOS. Device-local
 checkpointing remains enabled as a second recovery source.
 
