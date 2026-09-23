@@ -197,14 +197,39 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(
         phase: "cold-process-preparation",
       );
+      recorder.reportStartupNetworkSummary();
+
+      if (recorder.startupPlaylistMetadataWorkRan) {
+        final downloads = GetIt.instance<DownloadsService>();
+        final metadataStub = DownloadStub.fromFinampCollection(
+          FinampCollection(
+            type: FinampCollectionType.allPlaylistsMetadata,
+          ),
+        );
+        recorder.diagnostic(
+          "startup-playlist-metadata-cleanup-start",
+        );
+        await downloads.deleteDownload(stub: metadataStub);
+        await downloads.waitForPerformanceBenchmarkCleanup(
+          stub: metadataStub,
+          timeout: const Duration(minutes: 30),
+        );
+        await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          stableFor: const Duration(seconds: 5),
+          timeout: const Duration(minutes: 30),
+        );
+        recorder.diagnostic(
+          "startup-playlist-metadata-cleanup-complete",
+        );
+      }
 
       // Prepare a reproducible cold image-cache process while preserving auth,
       // settings and download configuration in the isolated benchmark app.
       await clearPerformanceBenchmarkImageCache();
 
-      // The preparation process is not part of the baseline. Start the host
-      // stream fresh so the next process contains only measured startup work.
-      await recorder.resetHostStream();
+      // Keep the realistic first-process startup records in the same host
+      // stream. The next process is still a true cold process, but its phase is
+      // separated by the durable stage and restart diagnostics.
       await recorder.setSuiteStage("cold-start-prepared");
       recorder.diagnostic(
         "host-restart-requested",
