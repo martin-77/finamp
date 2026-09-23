@@ -1421,7 +1421,7 @@ class PerformanceBenchmarkService {
   };
 
   Object? _sanitizeHostExportValue(Object? value) {
-    if (value is Map) {
+    if (value is Map<Object?, Object?>) {
       final sanitized = <String, Object?>{};
       for (final entry in value.entries) {
         final key = entry.key.toString();
@@ -1435,7 +1435,7 @@ class PerformanceBenchmarkService {
     if (value is Iterable) {
       final sanitized = <Object?>[];
       for (final item in value) {
-        if (item is Map &&
+        if (item is Map<Object?, Object?> &&
             _privateCardinalityEventNames.contains(item["name"])) {
           continue;
         }
@@ -1461,7 +1461,7 @@ class PerformanceBenchmarkService {
     }
     if (type == "event") {
       final event = payload["event"];
-      if (event is Map &&
+      if (event is Map<Object?, Object?> &&
           _privateCardinalityEventNames.contains(event["name"])) {
         return;
       }
