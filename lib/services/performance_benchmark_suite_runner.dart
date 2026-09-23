@@ -1126,11 +1126,37 @@ class PerformanceBenchmarkSuiteRunner {
       values: {"alreadyRestoredTracks": alreadyRestored},
     );
 
-    if (alreadyRestored == 0) {
+    if (alreadyRestored > 0) {
+      await recorder.startRun(
+        scenario: "persisted-queue-restore-verification",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "startup-autoload",
+        targetAlias: "bench-1000",
+        targetType: "queue",
+      );
+      recorder.metric("expectedQueueLength", 1000);
+      recorder.metric("restoredQueueLength", alreadyRestored);
+      if (alreadyRestored == 1000) {
+        await recorder.finishRun();
+      } else {
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: StateError(
+            "Startup queue restore produced an unexpected track count",
+          ),
+          stackTrace: StackTrace.current,
+          step: "verify-startup-queue-restore",
+        );
+      }
+    }
+
+    if (alreadyRestored != 1000) {
       await recorder.startRun(
         scenario: "persisted-queue-restore",
         variant: PerformanceBenchmarkService.variant,
-        mode: "explicit-after-restart",
+        mode: alreadyRestored == 0
+            ? "explicit-after-restart"
+            : "explicit-after-partial-autoload",
         targetAlias: "bench-1000",
         targetType: "queue",
       );
@@ -1158,28 +1184,6 @@ class PerformanceBenchmarkSuiteRunner {
             step: "restore-persisted-queue",
           );
         }
-      }
-    } else {
-      await recorder.startRun(
-        scenario: "persisted-queue-restore-verification",
-        variant: PerformanceBenchmarkService.variant,
-        mode: "startup-autoload",
-        targetAlias: "bench-1000",
-        targetType: "queue",
-      );
-      recorder.metric("expectedQueueLength", 1000);
-      recorder.metric("restoredQueueLength", alreadyRestored);
-      if (alreadyRestored == 1000) {
-        await recorder.finishRun();
-      } else {
-        await recorder.failActiveRun(
-          result: PerformanceBenchmarkResult.failed,
-          error: StateError(
-            "Startup queue restore produced an unexpected track count",
-          ),
-          stackTrace: StackTrace.current,
-          step: "verify-startup-queue-restore",
-        );
       }
     }
 
