@@ -1300,7 +1300,7 @@ class DownloadsSyncService {
     try {
       _childCache[item.id.raw] = itemFetch.future;
       var childItems =
-          await _jellyfinApiData.getItems(
+          await _jellyfinApiData.getAllItems(
             parentItem: item,
             includeItemTypes: childFilter.jellyfinName,
             sortBy: sortOrder,
@@ -1313,7 +1313,7 @@ class DownloadsSyncService {
       // tracks which are contained in albums.
       if (parent.baseItemType == BaseItemDtoType.library) {
         var trackChildItems =
-            await _jellyfinApiData.getItems(
+            await _jellyfinApiData.getAllItems(
               parentItem: item,
               includeItemTypes: BaseItemDtoType.track.jellyfinName,
               recursive: false,
@@ -1331,7 +1331,7 @@ class DownloadsSyncService {
       // but they will get filtered out later
       if (parent.baseItemType == BaseItemDtoType.artist) {
         var artistTrackChildItems =
-            await _jellyfinApiData.getItems(
+            await _jellyfinApiData.getAllItems(
               parentItem: item,
               includeItemTypes: BaseItemDtoType.track.jellyfinName,
               filters: "Artist=${parent.name}",
@@ -1375,7 +1375,7 @@ class DownloadsSyncService {
       switch (collection.type) {
         case FinampCollectionType.favorites:
           outputItems =
-              await _jellyfinApiData.getItems(
+              await _jellyfinApiData.getAllItems(
                 includeItemTypes: "Audio,MusicAlbum,Playlist",
                 filters: "IsFavorite",
                 fields: fields,
@@ -1383,28 +1383,28 @@ class DownloadsSyncService {
               [];
           // Artists use a different endpoint, so request those separately
           outputItems.addAll(
-            await _jellyfinApiData.getItems(includeItemTypes: "MusicArtist", filters: "IsFavorite", fields: fields) ??
+            await _jellyfinApiData.getAllItems(includeItemTypes: "MusicArtist", filters: "IsFavorite", fields: fields) ??
                 [],
           );
         case FinampCollectionType.allPlaylists:
         case FinampCollectionType.allPlaylistsMetadata:
-          outputItems = await _jellyfinApiData.getItems(includeItemTypes: "Playlist", fields: fields) ?? [];
+          outputItems = await _jellyfinApiData.getAllItems(includeItemTypes: "Playlist", fields: fields) ?? [];
         case FinampCollectionType.latest5Albums:
           outputItems =
               await _jellyfinApiData.getLatestItems(includeItemTypes: "MusicAlbum", limit: 5, fields: fields) ?? [];
         case FinampCollectionType.libraryImages:
           outputItems =
-              await _jellyfinApiData.getItems(
+              await _jellyfinApiData.getAllItems(
                 parentItem: collection.library!,
                 includeItemTypes: "MusicAlbum",
                 fields: fields,
               ) ??
               [];
           // Playlists need to be fetched without libraries
-          outputItems.addAll(await _jellyfinApiData.getItems(includeItemTypes: "Playlist", fields: fields) ?? []);
+          outputItems.addAll(await _jellyfinApiData.getAllItems(includeItemTypes: "Playlist", fields: fields) ?? []);
           // Artists use a different endpoint, so request those separately
           outputItems.addAll(
-            await _jellyfinApiData.getItems(
+            await _jellyfinApiData.getAllItems(
                   parentItem: collection.library!,
                   includeItemTypes: "MusicArtist",
                   fields: fields,
@@ -1413,7 +1413,7 @@ class DownloadsSyncService {
           );
           // Genres use a different endpoint, so request those separately
           outputItems.addAll(
-            await _jellyfinApiData.getItems(
+            await _jellyfinApiData.getAllItems(
                   parentItem: collection.library!,
                   includeItemTypes: "MusicGenre",
                   fields: fields,
@@ -1426,7 +1426,7 @@ class DownloadsSyncService {
           var item = collection.item!;
           var baseItemType = BaseItemDtoType.fromItem(collection.item!);
           outputItems =
-              await _jellyfinApiData.getItems(
+              await _jellyfinApiData.getAllItems(
                 parentItem: (baseItemType == BaseItemDtoType.genre) ? collection.library! : item,
                 libraryFilter: (baseItemType == BaseItemDtoType.artist) ? collection.library!.id : null,
                 genreFilter: (baseItemType == BaseItemDtoType.genre) ? item.id : null,
@@ -1440,7 +1440,7 @@ class DownloadsSyncService {
           // but they will get filtered out later
           if (baseItemType == BaseItemDtoType.artist) {
             outputItems.addAll(
-              await _jellyfinApiData.getItems(
+              await _jellyfinApiData.getAllItems(
                     parentItem: item,
                     libraryFilter: collection.library!.id,
                     includeItemTypes: BaseItemDtoType.track.jellyfinName,
