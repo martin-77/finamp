@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 
 import 'package:chopper/chopper.dart';
 import 'package:finamp/services/chopper_aggregate_logger.dart';
@@ -9,13 +10,24 @@ final aggregateLogger = ChopperAggregateLogger();
 /// A HttpLoggingInterceptor that aggregates the request and
 /// response logs from Chopper, using the [ChopperAggregateLogger].
 class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
-  HttpAggregateLoggingInterceptor({super.level = Level.body}) : super(logger: aggregateLogger);
+  HttpAggregateLoggingInterceptor({
+    super.level = Level.body,
+    this.benchmarkSendPort,
+  }) : super(logger: aggregateLogger);
+
+  final SendPort? benchmarkSendPort;
 
   @override
   FutureOr<Response<BodyType>> intercept<BodyType>(Chain<BodyType> chain) async {
     aggregateLogger.onStartRequest(chain.request);
     final benchmark = PerformanceBenchmarkService.instance;
-    benchmark.networkRequestStarted();
+    if (PerformanceBenchmarkService.enabled && benchmarkSendPort != null) {
+      benchmarkSendPort!.send(const <String, Object?>{
+        "type": "start",
+      });
+    } else {
+      benchmark.networkRequestStarted();
+    }
     final stopwatch = Stopwatch()..start();
     int? responseBytes;
     int? statusCode;
@@ -32,11 +44,21 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
       return response;
     } finally {
       stopwatch.stop();
-      benchmark.networkRequestCompleted(
-        responseBytes: responseBytes,
-        durationMicros: stopwatch.elapsedMicroseconds,
-        statusCode: statusCode,
-      );
+      if (PerformanceBenchmarkService.enabled &&
+          benchmarkSendPort != null) {
+        benchmarkSendPort!.send(<String, Object?>{
+          "type": "complete",
+          "responseBytes": responseBytes,
+          "durationMicros": stopwatch.elapsedMicroseconds,
+          "statusCode": statusCode,
+        });
+      } else {
+        benchmark.networkRequestCompleted(
+          responseBytes: responseBytes,
+          durationMicros: stopwatch.elapsedMicroseconds,
+          statusCode: statusCode,
+        );
+      }
     }
   }
 }
