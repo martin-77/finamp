@@ -269,6 +269,18 @@ class PerformanceBenchmarkService {
     "FINAMP_BENCH_RUN_ID",
     defaultValue: "manual",
   );
+  static const String searchQuery1 = String.fromEnvironment(
+    "FINAMP_BENCH_SEARCH_QUERY_1",
+    defaultValue: "",
+  );
+  static const String searchQuery2 = String.fromEnvironment(
+    "FINAMP_BENCH_SEARCH_QUERY_2",
+    defaultValue: "",
+  );
+  static const String searchQuery3 = String.fromEnvironment(
+    "FINAMP_BENCH_SEARCH_QUERY_3",
+    defaultValue: "",
+  );
 
   static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
