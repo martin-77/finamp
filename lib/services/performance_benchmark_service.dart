@@ -302,6 +302,7 @@ class PerformanceBenchmarkService {
   final StreamController<int> _startupTaskController =
       StreamController<int>.broadcast();
   int _networkRequestsInFlight = 0;
+  int _httpRequestsInFlight = 0;
   int _networkGeneration = 0;
   final StreamController<int> _networkRequestController =
       StreamController<int>.broadcast();
@@ -941,10 +942,11 @@ class PerformanceBenchmarkService {
     if (!enabled) return;
     _startupNetworkRequestCount++;
     _networkRequestsInFlight++;
+    _httpRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
     incrementMetricBuffered("httpRequestCount");
-    maxMetricBuffered("httpMaxConcurrentRequests", _networkRequestsInFlight);
+    maxMetricBuffered("httpMaxConcurrentRequests", _httpRequestsInFlight);
 
     final run = _activeRun;
     if (run != null && _httpFirstRequestRunId != run.id) {
@@ -952,7 +954,7 @@ class PerformanceBenchmarkService {
       _httpFirstResponseRunId = null;
       mark(
         "http-first-request-start",
-        values: {"inFlight": _networkRequestsInFlight},
+        values: {"inFlight": _httpRequestsInFlight},
       );
     }
   }
@@ -1006,6 +1008,9 @@ class PerformanceBenchmarkService {
       );
     }
 
+    if (_httpRequestsInFlight > 0) {
+      _httpRequestsInFlight--;
+    }
     if (_networkRequestsInFlight > 0) {
       _networkRequestsInFlight--;
     }
