@@ -388,13 +388,14 @@ class QueueService {
   /// Normal Finamp keeps its periodic persistence behaviour. The benchmark
   /// needs a deterministic disk checkpoint immediately before a planned
   /// process restart so queue-restore startup cost is reproducible.
-  int persistPerformanceBenchmarkQueue() {
+  Future<int> persistPerformanceBenchmarkQueue() async {
     if (!PerformanceBenchmarkService.enabled) {
       throw StateError(
         "Explicit queue persistence is only available in benchmark mode",
       );
     }
     final info = _saveCurrentQueue(withPosition: true);
+    await _queuesBox.flush();
     PerformanceBenchmarkService.instance.diagnostic(
       "queue-persisted-for-restart",
       values: {"trackCount": info.trackCount},
