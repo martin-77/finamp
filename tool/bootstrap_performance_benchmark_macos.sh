@@ -112,4 +112,9 @@ step "Starting Finamp benchmark build in PROFILE mode"
 printf 'Results will be written continuously under %s/\n' "$OUT_DIR"
 printf 'Keep this terminal open for the whole run. Ctrl-C stops the app/collector.\n\n'
 
-bash tool/run_performance_benchmark.sh -d "$DEVICE_ID" --profile
+BENCH_VARIANT="$(git rev-parse --short=12 HEAD)"
+bash tool/run_performance_benchmark.sh \
+  -d "$DEVICE_ID" \
+  --profile \
+  --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
+  --dart-define=FINAMP_BENCH_VARIANT="$BENCH_VARIANT"
