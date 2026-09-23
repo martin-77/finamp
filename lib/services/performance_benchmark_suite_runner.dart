@@ -189,6 +189,7 @@ class PerformanceBenchmarkSuiteRunner {
       "startup-fully-ready",
       values: {
         "phase": phase,
+        "processElapsedMs": recorder.processElapsedMs,
         "startupTaskTimeoutSeconds": startupTaskTimeout.inSeconds,
         "screenTimeoutSeconds": screenTimeout.inSeconds,
         "imageTimeoutSeconds": imageTimeout.inSeconds,
