@@ -69,11 +69,13 @@ class PerformanceBenchmarkTabCommand {
   final bool refresh;
   final Completer<void> _completer = Completer<void>();
   bool selected = false;
+  String? selectedContentType;
 
   Future<void> get completed => _completer.future;
 
-  void markSelected() {
+  void markSelected(String contentType) {
     selected = true;
+    selectedContentType = contentType;
   }
 
   void complete() {
@@ -388,7 +390,7 @@ class PerformanceBenchmarkService {
     unawaited(_persistActiveRun());
   }
 
-  Future<void> requestUiTab({
+  Future<String> requestUiTab({
     required String contentType,
     required bool refresh,
     Duration timeout = const Duration(seconds: 90),
@@ -411,6 +413,11 @@ class PerformanceBenchmarkService {
     _tabController.add(command);
     try {
       await command.completed.timeout(timeout);
+      final selectedContentType = command.selectedContentType;
+      if (selectedContentType == null) {
+        throw StateError("Benchmark tab completed without selected content type");
+      }
+      return selectedContentType;
     } finally {
       if (identical(_activeTabCommand, command)) {
         _activeTabCommand = null;
