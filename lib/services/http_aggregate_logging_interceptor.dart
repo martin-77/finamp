@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chopper/chopper.dart';
 import 'package:finamp/services/chopper_aggregate_logger.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 
 final aggregateLogger = ChopperAggregateLogger();
 
@@ -13,11 +14,18 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
   @override
   FutureOr<Response<BodyType>> intercept<BodyType>(Chain<BodyType> chain) async {
     aggregateLogger.onStartRequest(chain.request);
-    final Response<BodyType> response = await super.intercept(HttpAggregateLoggingChain(chain));
-    // Request info isn't printed until after response completes
-    aggregateLogger.onEndRequest(chain.request);
-    aggregateLogger.onEndResponse(response);
-    return response;
+    final benchmark = PerformanceBenchmarkService.instance;
+    benchmark.networkRequestStarted();
+    try {
+      final Response<BodyType> response =
+          await super.intercept(HttpAggregateLoggingChain(chain));
+      // Request info isn't printed until after response completes
+      aggregateLogger.onEndRequest(chain.request);
+      aggregateLogger.onEndResponse(response);
+      return response;
+    } finally {
+      benchmark.networkRequestCompleted();
+    }
   }
 }
 
