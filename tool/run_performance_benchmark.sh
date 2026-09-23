@@ -25,6 +25,24 @@ log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
 }
 
+generate_summary() {
+  if [[ ! -s "$jsonl" ]]; then
+    log "No benchmark JSONL available for summary."
+    return 0
+  fi
+
+  log "Generating benchmark summary..."
+  if python3 tool/summarize_performance_benchmark.py \
+    "$jsonl" \
+    --json-out "$summary_json" \
+    --md-out "$summary_md"; then
+    log "Summary JSON: $summary_json"
+    log "Summary Markdown: $summary_md"
+  else
+    log "WARNING: Summary generation failed; raw JSONL remains at $jsonl"
+  fi
+}
+
 printf 'Full log: %s\nBenchmark JSONL: %s\n' "$raw_log" "$jsonl"
 : > "$raw_log"
 : > "$jsonl"
@@ -79,6 +97,7 @@ while true; do
   elapsed="$((now_epoch - start_epoch))"
   if (( elapsed >= timeout_seconds )); then
     log "ERROR: Benchmark timed out after ${timeout_seconds}s."
+    generate_summary
     exit 124
   fi
 
@@ -133,9 +152,11 @@ PY
       continue
     elif [[ "$merge_status" -eq 11 ]]; then
       log "ERROR: Device benchmark stream diverged from the append-only host copy: $merge_output"
+      generate_summary
       exit 126
     elif [[ "$merge_status" -ne 0 ]]; then
       log "ERROR: Could not merge benchmark stream: $merge_output"
+      generate_summary
       exit 127
     fi
 
@@ -168,21 +189,17 @@ PY
 
     if grep -q '"name":"suite-complete"' "$jsonl"; then
       log "==> Benchmark suite completed"
-      log "Generating summary..."
-      python3 tool/summarize_performance_benchmark.py \
-        "$jsonl" \
-        --json-out "$summary_json" \
-        --md-out "$summary_md"
-      log "Summary JSON: $summary_json"
-      log "Summary Markdown: $summary_md"
+      generate_summary
       exit 0
     fi
     if grep -q '"name":"suite-blocked"' "$jsonl"; then
       log "ERROR: Benchmark suite blocked; inspect $jsonl"
+      generate_summary
       exit 3
     fi
     if grep -q '"name":"suite-error"' "$jsonl"; then
       log "ERROR: Benchmark suite reported an error; inspect $jsonl"
+      generate_summary
       exit 4
     fi
   else
@@ -203,6 +220,7 @@ PY
     if (( silent_seconds >= heartbeat_stall_seconds )); then
       if (( recovery_restarts >= max_recovery_restarts )); then
         log "ERROR: Benchmark heartbeat stalled for ${silent_seconds}s and recovery restart limit was reached."
+        generate_summary
         exit 125
       fi
       recovery_restarts="$((recovery_restarts + 1))"
