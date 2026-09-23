@@ -11,6 +11,7 @@ command -v git >/dev/null || fail "git not found"
 command -v flutter >/dev/null || fail "flutter not found"
 command -v python3 >/dev/null || fail "python3 not found"
 command -v xcodebuild >/dev/null || fail "Xcode command line tools not found"
+command -v xcrun >/dev/null || fail "xcrun not found"
 command -v pod >/dev/null || fail "CocoaPods not found"
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "Run this inside the Finamp repository"
