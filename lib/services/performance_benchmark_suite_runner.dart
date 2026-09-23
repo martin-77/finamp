@@ -1332,6 +1332,15 @@ class PerformanceBenchmarkSuiteRunner {
 
     try {
       recorder.metric("expectedTrackCount", expectedTracks);
+      recorder.metric(
+        "downloadMaxConcurrentTransfers",
+        FinampSettingsHelper.finampSettings.maxConcurrentDownloads,
+      );
+      recorder.metric(
+        "downloadSyncWorkers",
+        FinampSettingsHelper.finampSettings.downloadWorkers,
+      );
+      recorder.metric("downloadUsesOriginalCodec", true);
       final firstTransfer = recorder.waitForEvent(
         "download-first-transfer-start",
         timeout: const Duration(minutes: 5),
