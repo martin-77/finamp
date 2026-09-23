@@ -417,6 +417,47 @@ def main():
     else:
         lines.append("| none |  |  |  |  |")
 
+    cache_groups = []
+    for item in summary_groups:
+        metrics = item["metrics"]
+        cache_metric_names = (
+            "imageDownloadedFileHit",
+            "imagePersistentCacheHit",
+            "imageNetworkFetch",
+            "imageOfflineMiss",
+            "imageLoadCompleted",
+            "imageLoadFailed",
+            "imageLoadSynchronous",
+        )
+        if any(name in metrics for name in cache_metric_names):
+            cache_groups.append(item)
+
+    lines.extend([
+        "",
+        "## Image/cache diagnostics",
+        "",
+        "| Scenario | Mode | Target | Downloaded hit med | Persistent hit med | Network fetch med | Offline miss med | Loads med | Failed med | Sync med |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    if cache_groups:
+        for item in cache_groups:
+            metrics = item["metrics"]
+            target = item["targetAlias"] or item["targetType"] or ""
+            def med(name):
+                return metrics.get(name, {}).get("median", "")
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | "
+                f"{med('imageDownloadedFileHit')} | "
+                f"{med('imagePersistentCacheHit')} | "
+                f"{med('imageNetworkFetch')} | "
+                f"{med('imageOfflineMiss')} | "
+                f"{med('imageLoadCompleted')} | "
+                f"{med('imageLoadFailed')} | "
+                f"{med('imageLoadSynchronous')} |"
+            )
+    else:
+        lines.append("| none |  |  |  |  |  |  |  |  |  |")
+
     problem_groups = [
         item for item in summary_groups
         if any(name != "success" and count > 0 for name, count in item["results"].items())
