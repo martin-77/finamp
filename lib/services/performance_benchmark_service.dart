@@ -311,6 +311,8 @@ class PerformanceBenchmarkService {
       StreamController<PerformanceBenchmarkPageCommand>.broadcast();
   final StreamController<PerformanceBenchmarkSearchCommand> _searchController =
       StreamController<PerformanceBenchmarkSearchCommand>.broadcast();
+  String? _startupSelectedContentType;
+  final Completer<void> _startupScreenReady = Completer<void>();
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
@@ -328,6 +330,37 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
       _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
+  String? get startupSelectedContentType => _startupSelectedContentType;
+
+  void setStartupSelectedContentType(String contentType) {
+    if (!enabled || _startupSelectedContentType != null) return;
+    _startupSelectedContentType = contentType;
+    diagnostic(
+      "startup-selected-content-type",
+      values: {"contentType": contentType},
+    );
+  }
+
+  void reportStartupScreenReady(String contentType) {
+    if (!enabled ||
+        _startupScreenReady.isCompleted ||
+        _startupSelectedContentType != contentType) {
+      return;
+    }
+    diagnostic(
+      "startup-screen-first-rendered-content",
+      values: {"contentType": contentType},
+    );
+    _startupScreenReady.complete();
+  }
+
+  Future<void> waitForStartupScreenReady({
+    Duration timeout = const Duration(minutes: 3),
+  }) async {
+    if (!enabled) return;
+    if (_startupScreenReady.isCompleted) return;
+    await _startupScreenReady.future.timeout(timeout);
+  }
 
   void startHeartbeat() {
     if (!enabled || _heartbeatTimer != null) return;
