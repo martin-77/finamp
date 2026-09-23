@@ -164,6 +164,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _mainLog.info("Setup providers");
     await _setupOSIntegration(args);
     _mainLog.info("Setup os integrations");
+    await AutoOffline.reevaluateTargetUrl(reason: "startup", reconnectPlayOn: false);
     await _setupPlayOnService();
     _mainLog.info("Setup PlayOnService");
     await _setupPlaybackServices();
