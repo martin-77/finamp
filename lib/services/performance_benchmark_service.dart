@@ -87,6 +87,31 @@ class PerformanceBenchmarkTabCommand {
   }
 }
 
+class PerformanceBenchmarkDetailCommand {
+  PerformanceBenchmarkDetailCommand({
+    required this.targetAlias,
+    required this.targetType,
+    required this.itemId,
+    required this.refresh,
+  });
+
+  final String targetAlias;
+  final String targetType;
+  final String itemId;
+  final bool refresh;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkEvent {
   const PerformanceBenchmarkEvent({
     required this.name,
@@ -205,6 +230,7 @@ class PerformanceBenchmarkService {
   Future<void> _hostWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
   PerformanceBenchmarkTabCommand? _activeTabCommand;
+  PerformanceBenchmarkDetailCommand? _activeDetailCommand;
   int _runSequence = 0;
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
@@ -218,6 +244,8 @@ class PerformanceBenchmarkService {
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   PerformanceBenchmarkTabCommand? get activeTabCommand => _activeTabCommand;
+  PerformanceBenchmarkDetailCommand? get activeDetailCommand =>
+      _activeDetailCommand;
   bool get hasActiveRun => _activeRun != null;
 
   Future<Box<String>> _getBox() async {
@@ -421,6 +449,42 @@ class PerformanceBenchmarkService {
     } finally {
       if (identical(_activeTabCommand, command)) {
         _activeTabCommand = null;
+      }
+    }
+  }
+
+  Future<void> requestDetail({
+    required String targetAlias,
+    required String targetType,
+    required String itemId,
+    required bool refresh,
+    required void Function() open,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    if (_activeDetailCommand != null) {
+      throw StateError("Another benchmark detail command is already active");
+    }
+    final command = PerformanceBenchmarkDetailCommand(
+      targetAlias: targetAlias,
+      targetType: targetType,
+      itemId: itemId,
+      refresh: refresh,
+    );
+    _activeDetailCommand = command;
+    mark(
+      "detail-open-requested",
+      values: {
+        "targetAlias": targetAlias,
+        "targetType": targetType,
+        "refresh": refresh,
+      },
+    );
+    open();
+    try {
+      await command.completed.timeout(timeout);
+    } finally {
+      if (identical(_activeDetailCommand, command)) {
+        _activeDetailCommand = null;
       }
     }
   }
