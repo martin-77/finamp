@@ -102,6 +102,25 @@ step "Checking iOS pods"
   pod install
 )
 
+case "${FINAMP_BENCH_PREFLIGHT_ONLY:-false}" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+    step "Compiling iOS PROFILE benchmark app without codesigning"
+    flutter build ios \
+      --profile \
+      --no-codesign \
+      --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
+      --dart-define=FINAMP_BENCH_SMOKE=false \
+      --dart-define=FINAMP_BENCH_SEARCH_QUERY_1=compile-probe-1 \
+      --dart-define=FINAMP_BENCH_SEARCH_QUERY_2=compile-probe-2 \
+      --dart-define=FINAMP_BENCH_SEARCH_QUERY_3=compile-probe-3 \
+      --dart-define=FINAMP_BENCH_VARIANT=compile-preflight \
+      --dart-define=FINAMP_BENCH_RUN_ID=compile-preflight
+    step "Host-only benchmark preflight complete"
+    printf 'No iPhone was required and no app was installed.\n'
+    exit 0
+    ;;
+esac
+
 step "Finding a physical iOS device"
 DEVICE_ID="${1:-}"
 if [[ -z "$DEVICE_ID" ]]; then
