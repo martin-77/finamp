@@ -124,6 +124,9 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
         PerformanceBenchmarkService.instance.diagnostic(
           "startup-home-first-rendered-content",
         );
+        PerformanceBenchmarkService.instance.reportStartupScreenReady(
+          "home",
+        );
       });
     }
 
