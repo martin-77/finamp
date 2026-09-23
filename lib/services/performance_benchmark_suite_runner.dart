@@ -321,6 +321,7 @@ class PerformanceBenchmarkSuiteRunner {
 
       // Prepare a reproducible cold image-cache process while preserving auth,
       // settings and download configuration in the isolated benchmark app.
+      await _settleUi(schedulerCooldown: Duration.zero);
       await clearPerformanceBenchmarkImageCache();
 
       // Keep the realistic first-process startup records in the same host
@@ -1393,33 +1394,38 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     await queueService.clearPerformanceBenchmarkQueueState();
-    await Future<void>.delayed(const Duration(seconds: 2));
+    await _settleUi(
+      schedulerCooldown: const Duration(seconds: 1),
+    );
     recorder.diagnostic("queue-restore-benchmark-clean");
   }
 
   Future<void> _runImageCacheBaselines() async {
     final recorder = PerformanceBenchmarkService.instance;
 
+    await _settleUi(schedulerCooldown: Duration.zero);
     await clearPerformanceBenchmarkImageCache();
-    await Future<void>.delayed(const Duration(seconds: 2));
 
     await _runUiTabBaseline(
       "albums",
       mode: "image-cache-cold-refreshed",
       round: 1,
     );
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await _settleUi(
+      schedulerCooldown: const Duration(seconds: 2),
+    );
     await _runUiTabBaseline(
       "albums",
       mode: "image-cache-warm-view",
       round: 1,
     );
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await _settleUi(
+      schedulerCooldown: const Duration(seconds: 2),
+    );
 
     // The detail experiment needs its own guaranteed cold image state. The
     // albums list above may already have rendered the deterministic target.
     await clearPerformanceBenchmarkImageCache();
-    await Future<void>.delayed(const Duration(seconds: 2));
 
     await _runDetailBaseline(
       targetAlias: "detail-album",
@@ -1427,7 +1433,9 @@ class PerformanceBenchmarkSuiteRunner {
       mode: "image-cache-cold-detail",
       refresh: true,
     );
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await _settleUi(
+      schedulerCooldown: const Duration(seconds: 2),
+    );
     await _runDetailBaseline(
       targetAlias: "detail-album",
       detailType: "album",
