@@ -285,6 +285,10 @@ class PerformanceBenchmarkService {
   int _startupGeneration = 0;
   final StreamController<int> _startupTaskController =
       StreamController<int>.broadcast();
+  int _networkRequestsInFlight = 0;
+  int _networkGeneration = 0;
+  final StreamController<int> _networkRequestController =
+      StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
@@ -518,6 +522,65 @@ class PerformanceBenchmarkService {
         },
       );
     }
+  }
+
+  void networkRequestStarted() {
+    if (!enabled) return;
+    _networkRequestsInFlight++;
+    _networkGeneration++;
+    _networkRequestController.add(_networkRequestsInFlight);
+  }
+
+  void networkRequestCompleted() {
+    if (!enabled) return;
+    if (_networkRequestsInFlight > 0) {
+      _networkRequestsInFlight--;
+    }
+    _networkGeneration++;
+    _networkRequestController.add(_networkRequestsInFlight);
+  }
+
+  Future<void> waitForNetworkQuiescence({
+    Duration quietPeriod = const Duration(seconds: 3),
+    Duration timeout = const Duration(minutes: 3),
+  }) async {
+    if (!enabled) return;
+
+    final overall = Stopwatch()..start();
+    diagnostic(
+      "network-quiescence-wait-start",
+      values: {
+        "inFlight": _networkRequestsInFlight,
+        "quietPeriodMs": quietPeriod.inMilliseconds,
+      },
+    );
+
+    while (overall.elapsed < timeout) {
+      if (_networkRequestsInFlight != 0) {
+        await _networkRequestController.stream
+            .firstWhere((pending) => pending == 0)
+            .timeout(timeout - overall.elapsed);
+      }
+
+      final generationAtZero = _networkGeneration;
+      await Future<void>.delayed(quietPeriod);
+      if (_networkRequestsInFlight == 0 &&
+          _networkGeneration == generationAtZero) {
+        overall.stop();
+        diagnostic(
+          "network-quiescent",
+          values: {
+            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+          },
+        );
+        return;
+      }
+    }
+
+    throw TimeoutException(
+      "Network activity did not become quiescent",
+      timeout,
+    );
   }
 
   Future<void> waitForStartupQuiescence({
