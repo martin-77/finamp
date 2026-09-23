@@ -97,7 +97,48 @@ while true; do
   set -e
 
   if [[ "$copy_status" -eq 0 && -f "$pulled_file" ]]; then
-    cp "$pulled_file" "$jsonl"
+    set +e
+    merge_output="$(python3 - "$jsonl" "$pulled_file" <<'PY'
+import os
+import sys
+
+local_path, remote_path = sys.argv[1:3]
+with open(local_path, "rb") as handle:
+    local = handle.read()
+with open(remote_path, "rb") as handle:
+    remote = handle.read()
+
+if len(remote) < len(local):
+    print(f"shorter:{len(remote)}:{len(local)}")
+    raise SystemExit(10)
+
+if not remote.startswith(local):
+    print(f"diverged:{len(remote)}:{len(local)}")
+    raise SystemExit(11)
+
+suffix = remote[len(local):]
+if suffix:
+    with open(local_path, "ab") as handle:
+        handle.write(suffix)
+
+print(f"ok:{len(remote)}:{len(suffix)}")
+PY
+)"
+    merge_status=$?
+    set -e
+
+    if [[ "$merge_status" -eq 10 ]]; then
+      log "Ignoring shorter transient benchmark snapshot: $merge_output"
+      sleep "$poll_seconds"
+      continue
+    elif [[ "$merge_status" -eq 11 ]]; then
+      log "ERROR: Device benchmark stream diverged from the append-only host copy: $merge_output"
+      exit 126
+    elif [[ "$merge_status" -ne 0 ]]; then
+      log "ERROR: Could not merge benchmark stream: $merge_output"
+      exit 127
+    fi
+
     size="$(wc -c < "$jsonl" | tr -d ' ')"
     if [[ "$size" != "$last_size" ]]; then
       log "Pulled benchmark stream: ${size} bytes"
