@@ -138,6 +138,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
   try {
     startTime = DateTime.now();
     benchmarkStartupStopwatch = Stopwatch()..start();
+    PerformanceBenchmarkService.instance.startProcessStopwatch();
     await setupLogging();
     await _setupEdgeToEdgeOverlayStyle();
     _mainLog.info("Setup edge-to-edge overlay");
