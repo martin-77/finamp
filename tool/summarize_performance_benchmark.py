@@ -90,6 +90,7 @@ def main():
                 "startup-first-frame",
                 "startup-quiescent",
                 "network-quiescent",
+                "startup-fully-ready",
                 "startup-baseline-complete",
                 "host-restart-requested",
                 "suite-complete",
@@ -210,6 +211,26 @@ def main():
             f"| {item['task']} | {item['runs']} | {item['medianMs']:.3f} | "
             f"{item['p90Ms']:.3f} | {item['minMs']:.3f} | {item['maxMs']:.3f} |"
         )
+
+    ready_events = [
+        item for item in diagnostics
+        if item.get("name") == "startup-fully-ready"
+    ]
+    lines.extend([
+        "",
+        "## Startup fully ready",
+        "",
+        "| Phase | Process elapsed ms |",
+        "|---|---:|",
+    ])
+    if ready_events:
+        for item in ready_events:
+            values = item.get("values") or {}
+            lines.append(
+                f"| {values.get('phase', '')} | {values.get('processElapsedMs', '')} |"
+            )
+    else:
+        lines.append("|  |  |")
 
     lines.extend([
         "",
