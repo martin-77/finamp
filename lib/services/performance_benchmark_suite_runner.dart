@@ -1329,11 +1329,17 @@ class PerformanceBenchmarkSuiteRunner {
         playableType: type,
         mode: "online-first",
       );
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+        disableFade: true,
+      );
       await Future<void>.delayed(const Duration(seconds: 4));
       await _runPlaybackBaseline(
         targetAlias: alias,
         playableType: type,
         mode: "online-warm",
+      );
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+        disableFade: true,
       );
       await Future<void>.delayed(const Duration(seconds: 4));
     }
@@ -1654,31 +1660,43 @@ class PerformanceBenchmarkSuiteRunner {
 
     for (final collection in collections) {
       final (scenarioName, itemType) = collection;
-      await recorder.startRun(
-        scenario: "collection-first-page-$scenarioName",
-        variant: PerformanceBenchmarkService.variant,
-        mode: "online",
-        targetType: itemType,
-      );
 
-      try {
-        final result = await recorder.runStep(
-          name: "request",
-          timeout: const Duration(minutes: 2),
-          operation: () => api.getItemsWithTotalRecordCount(
-            includeItemTypes: itemType,
-            recursive: true,
-            startIndex: 0,
-            limit: 100,
-          ),
+      for (final request in const <(int, String)>[
+        (25, "size-25"),
+        (100, "size-100-first"),
+        (100, "size-100-warm"),
+        (500, "size-500"),
+      ]) {
+        final (limit, mode) = request;
+        await recorder.startRun(
+          scenario: "collection-page-$scenarioName",
+          variant: PerformanceBenchmarkService.variant,
+          mode: mode,
+          targetType: itemType,
         );
 
-        recorder.metric("pageSize", result.items?.length ?? 0);
-        // Deliberately do not export totalRecordCount: it may reveal private
-        // library cardinality. The benchmark only needs first-page work here.
-        await recorder.finishRun();
-      } catch (_) {
-        // runStep already finalized the failed run.
+        try {
+          recorder.metric("requestedPageSize", limit);
+          final result = await recorder.runStep(
+            name: "request",
+            timeout: const Duration(minutes: 3),
+            operation: () => api.getItemsWithTotalRecordCount(
+              includeItemTypes: itemType,
+              recursive: true,
+              startIndex: 0,
+              limit: limit,
+            ),
+          );
+
+          recorder.metric("pageSize", result.items?.length ?? 0);
+          // Never export totalRecordCount: it would reveal private library
+          // cardinality. Page-size scaling is sufficient for this baseline.
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep already finalized the failed/timeout run.
+        }
+
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
     }
   }
