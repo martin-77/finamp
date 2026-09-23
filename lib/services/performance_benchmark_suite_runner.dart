@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/models/jellyfin_models.dart';
+import 'package:finamp/services/music_player_background_task.dart';
+import 'package:finamp/services/finamp_settings_helper.dart';
+import 'package:finamp/services/downloads_service.dart';
+import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/music_models.dart';
 import 'package:finamp/screens/album_screen.dart';
 import 'package:finamp/screens/artist_screen.dart';
@@ -127,9 +131,16 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "queue-playback"},
       );
 
+      await _runDownloadAndOfflineBaselines();
       recorder.diagnostic(
-        "full-suite-incomplete",
-        values: {"nextPhase": "search-paging-download-restart"},
+        "suite-phase-complete",
+        values: {"phase": "download-offline"},
+      );
+
+      await recorder.setSuiteStage("awaiting-host-restart");
+      recorder.diagnostic(
+        "host-restart-requested",
+        values: {"nextStage": "post-restart-cache"},
       );
       await recorder.flushHostStream();
     } catch (error) {
@@ -574,6 +585,253 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _runDownloadAndOfflineBaselines() async {
+    for (final entry in const <(String, int)>[
+      ("bench-10", 10),
+      ("bench-100", 100),
+      ("bench-1000", 1000),
+    ]) {
+      await _runDownloadLifecycle(entry.$1, entry.$2);
+      await Future<void>.delayed(const Duration(seconds: 5));
+    }
+  }
+
+  Future<void> _runDownloadLifecycle(
+    String targetAlias,
+    int expectedTracks,
+  ) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final downloads = GetIt.instance<DownloadsService>();
+    final container = GetIt.instance<ProviderContainer>();
+    final target = await recorder.getTarget(targetAlias);
+    if (target == null) {
+      recorder.diagnostic(
+        "download-target-missing",
+        values: {"targetAlias": targetAlias},
+      );
+      return;
+    }
+
+    final item = await container.read(
+      itemByIdProvider(BaseItemId(target.itemId)).future,
+    );
+    if (item == null) {
+      recorder.diagnostic(
+        "download-target-unresolvable",
+        values: {"targetAlias": targetAlias},
+      );
+      return;
+    }
+
+    final stub = DownloadStub.fromItem(
+      type: DownloadItemType.collection,
+      item: item,
+    );
+
+    // The benchmark owns these three downloads in its isolated app bundle.
+    // Always start from a verified clean state.
+    final existingStatus = downloads.getStatus(stub, expectedTracks);
+    if (existingStatus.isDownloaded) {
+      await downloads.deleteDownload(stub: stub);
+      await _waitForDownloadRemoved(downloads, stub);
+    }
+
+    final locations =
+        FinampSettingsHelper.finampSettings.downloadLocationsMap.keys.toList();
+    if (locations.isEmpty) {
+      throw StateError("No Finamp download location is available");
+    }
+    final profile = DownloadProfile(
+      transcodeCodec: FinampTranscodingCodec.original,
+      downloadLocationId: locations.first,
+    );
+
+    await recorder.startRun(
+      scenario: "download-lifecycle",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "online-download",
+      targetAlias: targetAlias,
+      targetType: "playlist",
+    );
+
+    try {
+      recorder.metric("expectedTrackCount", expectedTracks);
+      final firstTransfer = recorder.waitForEvent(
+        "download-first-transfer-start",
+        timeout: const Duration(minutes: 5),
+      );
+      final firstTrack = recorder.waitForEvent(
+        "download-first-track-complete",
+        timeout: const Duration(minutes: 10),
+      );
+
+      await recorder.runStep(
+        name: "download-plan-and-enqueue",
+        timeout: const Duration(minutes: 10),
+        operation: () => downloads.addDownload(
+          stub: stub,
+          transcodeProfile: profile,
+        ),
+      );
+
+      await recorder.runStep(
+        name: "wait-first-transfer",
+        timeout: const Duration(minutes: 5),
+        operation: () => firstTransfer,
+      );
+      await recorder.runStep(
+        name: "wait-first-track-complete",
+        timeout: const Duration(minutes: 10),
+        operation: () => firstTrack,
+      );
+      await recorder.runStep(
+        name: "wait-full-download",
+        timeout: const Duration(hours: 2),
+        operation: () => _waitForDownloadComplete(
+          downloads,
+          stub,
+          expectedTracks,
+        ),
+      );
+
+      final bytes = await recorder.runStep(
+        name: "measure-downloaded-bytes",
+        timeout: const Duration(minutes: 5),
+        operation: () => downloads.getFileSize(stub),
+      );
+      recorder.metric("downloadedBytes", bytes);
+      recorder.metric("resolvedTrackCount", expectedTracks);
+      await recorder.finishRun();
+    } catch (_) {
+      rethrow;
+    }
+
+    final previousOffline = FinampSettingsHelper.finampSettings.isOffline;
+    try {
+      FinampSetters.setIsOffline(true);
+      recorder.diagnostic(
+        "offline-mode-forced",
+        values: {"targetAlias": targetAlias},
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      await _runDetailBaseline(
+        targetAlias: targetAlias,
+        detailType: "playlist",
+        mode: "local-downloaded-refreshed",
+        refresh: true,
+        allowPendingDownloadCleanup: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await _runDetailBaseline(
+        targetAlias: targetAlias,
+        detailType: "playlist",
+        mode: "local-downloaded-warm",
+        refresh: false,
+        allowPendingDownloadCleanup: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      await _runPlaybackBaseline(
+        targetAlias: targetAlias,
+        playableType: "playlist",
+        mode: "local-downloaded-first",
+        allowPendingDownloadCleanup: true,
+      );
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+        disableFade: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await _runPlaybackBaseline(
+        targetAlias: targetAlias,
+        playableType: "playlist",
+        mode: "local-downloaded-warm",
+        allowPendingDownloadCleanup: true,
+      );
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+        disableFade: true,
+      );
+    } finally {
+      FinampSetters.setIsOffline(previousOffline);
+      recorder.diagnostic(
+        "offline-mode-restored",
+        values: {
+          "targetAlias": targetAlias,
+          "restoredOffline": previousOffline,
+        },
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+
+    await recorder.startRun(
+      scenario: "download-cleanup",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "cleanup",
+      targetAlias: targetAlias,
+      targetType: "playlist",
+      allowPendingDownloadCleanup: true,
+    );
+    try {
+      await recorder.runStep(
+        name: "delete-download",
+        timeout: const Duration(minutes: 30),
+        operation: () => downloads.deleteDownload(stub: stub),
+      );
+      await recorder.runStep(
+        name: "verify-download-removed",
+        timeout: const Duration(minutes: 10),
+        operation: () => _waitForDownloadRemoved(downloads, stub),
+      );
+      final remainingBytes = await downloads.getFileSize(stub);
+      recorder.metric("remainingDownloadedBytes", remainingBytes);
+      if (remainingBytes != 0) {
+        throw StateError("Benchmark download cleanup left local bytes");
+      }
+      await recorder.setDownloadCleanupRequired(
+        targetAlias: targetAlias,
+        required: false,
+      );
+      await recorder.finishRun();
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  Future<void> _waitForDownloadComplete(
+    DownloadsService downloads,
+    DownloadStub stub,
+    int expectedTracks,
+  ) async {
+    while (true) {
+      final info = await downloads.getCollectionInfo(
+        id: BaseItemId(stub.id),
+      );
+      if (info is DownloadItem && info.state.isComplete) {
+        final status = downloads.getStatus(stub, expectedTracks);
+        if (status.isDownloaded && !status.outdated) {
+          return;
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
+  Future<void> _waitForDownloadRemoved(
+    DownloadsService downloads,
+    DownloadStub stub,
+  ) async {
+    while (true) {
+      final info = await downloads.getCollectionInfo(
+        id: BaseItemId(stub.id),
+      );
+      final status = downloads.getStatus(stub, null);
+      if (info == null || !status.isDownloaded) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
   Future<void> _runPlaybackBaselines() async {
     const targets = <(String, String)>[
       ("detail-track", "track"),
@@ -606,6 +864,7 @@ class PerformanceBenchmarkSuiteRunner {
     required String targetAlias,
     required String playableType,
     required String mode,
+    bool allowPendingDownloadCleanup = false,
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
     final target = await recorder.getTarget(targetAlias);
@@ -649,6 +908,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: mode,
       targetAlias: targetAlias,
       targetType: playableType,
+      allowPendingDownloadCleanup: allowPendingDownloadCleanup,
     );
 
     try {
@@ -729,6 +989,7 @@ class PerformanceBenchmarkSuiteRunner {
     required String detailType,
     required String mode,
     required bool refresh,
+    bool allowPendingDownloadCleanup = false,
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
     final target = await recorder.getTarget(targetAlias);
@@ -764,6 +1025,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: mode,
       targetAlias: targetAlias,
       targetType: detailType,
+      allowPendingDownloadCleanup: allowPendingDownloadCleanup,
     );
 
     try {
