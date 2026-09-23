@@ -120,6 +120,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
 
       final tabs = ref
           .read(finampSettingsProvider.tabOrder)
+          .where((e) => e.isTab)
           .where((e) => ref.read(finampSettingsProvider.showTabs(e)) ?? false)
           .toList();
 
@@ -163,6 +164,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
 
       final tabs = ref
           .read(finampSettingsProvider.tabOrder)
+          .where((e) => e.isTab)
           .where((e) => ref.read(finampSettingsProvider.showTabs(e)) ?? false)
           .toList();
 
