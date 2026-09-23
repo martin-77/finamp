@@ -107,19 +107,30 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       try {
-        final searchResult = await recorder.runStep(
+        final matches = await recorder.runStep(
           name: "playlist-discovery",
-          operation: () => api.getItemsWithTotalRecordCount(
-            includeItemTypes: "Playlist",
-            searchTerm: alias,
-            recursive: true,
-            limit: 50,
-          ),
-        );
+          operation: () async {
+            const pageSize = 200;
+            var startIndex = 0;
+            final matches = <BaseItemDto>[];
 
-        final matches = (searchResult.items ?? const <BaseItemDto>[])
-            .where((item) => item.name == alias)
-            .toList();
+            while (true) {
+              final page = await api.getItemsWithTotalRecordCount(
+                includeItemTypes: "Playlist",
+                recursive: true,
+                startIndex: startIndex,
+                limit: pageSize,
+              );
+              final items = page.items ?? const <BaseItemDto>[];
+              matches.addAll(items.where((item) => item.name == alias));
+
+              if (items.length < pageSize) break;
+              startIndex += items.length;
+            }
+
+            return matches;
+          },
+        );
 
         recorder.metric("matchingPlaylists", matches.length);
         if (matches.length != 1) {
