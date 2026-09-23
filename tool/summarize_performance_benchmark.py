@@ -32,6 +32,7 @@ def main():
     queue_restores = []
     queue_restore_content = []
     startup_network = []
+    recovered_runs = []
     phases = []
     diagnostics = []
 
@@ -45,6 +46,15 @@ def main():
 
         if record.get("type") in {"run-end", "run-recovered"}:
             run = record.get("run") or {}
+            if record.get("type") == "run-recovered":
+                recovered_runs.append({
+                    "scenario": run.get("scenario"),
+                    "mode": run.get("mode"),
+                    "targetType": run.get("targetType"),
+                    "targetAlias": run.get("targetAlias"),
+                    "lastStep": run.get("lastStep"),
+                    "result": run.get("result"),
+                })
             key = (
                 run.get("scenario", "unknown"),
                 run.get("mode", "unknown"),
@@ -190,6 +200,7 @@ def main():
         "startupNetwork": startup_network,
         "queueRestores": queue_restores,
         "queueRestoreContent": queue_restore_content,
+        "recoveredRuns": recovered_runs,
         "groups": summary_groups,
         "milestones": diagnostics,
     }
@@ -353,6 +364,23 @@ def main():
             f"{http_max_ms} | {response_bytes} | {rss_delta_mib} | "
             f"{frames_50} | {results} |"
         )
+
+    lines.extend([
+        "",
+        "## Recovered interrupted runs",
+        "",
+        "| Scenario | Mode | Target | Last step | Result |",
+        "|---|---|---|---|---|",
+    ])
+    if recovered_runs:
+        for item in recovered_runs:
+            target = item.get("targetAlias") or item.get("targetType") or ""
+            lines.append(
+                f"| {item.get('scenario', '')} | {item.get('mode', '')} | "
+                f"{target} | {item.get('lastStep', '')} | {item.get('result', '')} |"
+            )
+    else:
+        lines.append("| none |  |  |  |  |")
 
     problem_groups = [
         item for item in summary_groups
