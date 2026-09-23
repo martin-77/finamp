@@ -79,9 +79,16 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-phase-complete",
         values: {"phase": "ui-tab-baseline"},
       );
+
+      await _runAlphabetBaselines();
       recorder.diagnostic(
-        "suite-complete",
-        values: {"phase": "ui-tab-baseline"},
+        "suite-phase-complete",
+        values: {"phase": "alphabet-fast-scroller"},
+      );
+
+      recorder.diagnostic(
+        "full-suite-incomplete",
+        values: {"nextPhase": "detail-search-playback-download"},
       );
       await recorder.flushHostStream();
     } catch (error) {
@@ -288,6 +295,79 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       // runStep persists the failed/timeout run before rethrowing.
+    }
+  }
+
+  Future<void> _runAlphabetBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    const tabs = <String>["tracks", "artists", "albums"];
+    const letters = <String>["#", "A", "G", "M", "Z"];
+
+    for (final requestedTab in tabs) {
+      // Refresh once outside the measured jump runs. The first sequence then
+      // exercises the real incremental loading path from a fresh first page.
+      final resolvedTab = await recorder.requestUiTab(
+        contentType: requestedTab,
+        refresh: true,
+        timeout: const Duration(seconds: 120),
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      for (final letter in letters) {
+        await recorder.startRun(
+          scenario: "alphabet-jump-$requestedTab-$letter",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "refreshed-sequential",
+          targetType: resolvedTab,
+        );
+        try {
+          recorder.metric("letter", letter);
+          await recorder.runStep(
+            name: "alphabet-jump",
+            timeout: const Duration(seconds: 120),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedTab,
+              letter: letter,
+              timeout: const Duration(seconds: 115),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+
+      // At this point jumping towards Z has loaded the expensive path. Repeat
+      // the same sequence without a provider refresh to expose pure warm-list
+      // scrolling and already-loaded-page behaviour.
+      for (final letter in letters) {
+        await recorder.startRun(
+          scenario: "alphabet-jump-$requestedTab-$letter",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "warm-loaded",
+          targetType: resolvedTab,
+        );
+        try {
+          recorder.metric("letter", letter);
+          await recorder.runStep(
+            name: "alphabet-jump",
+            timeout: const Duration(seconds: 60),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedTab,
+              letter: letter,
+              timeout: const Duration(seconds: 55),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+
+      await Future<void>.delayed(const Duration(seconds: 5));
     }
   }
 
