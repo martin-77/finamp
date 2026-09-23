@@ -53,14 +53,33 @@ class JellyfinApiHelper {
   final _finampUserHelper = GetIt.instance<FinampUserHelper>();
 
   JellyfinApiHelper() {
-    ReceivePort startupPort = ReceivePort();
-    ReceivePort loggingPort = ReceivePort();
+    final startupPort = ReceivePort();
+    final loggingPort = ReceivePort();
+    final benchmarkHttpPort = ReceivePort();
     final logsHelper = GetIt.instance<FinampLogsHelper>();
 
     loggingPort.listen((record) {
       final event = record as LogRecord;
       performDebugLogPrinting(event);
       logsHelper.addLog(event);
+    });
+
+    benchmarkHttpPort.listen((dynamic raw) {
+      if (!PerformanceBenchmarkService.enabled ||
+          raw is! Map<Object?, Object?>) {
+        return;
+      }
+      final type = raw["type"];
+      final benchmark = PerformanceBenchmarkService.instance;
+      if (type == "start") {
+        benchmark.networkRequestStarted();
+      } else if (type == "complete") {
+        benchmark.networkRequestCompleted(
+          responseBytes: raw["responseBytes"] as int?,
+          durationMicros: raw["durationMicros"] as int?,
+          statusCode: raw["statusCode"] as int?,
+        );
+      }
     });
 
     var rootToken = RootIsolateToken.instance!;
@@ -75,6 +94,7 @@ class JellyfinApiHelper {
       FinampSettingsHelper.finampSettings.deviceId,
       loggingPort.sendPort,
       FinampSettingsHelper.finampSettings.verboseLogging,
+      benchmarkHttpPort.sendPort,
     ));
     Future.sync(() async {
       _workerIsolatePort = await startupPort.first as SendPort?;
@@ -86,7 +106,15 @@ class JellyfinApiHelper {
   /// This should only be run in a worker isolate
   /// Sets up singletons and listens for work.
   static Future<void> _processRequestsBackground(
-    (SendPort, RootIsolateToken, ClientCertificate?, String, SendPort, bool) input,
+    (
+      SendPort,
+      RootIsolateToken,
+      ClientCertificate?,
+      String,
+      SendPort,
+      bool,
+      SendPort,
+    ) input,
   ) async {
     BackgroundIsolateBinaryMessenger.ensureInitialized(input.$2);
     ReceivePort requestPort = ReceivePort();
@@ -131,6 +159,8 @@ class JellyfinApiHelper {
     jellyfin_api.JellyfinApi backgroundApi = jellyfin_api.JellyfinApi.create(
       inForeground: false,
       verboseLogging: input.$6,
+      benchmarkSendPort:
+          PerformanceBenchmarkService.enabled ? input.$7 : null,
     );
     await for (var request in requestPort) {
       var (func, outputPort) = request as (Future<dynamic> Function(jellyfin_api.JellyfinApi), SendPort);
