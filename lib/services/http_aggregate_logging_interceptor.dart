@@ -16,19 +16,27 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
     aggregateLogger.onStartRequest(chain.request);
     final benchmark = PerformanceBenchmarkService.instance;
     benchmark.networkRequestStarted();
+    final stopwatch = Stopwatch()..start();
     int? responseBytes;
+    int? statusCode;
     try {
       final Response<BodyType> response =
           await super.intercept(HttpAggregateLoggingChain(chain));
       responseBytes = int.tryParse(
         response.base.headers["content-length"] ?? "",
       );
+      statusCode = response.statusCode;
       // Request info isn't printed until after response completes
       aggregateLogger.onEndRequest(chain.request);
       aggregateLogger.onEndResponse(response);
       return response;
     } finally {
-      benchmark.networkRequestCompleted(responseBytes: responseBytes);
+      stopwatch.stop();
+      benchmark.networkRequestCompleted(
+        responseBytes: responseBytes,
+        durationMicros: stopwatch.elapsedMicroseconds,
+        statusCode: statusCode,
+      );
     }
   }
 }
