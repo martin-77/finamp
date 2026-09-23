@@ -2254,6 +2254,7 @@ class PerformanceBenchmarkSuiteRunner {
           "trackCount": persistedQueueCount,
         },
       );
+      await GetIt.instance<QueueService>().stopAndClearQueue();
     }
 
     await _cleanupDownloadedBenchmarkTarget(
