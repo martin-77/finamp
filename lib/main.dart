@@ -120,6 +120,12 @@ import 'setup_logging.dart';
 final _mainLog = Logger("Main()");
 late DateTime startTime;
 
+void _logStartupMilestone(String milestone) {
+  _mainLog.info(
+    "Startup milestone: $milestone, elapsedMs=${DateTime.now().difference(startTime).inMilliseconds}",
+  );
+}
+
 final providerScopeKey = GlobalKey();
 
 Future<void> main(List<String> args, {bool integrationTesting = false, bool loginTesting = false}) async {
@@ -140,6 +146,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _mainLog.info("Setup edge-to-edge overlay");
     await setupHive();
     _mainLog.info("Setup hive and isar");
+    _logStartupMilestone("storage-ready");
     // Apply the persisted verbose logging preference now that settings exist.
     applyLogLevel();
     _migrateDownloadLocations();
@@ -161,14 +168,20 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _mainLog.info("Setup offline listen tracking");
     await _setupDownloadsHelper();
     _mainLog.info("Setup downloads service");
+    _logStartupMilestone("downloads-ready");
     await _setupProviders();
     _mainLog.info("Setup providers");
+    _logStartupMilestone("providers-ready");
     await _setupOSIntegration(args);
     _mainLog.info("Setup os integrations");
+    _logStartupMilestone("os-integration-ready");
+    await AutoOffline.reevaluateTargetUrl(reason: "startup", reconnectPlayOn: false);
     await _setupPlayOnService();
     _mainLog.info("Setup PlayOnService");
+    _logStartupMilestone("playon-ready");
     await _setupPlaybackServices();
     _mainLog.info("Setup audio player");
+    _logStartupMilestone("audio-player-ready");
     await _setupKeepScreenOnHelper();
     _mainLog.info("Setup KeepScreenOnHelper");
     await _setupDiscordRpc();
@@ -211,6 +224,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
   await initDBus();
 
   _mainLog.info("Launching main app");
+  _logStartupMilestone("run-app");
 
   // Integration testing will launch the widgets itself, so just return
   if (!integrationTesting) {
