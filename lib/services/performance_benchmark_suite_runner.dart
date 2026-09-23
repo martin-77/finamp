@@ -135,6 +135,31 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _waitForStartupReady({
+    required String phase,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    await recorder.waitForStartupQuiescence(
+      quietPeriod: const Duration(seconds: 3),
+      timeout: const Duration(minutes: 3),
+    );
+    await recorder.waitForStartupScreenReady(
+      timeout: const Duration(minutes: 3),
+    );
+    await recorder.waitForImageQuiescence(
+      quietPeriod: const Duration(seconds: 1),
+      timeout: const Duration(minutes: 3),
+    );
+    await recorder.waitForNetworkQuiescence(
+      quietPeriod: const Duration(seconds: 3),
+      timeout: const Duration(minutes: 3),
+    );
+    recorder.diagnostic(
+      "startup-fully-ready",
+      values: {"phase": phase},
+    );
+  }
+
   Future<void> _prepareColdProcessRun() async {
     if (_running) return;
     _running = true;
@@ -143,13 +168,8 @@ class PerformanceBenchmarkSuiteRunner {
     try {
       await WidgetsBinding.instance.endOfFrame;
       await _recoverPendingDownloadCleanup();
-      await recorder.waitForStartupQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
-      );
-      await recorder.waitForNetworkQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
+      await _waitForStartupReady(
+        phase: "cold-process-preparation",
       );
 
       // Prepare a reproducible cold image-cache process while preserving auth,
@@ -193,13 +213,8 @@ class PerformanceBenchmarkSuiteRunner {
       await _recoverPendingDownloadCleanup();
       recorder.diagnostic("post-restart-phase-start");
 
-      await recorder.waitForStartupQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
-      );
-      await recorder.waitForNetworkQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
+      await _waitForStartupReady(
+        phase: "post-restart",
       );
       recorder.diagnostic("post-restart-startup-quiescent");
 
@@ -210,6 +225,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       for (final tab in const <String>[
+        "home",
         "albums",
         "artists",
         "playlists",
@@ -298,13 +314,8 @@ class PerformanceBenchmarkSuiteRunner {
       // then wait for Finamp's known asynchronous startup jobs to finish.
       await WidgetsBinding.instance.endOfFrame;
       recorder.diagnostic("suite-authenticated");
-      await recorder.waitForStartupQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
-      );
-      await recorder.waitForNetworkQuiescence(
-        quietPeriod: const Duration(seconds: 3),
-        timeout: const Duration(minutes: 3),
+      await _waitForStartupReady(
+        phase: "main-cold-process",
       );
       recorder.diagnostic("startup-baseline-complete");
 
@@ -648,9 +659,9 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
 
     const rounds = <List<String>>[
-      ["albums", "artists", "playlists", "tracks", "genres"],
-      ["genres", "tracks", "playlists", "artists", "albums"],
-      ["playlists", "albums", "genres", "artists", "tracks"],
+      ["home", "albums", "artists", "playlists", "tracks", "genres"],
+      ["genres", "tracks", "playlists", "artists", "albums", "home"],
+      ["playlists", "home", "albums", "genres", "artists", "tracks"],
     ];
 
     // Fixed delays are only stabilization boundaries and are deliberately
