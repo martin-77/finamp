@@ -129,10 +129,11 @@ class PerformanceBenchmarkSuiteRunner {
               final items = page.items ?? const <BaseItemDto>[];
               playlistItemsSeen += items.length;
               matches.addAll(
-                items.where(
-                  (item) =>
-                      item.name?.trim().toLowerCase() == normalizedAlias,
-                ),
+                items.where((item) {
+                  final normalizedName = item.name?.trim().toLowerCase();
+                  return normalizedName == normalizedAlias ||
+                      normalizedName == "$normalizedAlias [smart]";
+                }),
               );
 
               if (items.length < pageSize) break;
