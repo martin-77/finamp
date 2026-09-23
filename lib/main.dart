@@ -385,74 +385,78 @@ Future<void> _setupDownloadsHelper() async {
   await fileDownloader.resumeFromBackground();
   await downloadsService.startQueues();
 
-  if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
+  if (PerformanceBenchmarkService.enabled) {
     GetIt.instance<FinampUserHelper>().runUserHook(() async {
-      if (PerformanceBenchmarkService.enabled) {
-        final benchmark = PerformanceBenchmarkService.instance;
-        final suiteStage = await benchmark.getSuiteStage();
-        final pendingCleanup =
-            await benchmark.getDownloadCleanupRequirement();
-        final pendingCleanupOwner =
-            pendingCleanup?["ownerSuiteRunId"] as String?;
-        final cleanupFromDifferentSuite = pendingCleanup != null &&
-            pendingCleanupOwner != PerformanceBenchmarkService.suiteRunId;
+      final benchmark = PerformanceBenchmarkService.instance;
+      final suiteStage = await benchmark.getSuiteStage();
+      final pendingCleanup =
+          await benchmark.getDownloadCleanupRequirement();
+      final pendingCleanupOwner =
+          pendingCleanup?["ownerSuiteRunId"] as String?;
+      final cleanupFromDifferentSuite = pendingCleanup != null &&
+          pendingCleanupOwner != PerformanceBenchmarkService.suiteRunId;
 
-        if (suiteStage == null && cleanupFromDifferentSuite) {
-          benchmark.diagnostic(
-            "startup-playlist-metadata-work-deferred",
-            values: {"reason": "stale-benchmark-cleanup"},
+      if (suiteStage == null && cleanupFromDifferentSuite) {
+        benchmark.diagnostic(
+          "startup-playlist-metadata-work-deferred",
+          values: {"reason": "stale-benchmark-cleanup"},
+        );
+      } else if (suiteStage == null) {
+        final metadataStub = DownloadStub.fromFinampCollection(
+          FinampCollection(
+            type: FinampCollectionType.allPlaylistsMetadata,
+          ),
+        );
+        await benchmark.setDownloadCleanupRequired(
+          targetAlias: "all-playlists-metadata",
+          targetItemId: metadataStub.id,
+          targetItemType: metadataStub.type.name,
+        );
+        benchmark.markStartupPlaylistMetadataWorkRan();
+        try {
+          await benchmark.runStartupTask(
+            "default-playlist-metadata-download",
+            () async {
+              await downloadsService.addDefaultPlaylistInfoDownload();
+              await downloadsService
+                  .waitForPerformanceBenchmarkDownloadSystemIdle(
+                stableFor: const Duration(seconds: 5),
+                timeout: const Duration(hours: 3),
+              );
+            },
           );
-        } else if (suiteStage == null) {
-          final metadataStub = DownloadStub.fromFinampCollection(
-            FinampCollection(
-              type: FinampCollectionType.allPlaylistsMetadata,
-            ),
+          benchmark.reportStartupPlaylistMetadataWorkResult(
+            success: true,
           );
-          await benchmark.setDownloadCleanupRequired(
-            targetAlias: "all-playlists-metadata",
-            targetItemId: metadataStub.id,
-            targetItemType: metadataStub.type.name,
+        } catch (e) {
+          benchmark.reportStartupPlaylistMetadataWorkResult(
+            success: false,
+            errorType: e.runtimeType.toString(),
           );
-          benchmark.markStartupPlaylistMetadataWorkRan();
-          try {
-            await benchmark.runStartupTask(
-              "default-playlist-metadata-download",
-              () async {
-                await downloadsService.addDefaultPlaylistInfoDownload();
-                await downloadsService
-                    .waitForPerformanceBenchmarkDownloadSystemIdle(
-                  stableFor: const Duration(seconds: 5),
-                  timeout: const Duration(hours: 3),
-                );
-              },
-            );
-            benchmark.reportStartupPlaylistMetadataWorkResult(
-              success: true,
-            );
-          } catch (e) {
-            benchmark.reportStartupPlaylistMetadataWorkResult(
-              success: false,
-              errorType: e.runtimeType.toString(),
-            );
-            _mainLog.severe(
-              "Benchmark startup playlist metadata download failed: $e",
-            );
-          }
-        } else {
-          benchmark.diagnostic(
-            "startup-playlist-metadata-work-not-repeated",
-            values: {"suiteStage": suiteStage},
+          _mainLog.severe(
+            "Benchmark startup playlist metadata download failed: $e",
           );
         }
       } else {
-        await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
-          // log error without snackbar, we don't want users to be greeted with errors on first launch
-          _mainLog.severe("Failed to download playlist metadata: $e");
-        });
-        FinampSetters.setHasDownloadedPlaylistInfo(true);
+        benchmark.diagnostic(
+          "startup-playlist-metadata-work-not-repeated",
+          values: {"suiteStage": suiteStage},
+        );
       }
     });
+  } else if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
+    GetIt.instance<FinampUserHelper>().runUserHook(() async {
+      await downloadsService
+          .addDefaultPlaylistInfoDownload()
+          .catchError((Object e) {
+        // log error without snackbar, we don't want users to be greeted with
+        // errors on first launch
+        _mainLog.severe("Failed to download playlist metadata: $e");
+      });
+      FinampSetters.setHasDownloadedPlaylistInfo(true);
+    });
   }
+
 }
 
 Future<void> _setupPlayOnService() async {
