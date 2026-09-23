@@ -310,6 +310,7 @@ class PerformanceBenchmarkService {
   String? _httpFirstResponseRunId;
   String? _playbackSourceRunId;
   bool _startupPlaylistMetadataWorkRan = false;
+  bool? _startupPlaylistMetadataWorkSucceeded;
   int _startupNetworkRequestCount = 0;
   int _startupNetworkResponseBytes = 0;
   int _startupNetworkDurationMicros = 0;
@@ -371,6 +372,8 @@ class PerformanceBenchmarkService {
   bool get hasActiveRun => _activeRun != null;
   bool get startupPlaylistMetadataWorkRan =>
       _startupPlaylistMetadataWorkRan;
+  bool? get startupPlaylistMetadataWorkSucceeded =>
+      _startupPlaylistMetadataWorkSucceeded;
 
   void markStartupPlaylistMetadataWorkRan() {
     if (!enabled) return;
@@ -383,6 +386,7 @@ class PerformanceBenchmarkService {
     String? errorType,
   }) {
     if (!enabled) return;
+    _startupPlaylistMetadataWorkSucceeded = success;
     diagnostic(
       success
           ? "startup-playlist-metadata-work-complete"
