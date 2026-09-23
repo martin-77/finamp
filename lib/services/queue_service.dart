@@ -617,6 +617,16 @@ class QueueService {
           source: info.source.withItem(idMap[jellyfin_models.BaseItemId(info.source.id)]),
         );
       }
+      if (PerformanceBenchmarkService.enabled) {
+        PerformanceBenchmarkService.instance.diagnostic(
+          "queue-restore-complete",
+          values: {
+            "storedTrackCount": info.trackCount,
+            "loadedTrackCount": loadedTracks,
+            "droppedTrackCount": droppedTracks,
+          },
+        );
+      }
       _queueServiceLogger.info("Loaded saved queue.");
       if (loadedTracks > 0 || info.trackCount == 0) {
         // After loading queue, do not begin overwriting latest until the user modifies
