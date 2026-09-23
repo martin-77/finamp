@@ -183,6 +183,7 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position |
 | large queue restore | automated | normal autoload observed; explicit 1000-track restore if startup autoload did not run |
 | downloads | automated | 10/100/1000 original-file downloads, real bytes, throughput and cleanup |
+| filesystem reference | automated | sequential local reads of actual benchmark files, reporting only count/bytes/duration/throughput |
 | download resync/repair | automated | force-resync + full repair on isolated bench-100 download graph |
 | offline/local | automated | cold-process for 1000, warm/local UI, paging, search, alphabet and playback |
 | image cache | automated | cleared persistent image cache vs warm view/detail |
