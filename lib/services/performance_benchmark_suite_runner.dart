@@ -235,6 +235,10 @@ class PerformanceBenchmarkSuiteRunner {
       // Deleting a missing target is harmless; deleting an old or partial
       // target makes the next process exercise the real first-run workload.
       await downloads.deleteDownload(stub: metadataStub);
+      await downloads.waitForPerformanceBenchmarkCleanup(
+        stub: metadataStub,
+        timeout: const Duration(minutes: 30),
+      );
       await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
         stableFor: const Duration(seconds: 5),
         timeout: const Duration(minutes: 30),
@@ -299,6 +303,10 @@ class PerformanceBenchmarkSuiteRunner {
         },
       );
       await downloads.deleteDownload(stub: metadataStub);
+      await downloads.waitForPerformanceBenchmarkCleanup(
+        stub: metadataStub,
+        timeout: const Duration(minutes: 30),
+      );
       await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
         stableFor: const Duration(seconds: 5),
         timeout: const Duration(minutes: 30),
