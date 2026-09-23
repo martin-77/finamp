@@ -57,6 +57,8 @@ and ids are never exported.
 ### Full execution matrix
 
 1. **Process/startup**
+   - unmeasured preconditioning process removes benchmark-owned playlist metadata and image-cache state while preserving auth/settings
+   - the suite stores the user's original offline setting once, forces the measured baseline online, and restores the exact original setting on success, block or fatal error
    - realistic first process including Finamp's normal automatic playlist-metadata background work
    - controlled cold process after benchmark-owned first-process metadata state is cleaned up
    - cold process / warm persistent cache
@@ -65,7 +67,13 @@ and ids are never exported.
    - storage, providers, audio service, `runApp`, first frame, selected MusicScreen content usable
    - startup network request count/bytes/duration and queue-restore cost
 
-2. **Direct API reference layer**
+2. **Network target probes**
+   - read-only `public`, `local` and currently active Jellyfin endpoint probes
+   - three rounds using Finamp's existing ping paths without changing `isLocal` or `preferLocalNetwork`
+   - local probe is skipped when no real local endpoint is configured
+   - export only target category, success/failure and duration; never the URL/domain/IP
+
+4. **Direct API reference layer**
    - Performing Artists and Album Artists as separate Jellyfin paths
    - Albums / Tracks / Playlists / Genres
    - three deterministic rotated rounds
@@ -74,28 +82,28 @@ and ids are never exported.
    - HTTP metrics are returned on a dedicated per-Worker-operation channel and drained before that operation completes, preventing cross-run attribution
    - approximate non-HTTP Worker overhead = Worker duration - measured HTTP duration
 
-3. **Real MusicScreen UI**
+4. **Real MusicScreen UI**
    - Home / Artists / Albums / Tracks / Playlists / Genres
    - refreshed-view and warm-view
    - three rotated deterministic orders
    - tab selected -> data ready -> first rendered content
    - repeated page loads
 
-4. **Real alphabet fast-scroller**
+5. **Real alphabet fast-scroller**
    - Tracks / Artists / Albums
    - exact sequence `# -> A -> G -> M -> Z`
    - pages added, loaded item count and elapsed time per jump
    - run once from a refreshed first page and once from warm loaded state
    - do not synthesize a direct server query
 
-5. **Search**
+6. **Search**
    - real MusicScreen search path
    - broad one-character query
    - deterministic private target-derived query
    - repeated warm query
    - result count, requests, bytes and first rendered result
 
-6. **Detail screens**
+7. **Detail screens**
    - deterministic album
    - deterministic artist
    - deterministic genre
@@ -105,7 +113,7 @@ and ids are never exported.
    - refreshed/cold-provider and warm-provider repeats
    - child count and provider/API work
 
-7. **Queue and playback**
+8. **Queue and playback**
    - one track
    - deterministic album
    - deterministic artist
@@ -118,7 +126,7 @@ and ids are never exported.
    - repeat warm playback
    - playlist scaling 10/100/1000/10000
 
-8. **Downloads**
+9. **Downloads**
    - `bench-10`, `bench-100`, `bench-1000`
    - clean-state validation
    - planning graph / enqueue
@@ -126,33 +134,37 @@ and ids are never exported.
    - failures, real downloaded bytes, duration and throughput
    - no `bench-10000` download
 
-9. **Downloaded/offline lifecycle**
+10. **Downloaded/offline lifecycle**
    - verify downloaded target and actual local bytes
-   - save prior offline setting
-   - force Finamp offline
+   - use the suite-owned original offline setting captured before the first measured process
+   - force Finamp offline only for the local-download sub-phase
    - local-downloaded-cold detail/queue/playback
    - local-downloaded-warm repeat
    - relevant paging/search paths against local metadata
-   - restore exact prior offline setting
+   - return to the suite's online baseline after each local-download sub-phase
+   - restore the user's exact original offline setting only after the complete baseline (or on block/fatal error)
    - cleanup
    - verify no benchmark download state remains
 
-10. **Cache/systemic diagnostics**
+11. **Cache/systemic diagnostics**
     - first-use vs repeated provider work
     - image/cache warm-up effects
+    - startup persistent image-cache entry count and player-image mapping count
+    - startup image-load count/failures/synchronous hits/max concurrency
+    - RSS/max-RSS snapshots at every major suite phase boundary
     - persistent metadata/cache effects across process restart
     - isolate first-run work from steady-state work
     - report cache hits/misses where available
     - keep unmeasured stabilization boundaries separate from benchmark duration
 
-11. **Host restart orchestration**
+12. **Host restart orchestration**
     - the macOS runner relaunches the already installed build for true
       cold-process and warm-persistent-cache phases
     - phase/checkpoint state persists in the app container
     - crashes, Jetsam and manual termination resume at the earliest safe phase
     - download cleanup has priority over resuming benchmark work
 
-12. **One-time playlist metadata/image sync**
+13. **One-time playlist metadata/image sync**
     - the real automatic workload is included once in the fresh startup process
     - after that first process its benchmark-owned metadata state is cleaned before controlled cold/warm comparisons
     - the same workload is measured again in isolation after normal and post-restart cache comparisons
@@ -161,7 +173,7 @@ and ids are never exported.
     - exports duration/request work but no playlist names, image counts or ids
     - automatically deletes the benchmark-owned metadata download afterwards
 
-13. **Summary**
+14. **Summary**
     - raw runs remain in JSONL
     - per-scenario median / p90 / failure count
     - no total private library cardinality
@@ -174,7 +186,8 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 
 | Area | Status | Notes |
 |---|---|---|
-| realistic first startup | automated | includes normal playlist-metadata background work, per-process network/frame/RSS summary, then cleans benchmark-owned state |
+| fresh-suite preconditioning | automated | removes old benchmark playlist-metadata/image-cache state without deleting auth/settings; captures original offline state and forces measured baseline online |
+| realistic first startup | automated | includes normal playlist-metadata background work, per-process network/frame/RSS/image-load summary, then cleans benchmark-owned state |
 | controlled cold process | automated | host restart with preserved auth/settings and cleared image cache |
 | persistent-cache restart | automated | same installed build/container, explicit stage checkpoints |
 | API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown |
@@ -191,13 +204,16 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | download resync/repair | automated | force-resync + full repair on isolated bench-100 download graph |
 | offline/local | automated | cold-process for 1000, warm/local UI, paging, search, alphabet and playback |
 | image cache | automated | cleared persistent image cache vs warm view/detail |
-| network target transition | opportunistic diagnostic | real target changes/pings are recorded; iOS radios are not artificially toggled |
+| network target probes | automated | three read-only public/local/active endpoint rounds; no URL export and no user-network preference mutation |
+| network target transition | opportunistic diagnostic | real target changes are also recorded when they naturally occur; iOS radios are not artificially toggled |
 | crash/hang recovery | automated | active-run recovery + phase checkpoints + bounded host relaunches |
-| summary | automated | median/p90, milestones, HTTP, RSS, frames, startup timeline, failures and recoveries |
+| summary | automated | median/p90, milestones, HTTP, startup image/cache scale, RSS/MaxRSS phase snapshots, frames, startup timeline, failures and recoveries |
 
 A `suite-complete` record means all mandatory automated rows above reached
 their terminal phase. Opportunistic network-transition diagnostics are not a
-completion prerequisite.
+completion prerequisite. The host runner also emits explicit blocked/error
+termination and the app restores the suite-owned original offline state before
+those terminal records.
 
 ## Benchmark scenarios
 
