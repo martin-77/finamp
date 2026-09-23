@@ -111,6 +111,9 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
   });
 
   if (request.item.imageId == null) {
+    PerformanceBenchmarkService.instance.incrementMetricBuffered(
+      "imageNoPrimaryImage",
+    );
     return AlbumImageInfo.empty(request);
   }
 
@@ -118,6 +121,11 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
   final isardownloader = GetIt.instance<DownloadsService>();
 
   File? downloadedImage = isardownloader.getImageDownload(item: request.item)?.file;
+  if (downloadedImage != null) {
+    PerformanceBenchmarkService.instance.incrementMetricBuffered(
+      "imageDownloadedFileHit",
+    );
+  }
 
   String key;
   bool blurhashKey = false;
@@ -133,11 +141,17 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
     final isValid = cacheEntry?.validTill.isAfter(DateTime.now()) ?? false;
     if (isValid && cacheEntry!.file.existsSync()) {
       downloadedImage = cacheEntry.file;
+      PerformanceBenchmarkService.instance.incrementMetricBuffered(
+        "imagePersistentCacheHit",
+      );
     }
   }
 
   if (downloadedImage == null) {
     if (ref.watch(finampSettingsProvider.isOffline)) {
+      PerformanceBenchmarkService.instance.incrementMetricBuffered(
+        "imageOfflineMiss",
+      );
       return AlbumImageInfo.empty(request);
     }
 
@@ -156,8 +170,15 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
     }
 
     if (imageUrl == null) {
+      PerformanceBenchmarkService.instance.incrementMetricBuffered(
+        "imageNoResolvedUrl",
+      );
       return AlbumImageInfo.empty(request);
     }
+
+    PerformanceBenchmarkService.instance.incrementMetricBuffered(
+      "imageNetworkFetch",
+    );
 
     if (request.fullQuality) {
       // If we want full quality player images, retrieve them via the image cache instead of linking directly.
