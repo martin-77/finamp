@@ -160,7 +160,7 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     });
   }
 
-  void _refresh() async {
+  Future<void> _refresh() async {
     for (var section in ref.watch(finampSettingsProvider.homeScreenConfiguration).sections) {
       final displayable = await ref.watch(resolveSectionProvider(section).future);
       ref.read(pagedContentProvider(displayable).notifier).refresh();
