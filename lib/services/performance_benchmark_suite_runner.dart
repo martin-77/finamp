@@ -205,7 +205,9 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     try {
       await WidgetsBinding.instance.endOfFrame;
-      await _recoverPendingDownloadCleanup();
+      await _recoverPendingDownloadCleanup(
+        skipCurrentSuiteOwned: true,
+      );
       await _waitForStartupReady(
         phase: "cold-process-preparation",
       );
@@ -229,6 +231,10 @@ class PerformanceBenchmarkSuiteRunner {
         await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
           stableFor: const Duration(seconds: 5),
           timeout: const Duration(minutes: 30),
+        );
+        await recorder.setDownloadCleanupRequired(
+          targetAlias: "all-playlists-metadata",
+          required: false,
         );
         recorder.diagnostic(
           "startup-playlist-metadata-cleanup-complete",
@@ -550,10 +556,22 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
-  Future<void> _recoverPendingDownloadCleanup() async {
+  Future<void> _recoverPendingDownloadCleanup({
+    bool skipCurrentSuiteOwned = false,
+  }) async {
     final recorder = PerformanceBenchmarkService.instance;
     final requirement = await recorder.getDownloadCleanupRequirement();
     if (requirement == null) return;
+
+    final ownerSuiteRunId = requirement["ownerSuiteRunId"] as String?;
+    if (skipCurrentSuiteOwned &&
+        ownerSuiteRunId == PerformanceBenchmarkService.suiteRunId) {
+      recorder.diagnostic(
+        "download-cleanup-recovery-deferred",
+        values: {"reason": "current-suite-startup-work"},
+      );
+      return;
+    }
 
     final alias = requirement["targetAlias"] as String?;
     if (alias == null || alias.isEmpty) {
