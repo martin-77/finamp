@@ -489,7 +489,10 @@ class PerformanceBenchmarkSuiteRunner {
       );
     }
     await downloads.deleteDownload(stub: stub);
-    await _waitForDownloadRemoved(downloads, stub);
+    await downloads.waitForPerformanceBenchmarkCleanup(
+      stub: stub,
+      timeout: const Duration(minutes: 10),
+    );
     await recorder.setDownloadCleanupRequired(
       targetAlias: alias,
       required: false,
@@ -1485,7 +1488,10 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "verify-download-removed",
         timeout: const Duration(minutes: 10),
-        operation: () => _waitForDownloadRemoved(downloads, stub),
+        operation: () => downloads.waitForPerformanceBenchmarkCleanup(
+          stub: stub,
+          timeout: const Duration(minutes: 9),
+        ),
       );
       final remainingBytes = await downloads.getFileSize(stub);
       recorder.metric("remainingDownloadedBytes", remainingBytes);
