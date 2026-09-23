@@ -429,6 +429,37 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _verifySuiteTerminalState() async {
+    final recorder = PerformanceBenchmarkService.instance;
+
+    if (recorder.activeRun != null) {
+      throw StateError("Suite cannot complete with an active benchmark run");
+    }
+    if (await recorder.getDownloadCleanupRequirement() != null) {
+      throw StateError(
+        "Suite cannot complete while benchmark download cleanup is pending",
+      );
+    }
+    if (await recorder.getOriginalOfflineState() != null) {
+      throw StateError(
+        "Suite cannot complete before the original offline state is restored",
+      );
+    }
+
+    final stage = await recorder.getSuiteStage();
+    if (stage != "post-metadata-done") {
+      throw StateError(
+        "Suite reached terminal verification from an unexpected stage",
+      );
+    }
+
+    recorder.diagnostic(
+      "suite-terminal-state-verified",
+      values: {"stage": stage},
+    );
+    await recorder.flushHostStream();
+  }
+
   Future<void> _runPostRestartPhase() async {
     if (_running) return;
     _running = true;
@@ -537,6 +568,7 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       await _restoreSuiteOriginalOfflineState();
+      await _verifySuiteTerminalState();
       await recorder.setSuiteStage("complete");
       recorder.diagnostic(
         "suite-complete",
