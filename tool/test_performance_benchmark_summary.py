@@ -25,6 +25,7 @@ def main():
                     "playlistItemsSeen": 123,
                     "playlistPagesFetched": 4,
                     "pageItemsAdded": 100,
+                    "pageSize": 83,
                     "rssDeltaBytes": 123456,
                 },
                 "events": [],
@@ -195,7 +196,8 @@ def main():
         assert "alphabetJumpPagesLoaded" not in metrics
         assert "playlistItemsSeen" not in metrics
         assert "playlistPagesFetched" not in metrics
-        assert "pageItemsAdded" in metrics
+        assert "pageItemsAdded" not in metrics
+        assert "pageSize" not in metrics
 
         environments = summary["runtimeEnvironments"]
         assert len(environments) == 1
