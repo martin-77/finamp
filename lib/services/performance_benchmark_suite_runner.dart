@@ -765,7 +765,9 @@ class PerformanceBenchmarkSuiteRunner {
         );
 
         if (alias == "bench-100" && children != null && children.isNotEmpty) {
-          final track = children.first;
+          final deterministicChildren = [...children]
+            ..sort((a, b) => a.id.raw.compareTo(b.id.raw));
+          final track = deterministicChildren.first;
           await recorder.saveTarget(
             alias: "detail-track",
             itemType: "Audio",
@@ -775,7 +777,7 @@ class PerformanceBenchmarkSuiteRunner {
           BaseItemId? albumId;
           BaseItemId? artistId;
           BaseItemId? genreId;
-          for (final candidate in children) {
+          for (final candidate in deterministicChildren) {
             albumId ??= candidate.albumId;
             if (artistId == null && (candidate.albumArtists?.isNotEmpty ?? false)) {
               artistId = candidate.albumArtists!.first.id;
@@ -1027,6 +1029,8 @@ class PerformanceBenchmarkSuiteRunner {
           includeItemTypes: "MusicAlbum",
           recursive: true,
           artistType: ArtistType.albumArtist,
+          sortBy: "SortName",
+          sortOrder: "Ascending",
         );
         if (albums != null && albums.isNotEmpty) {
           final album = albums.first;
@@ -1040,6 +1044,8 @@ class PerformanceBenchmarkSuiteRunner {
             parentItem: album,
             includeItemTypes: "Audio",
             recursive: true,
+            sortBy: "ParentIndexNumber,IndexNumber,SortName",
+            sortOrder: "Ascending",
           );
           if (tracks != null && tracks.isNotEmpty) {
             await recorder.saveTarget(
