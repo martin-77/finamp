@@ -185,6 +185,8 @@ class PerformanceBenchmarkSuiteRunner {
       quietPeriod: const Duration(seconds: 3),
       timeout: networkTimeout,
     );
+    recorder.reportStartupFrameSummary(phase);
+    recorder.reportStartupNetworkSummary(phase: phase);
     recorder.diagnostic(
       "startup-fully-ready",
       values: {
@@ -232,8 +234,6 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(
         phase: "cold-process-preparation",
       );
-      recorder.reportStartupNetworkSummary();
-
       if (recorder.startupPlaylistMetadataWorkRan) {
         final downloads = GetIt.instance<DownloadsService>();
         final metadataStub = DownloadStub.fromFinampCollection(
