@@ -145,7 +145,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
           : targetTab;
 
       _tabController?.index = index;
-      command.markSelected();
+      command.markSelected(contentTab.name);
       PerformanceBenchmarkService.instance.mark(
         "ui-tab-selected",
         values: {
