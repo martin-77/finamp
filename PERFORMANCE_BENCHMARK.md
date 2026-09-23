@@ -281,15 +281,24 @@ This is also useful for issue #1774.
 
 ### Network transition playback
 
-Diagnostic benchmark, not a performance score:
+Diagnostic only, not a blocking performance score.
 
-- Wi-Fi/local -> mobile/public
-- mobile/public -> Wi-Fi/local
-- target URL reevaluation duration
-- queue reload/prompt behaviour
-- buffer ahead at transition
-- interruption duration
-- player error/recovery outcome
+The app cannot reliably or appropriately toggle iOS Wi-Fi/cellular radios
+itself, so the unattended suite does not fake this transition. If a real
+network/target reevaluation occurs while the benchmark build is running, the
+harness records privacy-safe target-state changes and local/public/active ping
+durations without exporting URLs or addresses.
+
+Useful observations include:
+
+- Wi-Fi/local -> mobile/public when it really occurs
+- mobile/public -> Wi-Fi/local when it really occurs
+- target-state change
+- local/public/active reachability duration and outcome
+- queue/player errors or recovery events already captured by the playback hooks
+
+A dedicated manual network-transition experiment can reuse these diagnostics
+later without changing the core performance suite.
 
 ## Metrics
 
