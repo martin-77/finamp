@@ -1502,6 +1502,16 @@ class PerformanceBenchmarkSuiteRunner {
           targetAlias,
         ),
       );
+      await recorder.runStep(
+        name: "wait-download-system-idle",
+        timeout: const Duration(minutes: 30),
+        operation: () =>
+            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          stableFor: const Duration(seconds: 5),
+          timeout: const Duration(minutes: 25),
+        ),
+      );
+      recorder.mark("download-all-transfers-settled");
 
       final bytes = await recorder.runStep(
         name: "measure-downloaded-bytes",
@@ -1518,7 +1528,7 @@ class PerformanceBenchmarkSuiteRunner {
         for (final event in run.events) {
           if (event.name == "download-first-transfer-start") {
             transferStartMicros ??= event.elapsedMicros;
-          } else if (event.name == "download-all-tracks-complete") {
+          } else if (event.name == "download-all-transfers-settled") {
             transferCompleteMicros = event.elapsedMicros;
           }
         }
