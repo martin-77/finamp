@@ -877,33 +877,33 @@ class PerformanceBenchmarkService {
     throw TimeoutException("Image loads did not become quiescent", timeout);
   }
 
-  void backgroundApiOperationStarted() {
+  void workerOperationStarted() {
     if (!enabled) return;
     _networkRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
-    incrementMetricBuffered("workerApiOperationCount");
+    incrementMetricBuffered("workerOperationCount");
     maxMetricBuffered(
       "networkMaxConcurrentIncludingWorker",
       _networkRequestsInFlight,
     );
   }
 
-  void backgroundApiOperationCompleted({
+  void workerOperationCompleted({
     required int durationMicros,
     required bool failed,
   }) {
     if (!enabled) return;
     incrementMetricBuffered(
-      "workerApiDurationMicrosTotal",
+      "workerDurationMicrosTotal",
       durationMicros,
     );
     maxMetricBuffered(
-      "workerApiDurationMicrosMax",
+      "workerDurationMicrosMax",
       durationMicros,
     );
     if (failed) {
-      incrementMetricBuffered("workerApiOperationFailed");
+      incrementMetricBuffered("workerOperationFailed");
     }
     if (_networkRequestsInFlight > 0) {
       _networkRequestsInFlight--;
