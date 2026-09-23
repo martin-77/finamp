@@ -364,12 +364,17 @@ class PerformanceBenchmarkSuiteRunner {
         );
         final expectedTracks = aliases[matchedAlias]!;
         final status = downloads.getStatus(stub, expectedTracks);
-        if (status.isDownloaded) {
+        final progress =
+            downloads.getPerformanceBenchmarkCollectionProgress(stub);
+        final graphTracks = progress["totalTracks"] ?? 0;
+        if (status.isDownloaded || graphTracks > 0) {
           recorder.diagnostic(
             "suite-preconditioning-old-download-found",
             values: {
               "targetAlias": matchedAlias,
               "expectedTracks": expectedTracks,
+              "graphTracksPresent": graphTracks,
+              "wasComplete": status.isDownloaded,
             },
           );
           await downloads.deleteDownload(stub: stub);
