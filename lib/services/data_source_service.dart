@@ -67,6 +67,12 @@ class DataSourceService {
     _dataSourceServiceLogger.finest("Connectivity Change Triggered, event is '$event'");
 
     final queueInfo = queueService.getQueue();
+    _dataSourceServiceLogger.info(
+      "Data source change: event=$event, "
+      "trackCount=${queueInfo.trackCount}, "
+      "undownloadedTracks=${queueInfo.undownloadedTracks}, "
+      "autoReloadQueue=${FinampSettingsHelper.finampSettings.autoReloadQueue}",
+    );
 
     if (queueInfo.trackCount > 0) {
       switch (event) {
@@ -75,8 +81,10 @@ class DataSourceService {
         case SourceChangeType.toOffline:
           if (queueInfo.undownloadedTracks > 0) {
             if (FinampSettingsHelper.finampSettings.autoReloadQueue) {
+              _dataSourceServiceLogger.info("Reloading queue after network source change");
               await queueService.reloadQueue();
             } else {
+              _dataSourceServiceLogger.info("Prompting for queue reload after network source change");
               GlobalSnackbar.message(
                 (context) {
                   final reloadPrompt = AppLocalizations.of(
