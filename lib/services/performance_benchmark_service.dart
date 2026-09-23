@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path_helper;
@@ -288,6 +289,8 @@ class PerformanceBenchmarkService {
   Box<String>? _box;
   File? _hostStreamFile;
   final Stopwatch _processStopwatch = Stopwatch();
+  static const MethodChannel _nativeLaunchTimingChannel =
+      MethodChannel("finamp/benchmark_launch_timing");
 
   Timer? _heartbeatTimer;
   Future<void> _hostWriteChain = Future<void>.value();
@@ -449,6 +452,37 @@ class PerformanceBenchmarkService {
     if (!enabled) return;
     if (_startupScreenReady.isCompleted) return;
     await _startupScreenReady.future.timeout(timeout);
+  }
+
+  Future<double?> nativeLaunchElapsedMs() async {
+    if (!enabled || !Platform.isIOS) return null;
+    try {
+      final value = await _nativeLaunchTimingChannel.invokeMethod<double>(
+        "elapsedMilliseconds",
+      );
+      return value;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  Future<void> reportStartupMilestone(
+    String name, {
+    Map<String, Object?> values = const {},
+  }) async {
+    if (!enabled) return;
+    final nativeElapsed = await nativeLaunchElapsedMs();
+    diagnostic(
+      name,
+      values: {
+        ...values,
+        "processElapsedMs": processElapsedMs,
+        if (nativeElapsed != null)
+          "nativeLaunchElapsedMs": nativeElapsed,
+      },
+    );
   }
 
   void startProcessStopwatch() {
@@ -772,13 +806,16 @@ class PerformanceBenchmarkService {
     }
   }
 
-  void reportStartupPhaseResult(String phase) {
+  Future<void> reportStartupPhaseResult(String phase) async {
     if (!enabled) return;
+    final nativeElapsed = await nativeLaunchElapsedMs();
     diagnostic(
       "startup-phase-result",
       values: {
         "phase": phase,
         "fullyReadyMs": processElapsedMs,
+        if (nativeElapsed != null)
+          "nativeFullyReadyMs": nativeElapsed,
         "requestCount": _startupNetworkRequestCount,
         "responseBytes": _startupNetworkResponseBytes,
         "httpDurationMicrosTotal": _startupNetworkDurationMicros,
