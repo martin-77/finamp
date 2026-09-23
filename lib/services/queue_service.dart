@@ -486,8 +486,21 @@ class QueueService {
     await stopAndClearQueue();
     await _queuesBox.delete("latest");
     await _queuesBox.flush();
+
+    final activeCount = getQueue().trackCount;
+    final persisted = _queuesBox.get("latest");
+    if (activeCount != 0 || persisted != null) {
+      throw StateError(
+        "Benchmark queue cleanup did not reach an empty terminal state",
+      );
+    }
+
     PerformanceBenchmarkService.instance.diagnostic(
       "queue-benchmark-state-cleared",
+      values: {
+        "activeTrackCount": activeCount,
+        "persistedQueuePresent": false,
+      },
     );
   }
 
