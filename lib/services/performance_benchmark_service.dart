@@ -383,11 +383,12 @@ class PerformanceBenchmarkService {
     );
   }
 
-  void reportStartupNetworkSummary() {
+  void reportStartupNetworkSummary({required String phase}) {
     if (!enabled) return;
     diagnostic(
       "startup-network-summary",
       values: {
+        "phase": phase,
         "requestCount": _startupNetworkRequestCount,
         "responseBytes": _startupNetworkResponseBytes,
         "durationMicrosTotal": _startupNetworkDurationMicros,
@@ -718,7 +719,7 @@ class PerformanceBenchmarkService {
   }
 
   void reportStartupFrameSummary(String phase) {
-    if (!enabled) return;
+    if (!enabled || !_startupFrameCollectionOpen) return;
     _startupFrameCollectionOpen = false;
     diagnostic(
       "startup-frame-summary",
