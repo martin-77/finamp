@@ -314,6 +314,90 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _clearPreviousBenchmarkArtifacts() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final downloads = GetIt.instance<DownloadsService>();
+    final api = GetIt.instance<JellyfinApiHelper>();
+
+    recorder.diagnostic("suite-preconditioning-artifact-cleanup-start");
+
+    // The benchmark app is isolated from the user's normal Finamp install.
+    // Remove any queue snapshot left by a previous interrupted benchmark run so
+    // realistic startup is not accidentally measuring old benchmark state.
+    await GetIt.instance<QueueService>().clearPerformanceBenchmarkQueueState();
+
+    const aliases = <String, int>{
+      "bench-10": 10,
+      "bench-100": 100,
+      "bench-1000": 1000,
+    };
+    final remaining = aliases.keys.toSet();
+    const pageSize = 200;
+    var startIndex = 0;
+
+    while (remaining.isNotEmpty) {
+      final page = await api.getItemsWithTotalRecordCount(
+        includeItemTypes: "Playlist",
+        recursive: true,
+        startIndex: startIndex,
+        limit: pageSize,
+      );
+      final items = page.items ?? const <BaseItemDto>[];
+
+      for (final item in items) {
+        final normalized = item.name?.trim().toLowerCase();
+        if (normalized == null) continue;
+
+        String? matchedAlias;
+        for (final alias in remaining) {
+          if (normalized == alias ||
+              normalized == "$alias [smart]") {
+            matchedAlias = alias;
+            break;
+          }
+        }
+        if (matchedAlias == null) continue;
+
+        final stub = DownloadStub.fromItem(
+          type: DownloadItemType.collection,
+          item: item,
+        );
+        final expectedTracks = aliases[matchedAlias]!;
+        final status = downloads.getStatus(stub, expectedTracks);
+        if (status.isDownloaded) {
+          recorder.diagnostic(
+            "suite-preconditioning-old-download-found",
+            values: {
+              "targetAlias": matchedAlias,
+              "expectedTracks": expectedTracks,
+            },
+          );
+          await downloads.deleteDownload(stub: stub);
+          await downloads.waitForPerformanceBenchmarkCleanup(
+            stub: stub,
+            timeout: const Duration(minutes: 30),
+          );
+        }
+        remaining.remove(matchedAlias);
+      }
+
+      if (items.length < pageSize) break;
+      startIndex += items.length;
+    }
+
+    await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+      stableFor: const Duration(seconds: 5),
+      timeout: const Duration(minutes: 30),
+    );
+
+    recorder.diagnostic(
+      "suite-preconditioning-artifact-cleanup-complete",
+      values: {
+        "unresolvedBenchmarkAliases": remaining.length,
+      },
+    );
+  }
+
   Future<void> _prepareFreshSuiteState() async {
     if (_running) return;
     _running = true;
@@ -325,6 +409,7 @@ class PerformanceBenchmarkSuiteRunner {
 
       // Recover any stale cleanup marker from an older interrupted suite first.
       await _recoverPendingDownloadCleanup();
+      await _clearPreviousBenchmarkArtifacts();
       await _waitForStartupReady(
         phase: "suite-preconditioning",
         startupTaskTimeout: const Duration(minutes: 30),
