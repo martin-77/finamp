@@ -201,6 +201,29 @@ class DownloadsService {
           DownloadItem? listener = _isar.downloadItems.getSync(int.parse(event.task.taskId));
           if (listener != null) {
             var newState = DownloadItemState.fromTaskStatus(event.status);
+            final benchmark = PerformanceBenchmarkService.instance;
+            final benchmarkRun = benchmark.activeRun;
+            if (benchmarkRun != null &&
+                benchmarkRun.scenario.contains("download")) {
+              if ((event.status == TaskStatus.running ||
+                      event.status == TaskStatus.enqueued) &&
+                  benchmarkRun.metrics["downloadTransferStarted"] != true) {
+                benchmarkRun.setMetric("downloadTransferStarted", true);
+                benchmark.mark(
+                  "download-first-transfer-start",
+                  values: {"itemType": listener.type.name},
+                );
+              }
+              if (event.status == TaskStatus.complete &&
+                  listener.type == DownloadItemType.track &&
+                  benchmarkRun.metrics["downloadFirstTrackCompleted"] != true) {
+                benchmarkRun.setMetric("downloadFirstTrackCompleted", true);
+                benchmark.mark(
+                  "download-first-track-complete",
+                  values: {"itemType": listener.type.name},
+                );
+              }
+            }
             if (!listener.state.isFinal) {
               // Completed images have their extension updated if possible.  Tracks
               // should already have extensions when enqueued.  Extensions only serve
