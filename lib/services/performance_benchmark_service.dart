@@ -297,6 +297,8 @@ class PerformanceBenchmarkService {
   int _networkGeneration = 0;
   final StreamController<int> _networkRequestController =
       StreamController<int>.broadcast();
+  String? _httpFirstRequestRunId;
+  String? _httpFirstResponseRunId;
   int _imageLoadsInFlight = 0;
   int _imageLoadGeneration = 0;
   final StreamController<int> _imageLoadController =
@@ -719,6 +721,16 @@ class PerformanceBenchmarkService {
     _networkRequestController.add(_networkRequestsInFlight);
     incrementMetricBuffered("httpRequestCount");
     maxMetricBuffered("httpMaxConcurrentRequests", _networkRequestsInFlight);
+
+    final run = _activeRun;
+    if (run != null && _httpFirstRequestRunId != run.id) {
+      _httpFirstRequestRunId = run.id;
+      _httpFirstResponseRunId = null;
+      mark(
+        "http-first-request-start",
+        values: {"inFlight": _networkRequestsInFlight},
+      );
+    }
   }
 
   void networkRequestCompleted({int? responseBytes}) {
@@ -729,6 +741,18 @@ class PerformanceBenchmarkService {
     } else {
       incrementMetricBuffered("httpResponsesUnknownBytes");
     }
+
+    final run = _activeRun;
+    if (run != null &&
+        _httpFirstRequestRunId == run.id &&
+        _httpFirstResponseRunId != run.id) {
+      _httpFirstResponseRunId = run.id;
+      mark(
+        "http-first-response-complete",
+        values: {"responseBytesKnown": responseBytes != null},
+      );
+    }
+
     if (_networkRequestsInFlight > 0) {
       _networkRequestsInFlight--;
     }
