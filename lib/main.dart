@@ -54,6 +54,7 @@ import 'package:finamp/services/music_providers.dart';
 import 'package:finamp/services/network_manager.dart';
 import 'package:finamp/services/offline_listen_helper.dart';
 import 'package:finamp/services/playback_history_service.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:finamp/services/playon_service.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/theme_provider.dart';
@@ -139,6 +140,14 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _mainLog.info("Setup edge-to-edge overlay");
     await setupHive();
     _mainLog.info("Setup hive and isar");
+    final recoveredBenchmark = await PerformanceBenchmarkService.instance.recoverInterruptedRun();
+    if (recoveredBenchmark != null) {
+      _mainLog.warning(
+        "Recovered interrupted benchmark run "
+        "${recoveredBenchmark["id"]} at step "
+        "${recoveredBenchmark["lastStep"]}",
+      );
+    }
     // Apply the persisted verbose logging preference now that settings exist.
     applyLogLevel();
     _migrateDownloadLocations();
@@ -190,11 +199,26 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
       if (error is Error) {
         details = details.copyWith(stack: error.stackTrace ?? details.stack);
       }
+      final stack = details.stack ?? StackTrace.current;
+      unawaited(
+        PerformanceBenchmarkService.instance.recordCrash(
+          error,
+          stack,
+          source: "FlutterError.onError",
+        ),
+      );
       FlutterError.presentError(details);
       flutterLogger.severe(error, error, details.stack);
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
+      unawaited(
+        PerformanceBenchmarkService.instance.recordCrash(
+          error,
+          stack,
+          source: "PlatformDispatcher.onError",
+        ),
+      );
       flutterLogger.severe(error, error, stack);
 
       // We have not handled printing to console, flutter should still do that.
