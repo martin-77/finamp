@@ -130,6 +130,30 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
+    if (stage.startsWith("startup-repeat-") &&
+        stage.endsWith("-running")) {
+      final repeat = int.tryParse(
+        stage
+            .replaceFirst("startup-repeat-", "")
+            .replaceFirst("-running", ""),
+      );
+      if (repeat == null || repeat < 1 || repeat > 3) {
+        recorder.diagnostic(
+          "suite-error",
+          values: {
+            "phase": "startup-repeat-routing",
+            "stage": stage,
+          },
+        );
+        recorder.stopHeartbeat();
+        return;
+      }
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runPersistentStartupRepeat(repeat));
+      });
+      return;
+    }
+
     if (stage == "cold-start-prepared") {
       await recorder.setSuiteStage("main-running");
       GetIt.instance<FinampUserHelper>().runUserHook(() {
@@ -420,6 +444,66 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-error",
         values: {
           "phase": "cold-process-preparation",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+    } finally {
+      _running = false;
+    }
+  }
+
+  Future<void> _runPersistentStartupRepeat(int repeat) async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await _recoverPendingDownloadCleanup();
+
+      final phase = "persistent-cache-startup-repeat-$repeat";
+      await _waitForStartupReady(phase: phase);
+      recorder.diagnostic(
+        "startup-repeat-complete",
+        values: {
+          "repeat": repeat,
+          "phase": phase,
+          "processElapsedMs": recorder.processElapsedMs,
+        },
+      );
+
+      if (repeat < 3) {
+        final nextRepeat = repeat + 1;
+        final nextStage = "startup-repeat-$nextRepeat-running";
+        await recorder.setSuiteStage(nextStage);
+        recorder.diagnostic(
+          "host-restart-requested",
+          values: {
+            "reason": "persistent-cache-startup-repeat",
+            "nextStage": nextStage,
+            "repeat": nextRepeat,
+          },
+        );
+      } else {
+        await recorder.setSuiteStage("awaiting-host-restart");
+        recorder.diagnostic(
+          "host-restart-requested",
+          values: {
+            "reason": "persistent-cache-startup-repeats-complete",
+            "nextStage": "post-restart-cache",
+          },
+        );
+      }
+
+      await recorder.flushHostStream();
+    } catch (error) {
+      await _bestEffortTerminalCleanupAndRestore();
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "persistent-cache-startup-repeat-$repeat",
           "errorType": error.runtimeType.toString(),
         },
       );
@@ -753,10 +837,14 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.setSuiteStage("main-image-cache-done");
       }
 
-      await recorder.setSuiteStage("awaiting-host-restart");
+      await recorder.setSuiteStage("startup-repeat-1-running");
       recorder.diagnostic(
         "host-restart-requested",
-        values: {"nextStage": "post-restart-cache"},
+        values: {
+          "reason": "begin-persistent-cache-startup-repeats",
+          "nextStage": "startup-repeat-1-running",
+          "repeat": 1,
+        },
       );
       await recorder.flushHostStream();
     } catch (error) {
