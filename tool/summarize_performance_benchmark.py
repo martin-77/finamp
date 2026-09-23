@@ -43,7 +43,7 @@ def main():
         except json.JSONDecodeError:
             continue
 
-        if record.get("type") == "run-end":
+        if record.get("type") in {"run-end", "run-recovered"}:
             run = record.get("run") or {}
             key = (
                 run.get("scenario", "unknown"),
