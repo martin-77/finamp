@@ -17,20 +17,18 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "Run this inside the
 
 # Allow known machine-local iOS/dev files while still refusing to run over
 # real source changes. These files may be required for local signing/build setup.
-dirty_lines="$({
-  git status --porcelain | while IFS= read -r line; do
-    case "$line" in
-      "?? ios/Runner/RunnerDebug.entitlements"|\
-      "?? ios/Runner/RunnerRelease.entitlements"|\
-      "?? pubspec_overrides.yaml")
-        ;;
-      *)
-        printf '%s\n' "$line"
-        ;;
-    esac
-  done
-} || true)"
-
+dirty_lines="$(git status --porcelain | python3 -c '
+import sys
+allowed = {
+    "?? ios/Runner/RunnerDebug.entitlements",
+    "?? ios/Runner/RunnerRelease.entitlements",
+    "?? pubspec_overrides.yaml",
+}
+for line in sys.stdin:
+    line = line.rstrip("\\n")
+    if line and line not in allowed:
+        print(line)
+')"
 if [[ -n "$dirty_lines" ]]; then
   printf '%s\n' "$dirty_lines" >&2
   fail "Working tree contains source/tracked changes. Restore/commit/stash those first; known local entitlements and pubspec_overrides.yaml are allowed."
