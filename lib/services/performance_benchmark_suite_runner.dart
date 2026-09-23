@@ -573,7 +573,16 @@ class PerformanceBenchmarkSuiteRunner {
     FinampSetters.setIsOffline(false);
     await Future<void>.delayed(const Duration(seconds: 1));
 
-    final target = await recorder.getTarget(alias);
+    final storedItemId = requirement["targetItemId"] as String?;
+    final storedItemType = requirement["targetItemType"] as String?;
+    final target = storedItemId != null
+        ? PerformanceBenchmarkTarget(
+            alias: alias,
+            itemType: storedItemType ?? "",
+            itemId: storedItemId,
+          )
+        : await recorder.getTarget(alias) ??
+            await recorder.getLegacyTargetForCleanup(alias);
     if (target == null) {
       recorder.diagnostic(
         "download-cleanup-recovery-target-missing",
@@ -589,7 +598,8 @@ class PerformanceBenchmarkSuiteRunner {
     final downloads = GetIt.instance<DownloadsService>();
     final DownloadStub stub;
 
-    if (target.itemType == "finampCollection" &&
+    if ((target.itemType == "finampCollection" ||
+            storedItemType == DownloadItemType.finampCollection.name) &&
         alias == "all-playlists-metadata") {
       stub = DownloadStub.fromFinampCollection(
         FinampCollection(
