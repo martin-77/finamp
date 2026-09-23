@@ -8,17 +8,19 @@ Measure the same real user flows before and after isolated performance changes.
 Keep benchmark target identities private: device-local targets are exported only
 as aliases.
 
-## Target slots
+## Benchmark targets
 
-Configure these locally on the device:
+No manual item-slot setup is required.
 
-- playlist-A
-- album-A
-- artist-A
-- track-A
+The runner validates the fixed benchmark playlists `bench-10 [Smart]`,
+`bench-100 [Smart]`, `bench-1000 [Smart]` and `bench-10000 [Smart]`.
+It derives device-local album, artist, genre and track targets automatically.
+Search uses the fixed public query labels Iron Maiden, Metallica and Kettcar and
+derives a private artist -> album -> track chain for each.
 
 The benchmark export must not contain Jellyfin IDs, server URLs, user IDs,
-API keys, item names, artist names, album names, or total library size.
+API keys, private item names, private artist/album names, local file paths or
+total library size.
 
 Per-target measurements may include:
 
@@ -68,7 +70,7 @@ and ids are never exported.
    - request count / bytes / decode-provider timing where instrumented
 
 3. **Real MusicScreen UI**
-   - Artists / Albums / Tracks / Playlists / Genres
+   - Home / Artists / Albums / Tracks / Playlists / Genres
    - refreshed-view and warm-view
    - three rotated deterministic orders
    - tab selected -> data ready -> first rendered content
@@ -91,6 +93,8 @@ and ids are never exported.
 6. **Detail screens**
    - deterministic album
    - deterministic artist
+   - deterministic genre
+   - search-derived artist/album chains for Iron Maiden, Metallica and Kettcar
    - `bench-10`, `bench-100`, `bench-1000`, `bench-10000` playlist detail
    - navigation action -> shell rendered -> metadata/children ready -> first full content frame
    - refreshed/cold-provider and warm-provider repeats
@@ -100,6 +104,8 @@ and ids are never exported.
    - one track
    - deterministic album
    - deterministic artist
+   - deterministic genre
+   - search-derived track/album/artist chains for Iron Maiden, Metallica and Kettcar
    - all four benchmark playlists
    - slice resolution, queue construction, queue length
    - player ready, playing, first position advance, useful buffering where available
@@ -140,7 +146,14 @@ and ids are never exported.
     - crashes, Jetsam and manual termination resume at the earliest safe phase
     - download cleanup has priority over resuming benchmark work
 
-12. **Summary**
+12. **One-time playlist metadata/image sync**
+    - measured only after normal and post-restart cache comparisons
+    - reproduces Finamp's automatic first-run playlist metadata workload
+    - waits for the entire downloader to become idle, not only for the root node
+    - exports duration/request work but no playlist names, image counts or ids
+    - automatically deletes the benchmark-owned metadata download afterwards
+
+13. **Summary**
     - raw runs remain in JSONL
     - per-scenario median / p90 / failure count
     - no total private library cardinality
@@ -164,7 +177,7 @@ Run separately with cold and warm persistent caches.
 
 ### Library browsing
 
-For Artists, Albums, Tracks, Playlists and Genres:
+For Home, Artists, Albums, Tracks, Playlists and Genres where applicable:
 
 - user action -> provider/request start
 - request start -> response received
@@ -192,7 +205,8 @@ For Artists, Albums, Tracks, Playlists and Genres:
 
 ### Detail screens
 
-For configured album-A and artist-A:
+For derived album, artist and genre targets, the three search-derived artist/
+album chains, and benchmark playlist details:
 
 - tap/open -> first metadata rendered
 - tap/open -> child content rendered
@@ -201,7 +215,8 @@ For configured album-A and artist-A:
 
 ### Playback startup
 
-For playlist-A, album-A, artist-A and track-A:
+For derived track/album/artist/genre targets, all benchmark playlists and the
+three search-derived track/album/artist chains:
 
 - action -> playable slice resolution start
 - slice resolution duration
@@ -221,7 +236,7 @@ startup.
 
 ### Download
 
-For playlist-A and album-A, and optionally artist-A:
+For `bench-10`, `bench-100` and `bench-1000`:
 
 - user action -> sync planning start
 - collection resolution duration
