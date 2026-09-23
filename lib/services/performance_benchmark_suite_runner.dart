@@ -971,6 +971,8 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       for (final tab in tabs) {
+        String? resolvedSearchTab;
+
         // Return to the unfiltered list first. This is outside the measured run
         // and prevents the previous query from becoming hidden setup work.
         await recorder.requestSearch(
@@ -990,7 +992,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
         try {
           recorder.metric("queryLength", query.length);
-          await recorder.runStep(
+          resolvedSearchTab = await recorder.runStep(
             name: "search",
             timeout: const Duration(minutes: 10),
             operation: () => recorder.requestSearch(
@@ -1021,7 +1023,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
         try {
           recorder.metric("queryLength", query.length);
-          await recorder.runStep(
+          resolvedSearchTab = await recorder.runStep(
             name: "search",
             timeout: const Duration(minutes: 5),
             operation: () => recorder.requestSearch(
@@ -1039,6 +1041,46 @@ class PerformanceBenchmarkSuiteRunner {
           await recorder.finishRun();
         } catch (_) {
           // runStep persists failures/timeouts.
+        }
+
+        if (queryAlias == "broad-m" && resolvedSearchTab != null) {
+          for (var page = 2; page <= 6; page++) {
+            await recorder.startRun(
+              scenario: "ui-search-next-page-$tab",
+              variant: PerformanceBenchmarkService.variant,
+              mode: "broad-query-sequential",
+              targetAlias: queryAlias,
+              targetType: resolvedSearchTab,
+            );
+            recorder.metric("requestedPageOrdinal", page);
+
+            var loadedPage = false;
+            try {
+              loadedPage = await recorder.runStep(
+                name: "next-search-page",
+                timeout: const Duration(minutes: 10),
+                operation: () => recorder.requestNextPage(
+                  contentType: resolvedSearchTab!,
+                  timeout: const Duration(minutes: 9, seconds: 30),
+                ),
+              );
+              if (loadedPage) {
+                await recorder.runStep(
+                  name: "wait-images-quiescent",
+                  timeout: const Duration(minutes: 15),
+                  operation: recorder.waitForImageQuiescence,
+                );
+              }
+              await recorder.finishRun();
+            } catch (_) {
+              // runStep persists failures/timeouts.
+            }
+
+            if (!loadedPage) break;
+            await _settleUi(
+              schedulerCooldown: const Duration(seconds: 1),
+            );
+          }
         }
 
         await Future<void>.delayed(const Duration(seconds: 4));
