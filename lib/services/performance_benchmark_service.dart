@@ -46,12 +46,12 @@ class PerformanceBenchmarkJumpCommand {
 
   final String contentType;
   final String letter;
-  final Completer<void> _completer = Completer<void>();
+  final Completer<bool> _completer = Completer<bool>();
 
-  Future<void> get completed => _completer.future;
+  Future<bool> get completed => _completer.future;
 
-  void complete() {
-    if (!_completer.isCompleted) _completer.complete();
+  void complete(bool loadedPage) {
+    if (!_completer.isCompleted) _completer.complete(loadedPage);
   }
 
   void completeError(Object error, StackTrace stackTrace) {
@@ -971,7 +971,7 @@ class PerformanceBenchmarkService {
     }
   }
 
-  Future<void> requestNextPage({
+  Future<bool> requestNextPage({
     required String contentType,
     Duration timeout = const Duration(seconds: 120),
   }) async {
@@ -981,7 +981,7 @@ class PerformanceBenchmarkService {
       values: {"contentType": contentType},
     );
     _pageController.add(command);
-    await command.completed.timeout(timeout);
+    return command.completed.timeout(timeout);
   }
 
   Future<void> requestAlphabetJump({
