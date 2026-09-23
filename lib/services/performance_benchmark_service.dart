@@ -129,6 +129,37 @@ class PerformanceBenchmarkPageCommand {
   }
 }
 
+class PerformanceBenchmarkSearchCommand {
+  PerformanceBenchmarkSearchCommand({
+    required this.contentType,
+    required this.queryAlias,
+    required this.query,
+  });
+
+  final String contentType;
+  final String queryAlias;
+
+  /// Device-local benchmark input. Never emit this string.
+  final String query;
+
+  String? selectedContentType;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void markSelected(String contentType) {
+    selectedContentType = contentType;
+  }
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkEvent {
   const PerformanceBenchmarkEvent({
     required this.name,
@@ -248,6 +279,7 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkRun? _activeRun;
   PerformanceBenchmarkTabCommand? _activeTabCommand;
   PerformanceBenchmarkDetailCommand? _activeDetailCommand;
+  PerformanceBenchmarkSearchCommand? _activeSearchCommand;
   int _runSequence = 0;
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
@@ -257,6 +289,8 @@ class PerformanceBenchmarkService {
       StreamController<String>.broadcast();
   final StreamController<PerformanceBenchmarkPageCommand> _pageController =
       StreamController<PerformanceBenchmarkPageCommand>.broadcast();
+  final StreamController<PerformanceBenchmarkSearchCommand> _searchController =
+      StreamController<PerformanceBenchmarkSearchCommand>.broadcast();
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
@@ -264,11 +298,15 @@ class PerformanceBenchmarkService {
       _tabController.stream;
   Stream<PerformanceBenchmarkPageCommand> get pageCommands =>
       _pageController.stream;
+  Stream<PerformanceBenchmarkSearchCommand> get searchCommands =>
+      _searchController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   PerformanceBenchmarkTabCommand? get activeTabCommand => _activeTabCommand;
   PerformanceBenchmarkDetailCommand? get activeDetailCommand =>
       _activeDetailCommand;
+  PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
+      _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
 
   Future<Box<String>> _getBox() async {
@@ -518,6 +556,46 @@ class PerformanceBenchmarkService {
     } finally {
       if (identical(_activeDetailCommand, command)) {
         _activeDetailCommand = null;
+      }
+    }
+  }
+
+  Future<String> requestSearch({
+    required String contentType,
+    required String queryAlias,
+    required String query,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    if (_activeSearchCommand != null) {
+      throw StateError("Another benchmark search command is already active");
+    }
+
+    final command = PerformanceBenchmarkSearchCommand(
+      contentType: contentType,
+      queryAlias: queryAlias,
+      query: query,
+    );
+    _activeSearchCommand = command;
+    mark(
+      "search-requested",
+      values: {
+        "contentType": contentType,
+        "queryAlias": queryAlias,
+        "queryLength": query.length,
+      },
+    );
+    _searchController.add(command);
+
+    try {
+      await command.completed.timeout(timeout);
+      final selected = command.selectedContentType;
+      if (selected == null) {
+        throw StateError("Search completed without selected content type");
+      }
+      return selected;
+    } finally {
+      if (identical(_activeSearchCommand, command)) {
+        _activeSearchCommand = null;
       }
     }
   }
