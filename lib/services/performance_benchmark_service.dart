@@ -6,6 +6,7 @@ import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path_helper;
 import 'package:path_provider/path_provider.dart';
 
