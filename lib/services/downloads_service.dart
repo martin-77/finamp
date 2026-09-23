@@ -475,6 +475,8 @@ class DownloadsService {
         activeBenchmark.targetAlias != null) {
       await benchmark.setDownloadCleanupRequired(
         targetAlias: activeBenchmark.targetAlias!,
+        targetItemId: stub.id,
+        targetItemType: stub.type.name,
       );
       benchmark.mark("download-cleanup-required");
     }
