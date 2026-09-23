@@ -1535,6 +1535,82 @@ class PerformanceBenchmarkSuiteRunner {
       rethrow;
     }
 
+    if (targetAlias == "bench-100") {
+      await recorder.startRun(
+        scenario: "download-resync",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "force-full-sync",
+        targetAlias: targetAlias,
+        targetType: "playlist",
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        await recorder.runStep(
+          name: "resync",
+          timeout: const Duration(minutes: 30),
+          operation: () => downloads.resync(
+            stub,
+            null,
+            forceSync: true,
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-download-system-idle",
+          timeout: const Duration(minutes: 30),
+          operation: () =>
+              downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+            stableFor: const Duration(seconds: 5),
+            timeout: const Duration(minutes: 25),
+          ),
+        );
+        await recorder.finishRun();
+      } catch (error, stackTrace) {
+        if (recorder.activeRun != null) {
+          await recorder.failActiveRun(
+            result: PerformanceBenchmarkResult.failed,
+            error: error,
+            stackTrace: stackTrace,
+            step: "download-resync",
+          );
+        }
+      }
+
+      await recorder.startRun(
+        scenario: "download-repair",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "full-repair",
+        targetAlias: targetAlias,
+        targetType: "downloads",
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        await recorder.runStep(
+          name: "repair-all-downloads",
+          timeout: const Duration(hours: 1),
+          operation: downloads.repairAllDownloads,
+        );
+        await recorder.runStep(
+          name: "wait-download-system-idle",
+          timeout: const Duration(minutes: 30),
+          operation: () =>
+              downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+            stableFor: const Duration(seconds: 5),
+            timeout: const Duration(minutes: 25),
+          ),
+        );
+        await recorder.finishRun();
+      } catch (error, stackTrace) {
+        if (recorder.activeRun != null) {
+          await recorder.failActiveRun(
+            result: PerformanceBenchmarkResult.failed,
+            error: error,
+            stackTrace: stackTrace,
+            step: "download-repair",
+          );
+        }
+      }
+    }
+
     final onlineTracks = await GetIt.instance<JellyfinApiHelper>().getItems(
       parentItem: item,
       includeItemTypes: "Audio",
