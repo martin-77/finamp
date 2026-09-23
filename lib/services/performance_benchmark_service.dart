@@ -285,6 +285,8 @@ class PerformanceBenchmarkService {
 
   Box<String>? _box;
   File? _hostStreamFile;
+  final Stopwatch _processStopwatch = Stopwatch();
+
   Timer? _heartbeatTimer;
   Future<void> _hostWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
@@ -410,6 +412,16 @@ class PerformanceBenchmarkService {
     if (_startupScreenReady.isCompleted) return;
     await _startupScreenReady.future.timeout(timeout);
   }
+
+  void startProcessStopwatch() {
+    if (!enabled) return;
+    _processStopwatch
+      ..reset()
+      ..start();
+  }
+
+  double get processElapsedMs =>
+      _processStopwatch.elapsedMicroseconds / 1000.0;
 
   void startHeartbeat() {
     if (!enabled || _heartbeatTimer != null) return;
