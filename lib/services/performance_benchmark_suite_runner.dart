@@ -2322,6 +2322,7 @@ class PerformanceBenchmarkSuiteRunner {
         timeout: const Duration(minutes: 3),
       );
       unawaited(readyFuture.catchError((_) {}));
+      unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
       unawaited(usefulBufferFuture.catchError((_) {}));
       unawaited(firstPositionFuture.catchError((_) {}));
@@ -2331,6 +2332,11 @@ class PerformanceBenchmarkSuiteRunner {
         timeout: const Duration(minutes: 10),
         operation: () =>
             GetIt.instance<QueueService>().startSlicePlayback(slice),
+      );
+      await recorder.runStep(
+        name: "track-ready",
+        timeout: const Duration(minutes: 3),
+        operation: () => readyFuture,
       );
       await recorder.runStep(
         name: "track-playing",
@@ -2483,6 +2489,10 @@ class PerformanceBenchmarkSuiteRunner {
       // Subscribe immediately before the action that can emit these events.
       // Attach a secondary error consumer so an earlier queue failure does not
       // leave an unobserved timeout behind.
+      final readyFuture = recorder.waitForEvent(
+        "player-processing-ready",
+        timeout: const Duration(minutes: 3),
+      );
       final playingFuture = recorder.waitForEvent(
         "player-playing",
         timeout: const Duration(minutes: 3),
