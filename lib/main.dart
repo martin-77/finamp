@@ -139,7 +139,10 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     await setupLogging();
     await _setupEdgeToEdgeOverlayStyle();
     _mainLog.info("Setup edge-to-edge overlay");
-    await setupHive();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-hive-isar",
+      setupHive,
+    );
     _mainLog.info("Setup hive and isar");
     final recoveredBenchmark = await PerformanceBenchmarkService.instance.recoverInterruptedRun();
     if (recoveredBenchmark != null) {
@@ -159,28 +162,61 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _migrateDeviceId();
     await _migrateThemeModeLocale();
     _mainLog.info("Completed applicable migrations");
-    await _trustAndroidUserCerts();
-    await ClientCertificateInstaller().installClientCertificate();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "trust-platform-certificates",
+      _trustAndroidUserCerts,
+    );
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "install-client-certificate",
+      () => ClientCertificateInstaller().installClientCertificate(),
+    );
     _mainLog.info("Installed client certificate");
-    await _setupFinampUserHelper();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-user-helper",
+      _setupFinampUserHelper,
+    );
     _mainLog.info("Setup user helper");
-    await _setupJellyfinApiData();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-jellyfin-api",
+      _setupJellyfinApiData,
+    );
     _mainLog.info("setup jellyfin api");
     _setupOfflineListenLogHelper();
     _mainLog.info("Setup offline listen tracking");
-    await _setupDownloadsHelper();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-downloads-service",
+      _setupDownloadsHelper,
+    );
     _mainLog.info("Setup downloads service");
-    await _setupProviders();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-providers",
+      _setupProviders,
+    );
     _mainLog.info("Setup providers");
-    await _setupOSIntegration(args);
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-os-integration",
+      () => _setupOSIntegration(args),
+    );
     _mainLog.info("Setup os integrations");
-    await _setupPlayOnService();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-playon-registration",
+      _setupPlayOnService,
+    );
     _mainLog.info("Setup PlayOnService");
-    await _setupPlaybackServices();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-playback-services",
+      _setupPlaybackServices,
+    );
     _mainLog.info("Setup audio player");
-    await _setupKeepScreenOnHelper();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-keep-screen-on",
+      _setupKeepScreenOnHelper,
+    );
     _mainLog.info("Setup KeepScreenOnHelper");
-    await _setupDiscordRpc();
+    await PerformanceBenchmarkService.instance.runStartupTask(
+      "setup-discord-rpc",
+      _setupDiscordRpc,
+    );
     _mainLog.info("Setup Discord RPC");
   } catch (error, trace) {
     if (!integrationTesting) {
@@ -401,7 +437,10 @@ Future<void> _setupProviders() async {
   container.listen(finampSettingsProvider, (_, _) {});
   await container.read(finampSettingsProvider.future);
 
-  await initImageCache();
+  await PerformanceBenchmarkService.instance.runStartupTask(
+    "init-image-cache",
+    initImageCache,
+  );
 
   DataSourceService.create();
   AutoOffline.startWatching();
