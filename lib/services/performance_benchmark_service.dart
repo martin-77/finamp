@@ -1297,15 +1297,15 @@ class PerformanceBenchmarkService {
       final target = targetItemId == null
           ? await getTarget(targetAlias)
           : null;
+      final resolvedItemId = targetItemId ?? target?.itemId;
+      final resolvedItemType = targetItemType ?? target?.itemType;
       await box.put(
         _cleanupRequiredKey,
         jsonEncode({
           "targetAlias": targetAlias,
           "ownerSuiteRunId": suiteRunId,
-          if (targetItemId ?? target?.itemId case final itemId?)
-            "targetItemId": itemId,
-          if (targetItemType ?? target?.itemType case final itemType?)
-            "targetItemType": itemType,
+          if (resolvedItemId != null) "targetItemId": resolvedItemId,
+          if (resolvedItemType != null) "targetItemType": resolvedItemType,
           "createdAt": DateTime.now().toUtc().toIso8601String(),
         }),
       );
