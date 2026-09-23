@@ -155,7 +155,9 @@ class PerformanceBenchmarkSuiteRunner {
             .replaceFirst("startup-repeat-", "")
             .replaceFirst("-running", ""),
       );
-      if (repeat == null || repeat < 1 || repeat > 3) {
+      if (repeat == null ||
+          repeat < 1 ||
+          repeat > _startupRepeatCount) {
         recorder.diagnostic(
           "suite-error",
           values: {
