@@ -1583,6 +1583,15 @@ class PerformanceBenchmarkSuiteRunner {
             timeout: const Duration(minutes: 25),
           ),
         );
+        await recorder.runStep(
+          name: "verify-resync-complete",
+          timeout: const Duration(minutes: 10),
+          operation: () => downloads.waitForPerformanceBenchmarkDownload(
+            stub: stub,
+            expectedTracks: 100,
+            timeout: const Duration(minutes: 9),
+          ),
+        );
         await recorder.finishRun();
       } catch (error, stackTrace) {
         if (recorder.activeRun != null) {
@@ -1616,6 +1625,15 @@ class PerformanceBenchmarkSuiteRunner {
               downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
             stableFor: const Duration(seconds: 5),
             timeout: const Duration(minutes: 25),
+          ),
+        );
+        await recorder.runStep(
+          name: "verify-repair-complete",
+          timeout: const Duration(minutes: 10),
+          operation: () => downloads.waitForPerformanceBenchmarkDownload(
+            stub: stub,
+            expectedTracks: 100,
+            timeout: const Duration(minutes: 9),
           ),
         );
         await recorder.finishRun();
