@@ -744,7 +744,7 @@ class QueueService {
       }
       if (PerformanceBenchmarkService.enabled) {
         PerformanceBenchmarkService.instance.diagnostic(
-          "queue-restore-complete",
+          "queue-restore-content-resolved",
           values: {
             "storedTrackCount": info.trackCount,
             "loadedTrackCount": loadedTracks,
