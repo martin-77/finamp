@@ -89,6 +89,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   PerformanceBenchmarkTabCommand? _activeBenchmarkTab;
   bool _benchmarkTabDataMarked = false;
   bool _benchmarkTabFrameScheduled = false;
+  bool _startupReadyReported = false;
+  bool _startupReadyFrameScheduled = false;
 
   late AutoScrollController controller;
   String? letterToSearch;
@@ -216,6 +218,43 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         },
       );
     }
+  }
+
+  void _maybeReportStartupScreenReady(
+    PagingState<int, FinampDisplayableOrPlayable> state,
+  ) {
+    if (!PerformanceBenchmarkService.enabled ||
+        _startupReadyReported ||
+        _startupReadyFrameScheduled ||
+        state.isLoading) {
+      return;
+    }
+
+    final contentType = widget.contentType?.name;
+    final selected =
+        PerformanceBenchmarkService.instance.startupSelectedContentType;
+    if (contentType == null || selected != contentType) return;
+
+    // A completed empty result is still a usable screen. Only an unresolved
+    // first page (items == null while another page is expected) is not ready.
+    if (state.items == null && state.hasNextPage) return;
+
+    _startupReadyFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startupReadyFrameScheduled = false;
+      if (!mounted || _startupReadyReported) return;
+
+      final current = ref.read(pageControl);
+      if (current.isLoading ||
+          (current.items == null && current.hasNextPage)) {
+        return;
+      }
+
+      _startupReadyReported = true;
+      PerformanceBenchmarkService.instance.reportStartupScreenReady(
+        contentType,
+      );
+    });
   }
 
   void _maybeCompleteBenchmarkTab(
