@@ -130,6 +130,7 @@ class PerformanceBenchmarkRun {
 /// Timings use one monotonic [Stopwatch] per run. Target IDs are stored only in
 /// a device-local Hive box and are deliberately excluded from exported data.
 class PerformanceBenchmarkService {
+  static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
   static const _targetKeyPrefix = "target:";
   static const _runKeyPrefix = "run:";
@@ -218,6 +219,10 @@ class PerformanceBenchmarkService {
     final id = recovered["id"] as String;
     await box.put("$_runKeyPrefix$id", jsonEncode(recovered));
     await box.delete(_activeRunKey);
+    _logger.warning(
+      "BENCH RUN $id recovered as unexpected-exit "
+      "lastStep=${recovered["lastStep"]}",
+    );
     return recovered;
   }
 
@@ -227,9 +232,16 @@ class PerformanceBenchmarkService {
     required String mode,
     String? targetAlias,
     String? targetType,
+    bool allowPendingDownloadCleanup = false,
   }) async {
     if (_activeRun != null) {
       throw StateError("A benchmark run is already active");
+    }
+    if (!allowPendingDownloadCleanup &&
+        await getDownloadCleanupRequirement() != null) {
+      throw StateError(
+        "A benchmark download still requires cleanup before another run can start",
+      );
     }
 
     final now = DateTime.now();
@@ -247,6 +259,10 @@ class PerformanceBenchmarkService {
     run.mark("run-start");
     _activeRun = run;
     await _persistActiveRun();
+    _logger.info(
+      "BENCH RUN ${run.id} scenario=${run.scenario} "
+      "variant=${run.variant} mode=${run.mode}",
+    );
     return run;
   }
 
