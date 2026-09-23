@@ -242,6 +242,7 @@ def main():
         "completedPhases": phases,
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
+        "startupFrames": startup_frames,
         "networkTargetEvents": network_target_events,
         "queueRestores": queue_restores,
         "queueRestoreContent": queue_restore_content,
@@ -490,7 +491,7 @@ def main():
 
     cache_groups = []
     for item in summary_groups:
-        metrics = item["metrics"]
+        metrics = item["numericMetrics"]
         cache_metric_names = (
             "imageDownloadedFileHit",
             "imagePersistentCacheHit",
@@ -512,7 +513,7 @@ def main():
     ])
     if cache_groups:
         for item in cache_groups:
-            metrics = item["metrics"]
+            metrics = item["numericMetrics"]
             target = item["targetAlias"] or item["targetType"] or ""
             def med(name):
                 return metrics.get(name, {}).get("median", "")
