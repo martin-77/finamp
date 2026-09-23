@@ -1537,7 +1537,7 @@ class PerformanceBenchmarkSuiteRunner {
           timeout: const Duration(minutes: 10),
           operation: () => recorder.requestNextPage(
             contentType: offlineTracksTab,
-            timeout: const Duration(minutes: 29, seconds: 30),
+            timeout: const Duration(minutes: 9, seconds: 30),
           ),
         );
         if (loadedPage) {
@@ -1589,7 +1589,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.runStep(
           name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 2),
+          timeout: const Duration(minutes: 15),
           operation: recorder.waitForImageQuiescence,
         );
         await recorder.finishRun();
@@ -1625,7 +1625,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.runStep(
           name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 2),
+          timeout: const Duration(minutes: 15),
           operation: recorder.waitForImageQuiescence,
         );
         await recorder.finishRun();
@@ -1659,12 +1659,12 @@ class PerformanceBenchmarkSuiteRunner {
             contentType: "tracks",
             queryAlias: "download-target-track",
             query: privateOfflineSearchQuery,
-            timeout: const Duration(minutes: 29, seconds: 30),
+            timeout: const Duration(minutes: 9, seconds: 30),
           ),
         );
         await recorder.runStep(
           name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 2),
+          timeout: const Duration(minutes: 15),
           operation: recorder.waitForImageQuiescence,
         );
         await recorder.finishRun();
@@ -1698,7 +1698,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
         await recorder.runStep(
           name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 2),
+          timeout: const Duration(minutes: 15),
           operation: recorder.waitForImageQuiescence,
         );
         await recorder.finishRun();
@@ -2160,6 +2160,7 @@ class PerformanceBenchmarkSuiteRunner {
     const aliases = <(String, String)>[
       ("detail-album", "album"),
       ("detail-artist", "artist"),
+      ("detail-genre", "genre"),
       ("search-artist-iron-maiden", "artist"),
       ("search-album-iron-maiden", "album"),
       ("search-artist-metallica", "artist"),
