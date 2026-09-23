@@ -120,11 +120,14 @@ step "Selected device: $DEVICE_ID"
 mkdir -p "$OUT_DIR"
 
 step "Starting Finamp benchmark in PROFILE mode"
-if [[ "${FINAMP_BENCH_SMOKE:-false}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
-  printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
-else
-  printf 'Full benchmark matrix enabled.\n'
-fi
+case "${FINAMP_BENCH_SMOKE:-false}" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+    printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
+    ;;
+  *)
+    printf 'Full benchmark matrix enabled.\n'
+    ;;
+esac
 printf 'Results will be written continuously under %s/\n' "$OUT_DIR"
 printf 'The app will be built, installed and launched via Xcode devicectl.\n'
 printf 'No Flutter mDNS / Dart VM service connection is required.\n\n'
