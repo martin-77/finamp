@@ -9,20 +9,28 @@ final aggregateLogger = ChopperAggregateLogger();
 
 /// A HttpLoggingInterceptor that aggregates the request and
 /// response logs from Chopper, using the [ChopperAggregateLogger].
+class BenchmarkHttpMetricRelay {
+  SendPort? sendPort;
+
+  void send(Map<String, Object?> value) {
+    sendPort?.send(value);
+  }
+}
+
 class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
   HttpAggregateLoggingInterceptor({
     super.level = Level.body,
-    this.benchmarkSendPort,
+    this.benchmarkRelay,
   }) : super(logger: aggregateLogger);
 
-  final SendPort? benchmarkSendPort;
+  final BenchmarkHttpMetricRelay? benchmarkRelay;
 
   @override
   FutureOr<Response<BodyType>> intercept<BodyType>(Chain<BodyType> chain) async {
     aggregateLogger.onStartRequest(chain.request);
     final benchmark = PerformanceBenchmarkService.instance;
-    if (PerformanceBenchmarkService.enabled && benchmarkSendPort != null) {
-      benchmarkSendPort!.send(const <String, Object?>{
+    if (PerformanceBenchmarkService.enabled && benchmarkRelay?.sendPort != null) {
+      benchmarkRelay!.send(const <String, Object?>{
         "type": "start",
       });
     } else {
@@ -45,8 +53,8 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
     } finally {
       stopwatch.stop();
       if (PerformanceBenchmarkService.enabled &&
-          benchmarkSendPort != null) {
-        benchmarkSendPort!.send(<String, Object?>{
+          benchmarkRelay?.sendPort != null) {
+        benchmarkRelay!.send(<String, Object?>{
           "type": "complete",
           "responseBytes": responseBytes,
           "durationMicros": stopwatch.elapsedMicroseconds,
