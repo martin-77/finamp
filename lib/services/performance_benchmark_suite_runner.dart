@@ -1033,8 +1033,9 @@ class PerformanceBenchmarkSuiteRunner {
         );
         recorder.metric("requestedPageOrdinal", page);
 
+        var loadedPage = false;
         try {
-          await recorder.runStep(
+          loadedPage = await recorder.runStep(
             name: "next-page",
             timeout: const Duration(seconds: 120),
             operation: () => recorder.requestNextPage(
@@ -1042,17 +1043,20 @@ class PerformanceBenchmarkSuiteRunner {
               timeout: const Duration(seconds: 115),
             ),
           );
-          await recorder.runStep(
-            name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
-            operation: recorder.waitForImageQuiescence,
-          );
+          if (loadedPage) {
+            await recorder.runStep(
+              name: "wait-images-quiescent",
+              timeout: const Duration(minutes: 2),
+              operation: recorder.waitForImageQuiescence,
+            );
+          }
           await recorder.finishRun();
         } catch (_) {
           // runStep persists failures/timeouts.
         }
 
-        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!loadedPage) break;
+        await _settleUi();
       }
 
       await Future<void>.delayed(const Duration(seconds: 5));
@@ -1400,8 +1404,9 @@ class PerformanceBenchmarkSuiteRunner {
         allowPendingDownloadCleanup: true,
       );
       recorder.metric("requestedPageOrdinal", page);
+      var loadedPage = false;
       try {
-        await recorder.runStep(
+        loadedPage = await recorder.runStep(
           name: "next-page",
           timeout: const Duration(seconds: 120),
           operation: () => recorder.requestNextPage(
@@ -1409,15 +1414,18 @@ class PerformanceBenchmarkSuiteRunner {
             timeout: const Duration(seconds: 115),
           ),
         );
-        await recorder.runStep(
-          name: "wait-images-quiescent",
-          timeout: const Duration(minutes: 2),
-          operation: recorder.waitForImageQuiescence,
-        );
+        if (loadedPage) {
+          await recorder.runStep(
+            name: "wait-images-quiescent",
+            timeout: const Duration(minutes: 2),
+            operation: recorder.waitForImageQuiescence,
+          );
+        }
         await recorder.finishRun();
       } catch (_) {
         // runStep persists failures/timeouts.
       }
+      if (!loadedPage) break;
       await _settleUi();
     }
 
