@@ -1386,12 +1386,20 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
     run.mark("run-cancelled");
+    final rssEnd = ProcessInfo.currentRss;
+    run.setMetric("rssEndBytes", rssEnd);
+    run.setMetric("maxRssBytesAtEnd", ProcessInfo.maxRss);
+    final rssStart = run.metrics["rssStartBytes"];
+    if (rssStart is int) {
+      run.setMetric("rssDeltaBytes", rssEnd - rssStart);
+    }
     run.stopwatch.stop();
     run.finished = true;
     run.result = PerformanceBenchmarkResult.cancelled;
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
+    _emitHostRecord("run-end", {"run": run.toJson()});
     _activeRun = null;
   }
 
