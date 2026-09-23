@@ -319,7 +319,18 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       return SizedBox.shrink();
     }
 
-    refreshMap[sortedTabs.elementAt(_tabController!.index)] = MusicRefreshCallback();
+    final selectedTab = sortedTabs.elementAt(_tabController!.index);
+    refreshMap[selectedTab] = MusicRefreshCallback();
+
+    if (PerformanceBenchmarkService.enabled &&
+        PerformanceBenchmarkService.instance.startupSelectedContentType == null) {
+      final selectedContentType = selectedTab == ContentType.genericArtists
+          ? ref.watch(finampSettingsProvider.defaultArtistType).tabType
+          : selectedTab;
+      PerformanceBenchmarkService.instance.setStartupSelectedContentType(
+        selectedContentType.name,
+      );
+    }
 
     // If this setting changes, the appbar will change its preferred height, so we need to rebuild the scaffold.
     ref.watch(finampSettingsProvider.showQuickActionsBanner);
