@@ -68,6 +68,11 @@ trap 'rm -rf "$pull_root"' EXIT INT TERM
 start_epoch="$(date +%s)"
 last_size=-1
 restart_done=0
+recovery_restarts=0
+max_recovery_restarts="${FINAMP_BENCH_MAX_RECOVERY_RESTARTS:-3}"
+heartbeat_stall_seconds="${FINAMP_BENCH_HEARTBEAT_STALL_SECONDS:-180}"
+benchmark_started=0
+last_stream_change_epoch="$(date +%s)"
 
 while true; do
   now_epoch="$(date +%s)"
@@ -97,6 +102,12 @@ while true; do
     if [[ "$size" != "$last_size" ]]; then
       log "Pulled benchmark stream: ${size} bytes"
       last_size="$size"
+      last_stream_change_epoch="$(date +%s)"
+    fi
+
+    if grep -q '"name":"suite-authenticated"' "$jsonl" ||
+       grep -q '"name":"startup-baseline-complete"' "$jsonl"; then
+      benchmark_started=1
     fi
 
     if [[ "$restart_done" -eq 0 ]] && grep -q '"name":"host-restart-requested"' "$jsonl"; then
@@ -139,6 +150,27 @@ while true; do
         log "Waiting for benchmark stream: devicectl copy exited with status $copy_status"
       fi
       last_size=-2
+    fi
+  fi
+
+  if [[ "$benchmark_started" -eq 1 ]]; then
+    now_epoch="$(date +%s)"
+    silent_seconds="$((now_epoch - last_stream_change_epoch))"
+    if (( silent_seconds >= heartbeat_stall_seconds )); then
+      if (( recovery_restarts >= max_recovery_restarts )); then
+        log "ERROR: Benchmark heartbeat stalled for ${silent_seconds}s and recovery restart limit was reached."
+        exit 125
+      fi
+      recovery_restarts="$((recovery_restarts + 1))"
+      log ""
+      log "==> Benchmark heartbeat stalled for ${silent_seconds}s"
+      log "Recovery relaunch ${recovery_restarts}/${max_recovery_restarts}..."
+      xcrun devicectl device process launch \
+        --device "$device_id" \
+        --terminate-existing \
+        "$bundle_id" 2>&1 | tee -a "$raw_log"
+      last_stream_change_epoch="$(date +%s)"
+      sleep 5
     fi
   fi
 
