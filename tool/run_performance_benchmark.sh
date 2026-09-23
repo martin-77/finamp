@@ -20,6 +20,12 @@ app_path="build/ios/iphoneos/Runner.app"
 remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
 timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-259200}"
+smoke_define="${FINAMP_BENCH_SMOKE:-false}"
+case "${smoke_define,,}" in
+  1|true|yes|on) smoke_define="true" ;;
+  0|false|no|off|"") smoke_define="false" ;;
+  *) echo "FINAMP_BENCH_SMOKE must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
+esac
 
 log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
@@ -49,9 +55,11 @@ printf 'Full log: %s\nBenchmark JSONL: %s\n' "$raw_log" "$jsonl"
 
 log ""
 log "==> Building PROFILE app with benchmark mode enabled"
+log "Benchmark suite mode: $([[ "$smoke_define" == "true" ]] && printf smoke || printf full)"
 flutter build ios \
   --profile \
   --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
+  --dart-define=FINAMP_BENCH_SMOKE="$smoke_define" \
   --dart-define=FINAMP_BENCH_VARIANT="$variant" \
   --dart-define=FINAMP_BENCH_RUN_ID="$run_id" 2>&1 | tee -a "$raw_log"
 
