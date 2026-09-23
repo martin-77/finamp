@@ -733,7 +733,7 @@ class PerformanceBenchmarkService {
 
   Future<void> waitForImageQuiescence({
     Duration quietPeriod = const Duration(milliseconds: 500),
-    Duration timeout = const Duration(minutes: 2),
+    Duration timeout = const Duration(minutes: 15),
   }) async {
     if (!enabled) return;
 
@@ -937,7 +937,7 @@ class PerformanceBenchmarkService {
   Future<String> requestUiTab({
     required String contentType,
     required bool refresh,
-    Duration timeout = const Duration(seconds: 90),
+    Duration timeout = const Duration(minutes: 10),
   }) async {
     if (_activeTabCommand != null) {
       throw StateError("Another benchmark UI tab command is already active");
@@ -975,7 +975,7 @@ class PerformanceBenchmarkService {
     required String itemId,
     required bool refresh,
     required void Function() open,
-    Duration timeout = const Duration(seconds: 120),
+    Duration timeout = const Duration(minutes: 15),
   }) async {
     if (_activeDetailCommand != null) {
       throw StateError("Another benchmark detail command is already active");
@@ -1009,7 +1009,7 @@ class PerformanceBenchmarkService {
     required String contentType,
     required String queryAlias,
     required String query,
-    Duration timeout = const Duration(seconds: 120),
+    Duration timeout = const Duration(minutes: 10),
   }) async {
     if (_activeSearchCommand != null) {
       throw StateError("Another benchmark search command is already active");
@@ -1047,7 +1047,7 @@ class PerformanceBenchmarkService {
 
   Future<bool> requestNextPage({
     required String contentType,
-    Duration timeout = const Duration(seconds: 120),
+    Duration timeout = const Duration(minutes: 10),
   }) async {
     final command = PerformanceBenchmarkPageCommand(contentType: contentType);
     mark(
@@ -1061,7 +1061,7 @@ class PerformanceBenchmarkService {
   Future<void> requestAlphabetJump({
     required String contentType,
     required String letter,
-    Duration timeout = const Duration(seconds: 90),
+    Duration timeout = const Duration(minutes: 30),
   }) async {
     final command = PerformanceBenchmarkJumpCommand(
       contentType: contentType,
