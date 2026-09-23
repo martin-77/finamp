@@ -71,6 +71,7 @@ and ids are never exported.
    - three deterministic rotated rounds
    - page sizes 25 / 100-first / 100-warm / 500
    - real background-worker HTTP timing/bytes plus total Worker-isolate duration
+   - HTTP metrics are returned on a dedicated per-Worker-operation channel and drained before that operation completes, preventing cross-run attribution
    - approximate non-HTTP Worker overhead = Worker duration - measured HTTP duration
 
 3. **Real MusicScreen UI**
@@ -113,6 +114,7 @@ and ids are never exported.
    - all four benchmark playlists
    - slice resolution, queue construction, queue length
    - player ready, playing, first position advance, useful buffering where available
+   - privacy-safe playback source classification: downloaded-file or server; server target only local/public; transcoding/offline booleans
    - repeat warm playback
    - playlist scaling 10/100/1000/10000
 
@@ -182,7 +184,7 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | Artist → Album → Track | automated | deterministic private chain per named artist, cumulative drill-down and playback |
 | alphabet fast-scroller | automated | real `# → A → G → M → Z` path for Tracks/Artists/Albums, refreshed and warm-loaded |
 | details | automated | album, artist, genre and 10/100/1000/10000 playlist details |
-| queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position |
+| queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position; local/server target and transcoding source category |
 | large queue restore | automated | normal autoload observed; explicit 1000-track restore if startup autoload did not run |
 | downloads | automated | 10/100/1000 original-file downloads, real bytes, throughput and cleanup |
 | filesystem reference | automated | sequential local reads of actual benchmark files, reporting only count/bytes/duration/throughput |
