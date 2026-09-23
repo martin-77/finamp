@@ -167,6 +167,7 @@ def main():
 
         numeric_metrics = defaultdict(list)
         event_elapsed = defaultdict(list)
+        playback_sources = defaultdict(int)
         for run in runs:
             run_metrics = run.get("metrics") or {}
             for metric_name, metric_value in run_metrics.items():
@@ -190,6 +191,20 @@ def main():
                 elapsed = event.get("elapsedMicros")
                 if isinstance(event_name, str) and isinstance(elapsed, int):
                     event_elapsed[event_name].append(elapsed)
+                if event_name == "playback-source-selected":
+                    values = event.get("values") or {}
+                    source = str(values.get("source", "unknown"))
+                    server_target = values.get("serverTarget")
+                    transcoded = bool(values.get("transcoded", False))
+                    offline = bool(values.get("offline", False))
+                    label = source
+                    if server_target is not None:
+                        label += f"/{server_target}"
+                    if transcoded:
+                        label += "/transcoded"
+                    if offline:
+                        label += "/offline"
+                    playback_sources[label] += 1
 
         metric_summary = {
             metric_name: {
@@ -226,6 +241,7 @@ def main():
             "results": dict(results),
             "numericMetrics": metric_summary,
             "eventMilestones": event_summary,
+            "playbackSources": dict(playback_sources),
         })
 
     startup_summary = []
@@ -536,6 +552,31 @@ def main():
             )
     else:
         lines.append("| none |  |  |  |  |  |  |  |  |  |")
+
+    playback_groups = [
+        item for item in summary_groups
+        if item.get("playbackSources")
+    ]
+    lines.extend([
+        "",
+        "## Playback source diagnostics",
+        "",
+        "| Scenario | Mode | Target | Source categories |",
+        "|---|---|---|---|",
+    ])
+    if playback_groups:
+        for item in playback_groups:
+            target = item["targetAlias"] or item["targetType"] or ""
+            categories = ", ".join(
+                f"{name}:{count}"
+                for name, count in sorted(item["playbackSources"].items())
+            )
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | "
+                f"{categories} |"
+            )
+    else:
+        lines.append("| none |  |  |  |")
 
     api_groups = [
         item for item in summary_groups
