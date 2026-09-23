@@ -1437,6 +1437,88 @@ class PerformanceBenchmarkSuiteRunner {
       await _settleUi();
     }
 
+    // Exercise the exact same real fast-scroller path while Finamp is
+    // forced offline. This exposes local metadata/list scaling separately from
+    // server paging and makes the online/offline comparison symmetric.
+    final offlineAlphabetTab = await recorder.requestUiTab(
+      contentType: "tracks",
+      refresh: true,
+      timeout: const Duration(seconds: 120),
+    );
+    await _settleUi();
+
+    for (final letter in const <String>["#", "A", "G", "M", "Z"]) {
+      await recorder.startRun(
+        scenario: "offline-alphabet-jump-tracks-$letter",
+        variant: PerformanceBenchmarkService.variant,
+        mode: coldProcess
+            ? "local-downloaded-cold-process-refreshed-sequential"
+            : "local-downloaded-refreshed-sequential",
+        targetAlias: targetAlias,
+        targetType: offlineAlphabetTab,
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        recorder.metric("letter", letter);
+        await recorder.runStep(
+          name: "alphabet-jump",
+          timeout: const Duration(seconds: 120),
+          operation: () => recorder.requestAlphabetJump(
+            contentType: offlineAlphabetTab,
+            letter: letter,
+            timeout: const Duration(seconds: 115),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-images-quiescent",
+          timeout: const Duration(minutes: 2),
+          operation: recorder.waitForImageQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists failures/timeouts.
+      }
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 1),
+      );
+    }
+
+    for (final letter in const <String>["#", "A", "G", "M", "Z"]) {
+      await recorder.startRun(
+        scenario: "offline-alphabet-jump-tracks-$letter",
+        variant: PerformanceBenchmarkService.variant,
+        mode: coldProcess
+            ? "local-downloaded-cold-process-warm-loaded"
+            : "local-downloaded-warm-loaded",
+        targetAlias: targetAlias,
+        targetType: offlineAlphabetTab,
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        recorder.metric("letter", letter);
+        await recorder.runStep(
+          name: "alphabet-jump",
+          timeout: const Duration(seconds: 60),
+          operation: () => recorder.requestAlphabetJump(
+            contentType: offlineAlphabetTab,
+            letter: letter,
+            timeout: const Duration(seconds: 55),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-images-quiescent",
+          timeout: const Duration(minutes: 2),
+          operation: recorder.waitForImageQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists failures/timeouts.
+      }
+      await _settleUi(
+        schedulerCooldown: const Duration(milliseconds: 750),
+      );
+    }
+
     if (privateOfflineSearchQuery != null &&
         privateOfflineSearchQuery.trim().isNotEmpty) {
       await recorder.startRun(
