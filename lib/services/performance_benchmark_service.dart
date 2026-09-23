@@ -313,6 +313,10 @@ class PerformanceBenchmarkService {
   int _startupNetworkResponseBytes = 0;
   int _startupNetworkDurationMicros = 0;
   int _startupNetworkDurationMicrosMax = 0;
+  int _startupWorkerOperationCount = 0;
+  int _startupWorkerOperationFailed = 0;
+  int _startupWorkerDurationMicros = 0;
+  int _startupWorkerDurationMicrosMax = 0;
 
   bool _startupFrameCollectionOpen = true;
   int _startupFrameCount = 0;
@@ -394,6 +398,10 @@ class PerformanceBenchmarkService {
         "responseBytes": _startupNetworkResponseBytes,
         "durationMicrosTotal": _startupNetworkDurationMicros,
         "durationMicrosMax": _startupNetworkDurationMicrosMax,
+        "workerOperationCount": _startupWorkerOperationCount,
+        "workerOperationFailed": _startupWorkerOperationFailed,
+        "workerDurationMicrosTotal": _startupWorkerDurationMicros,
+        "workerDurationMicrosMax": _startupWorkerDurationMicrosMax,
       },
     );
   }
@@ -888,6 +896,7 @@ class PerformanceBenchmarkService {
 
   void workerOperationStarted() {
     if (!enabled) return;
+    _startupWorkerOperationCount++;
     _networkRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
@@ -903,6 +912,13 @@ class PerformanceBenchmarkService {
     required bool failed,
   }) {
     if (!enabled) return;
+    _startupWorkerDurationMicros += durationMicros;
+    if (durationMicros > _startupWorkerDurationMicrosMax) {
+      _startupWorkerDurationMicrosMax = durationMicros;
+    }
+    if (failed) {
+      _startupWorkerOperationFailed++;
+    }
     incrementMetricBuffered(
       "workerDurationMicrosTotal",
       durationMicros,
