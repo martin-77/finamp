@@ -88,6 +88,12 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "ui-tab-baseline"},
       );
 
+      await _runPagingBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "deep-paging"},
+      );
+
       await _runAlphabetBaselines();
       recorder.diagnostic(
         "suite-phase-complete",
@@ -352,6 +358,54 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       // runStep persists the failed/timeout run before rethrowing.
+    }
+  }
+
+  Future<void> _runPagingBaselines() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    const tabs = <String>[
+      "artists",
+      "albums",
+      "tracks",
+      "playlists",
+      "genres",
+    ];
+
+    for (final requestedTab in tabs) {
+      final resolvedTab = await recorder.requestUiTab(
+        contentType: requestedTab,
+        refresh: true,
+        timeout: const Duration(seconds: 120),
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      for (var page = 2; page <= 11; page++) {
+        await recorder.startRun(
+          scenario: "ui-next-page-$requestedTab",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "online-sequential",
+          targetType: resolvedTab,
+        );
+        recorder.metric("requestedPageOrdinal", page);
+
+        try {
+          await recorder.runStep(
+            name: "next-page",
+            timeout: const Duration(seconds: 120),
+            operation: () => recorder.requestNextPage(
+              contentType: resolvedTab,
+              timeout: const Duration(seconds: 115),
+            ),
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep persists failures/timeouts.
+        }
+
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+
+      await Future<void>.delayed(const Duration(seconds: 5));
     }
   }
 
