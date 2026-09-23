@@ -694,6 +694,20 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _settleUi({
+    Duration quietPeriod = const Duration(milliseconds: 750),
+    Duration schedulerCooldown = const Duration(seconds: 1),
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    await recorder.waitForImageQuiescence(
+      quietPeriod: quietPeriod,
+      timeout: const Duration(minutes: 2),
+    );
+    if (schedulerCooldown > Duration.zero) {
+      await Future<void>.delayed(schedulerCooldown);
+    }
+  }
+
   Future<void> _uiCooldown(
     PerformanceBenchmarkService recorder,
     String tab,
@@ -702,11 +716,10 @@ class PerformanceBenchmarkSuiteRunner {
       "ui-tab-cooldown-start",
       values: {"contentType": tab, "seconds": 5},
     );
-    await recorder.waitForImageQuiescence(
-      quietPeriod: const Duration(milliseconds: 500),
-      timeout: const Duration(minutes: 2),
+    await _settleUi(
+      quietPeriod: const Duration(milliseconds: 750),
+      schedulerCooldown: const Duration(seconds: 5),
     );
-    await Future<void>.delayed(const Duration(seconds: 5));
     recorder.diagnostic(
       "ui-tab-cooldown-complete",
       values: {"contentType": tab},
@@ -836,7 +849,7 @@ class PerformanceBenchmarkSuiteRunner {
           query: "",
           timeout: const Duration(seconds: 120),
         );
-        await Future<void>.delayed(const Duration(seconds: 2));
+        await _settleUi();
 
         await recorder.startRun(
           scenario: "ui-search-$tab",
@@ -909,7 +922,9 @@ class PerformanceBenchmarkSuiteRunner {
       query: "",
       timeout: const Duration(seconds: 120),
     );
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await _settleUi(
+      schedulerCooldown: const Duration(seconds: 2),
+    );
   }
 
   Future<void> _runPagingBaselines() async {
@@ -928,7 +943,9 @@ class PerformanceBenchmarkSuiteRunner {
         refresh: true,
         timeout: const Duration(seconds: 120),
       );
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
 
       for (var page = 2; page <= 11; page++) {
         await recorder.startRun(
@@ -1467,7 +1484,7 @@ class PerformanceBenchmarkSuiteRunner {
           query: "",
           timeout: const Duration(seconds: 120),
         );
-        await Future<void>.delayed(const Duration(seconds: 2));
+        await _settleUi();
       }
 
       await _runDetailBaseline(
@@ -1924,7 +1941,9 @@ class PerformanceBenchmarkSuiteRunner {
         refresh: true,
         timeout: const Duration(seconds: 120),
       );
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
 
       for (final letter in letters) {
         await recorder.startRun(
