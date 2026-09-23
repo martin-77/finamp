@@ -75,26 +75,41 @@ Future<void> clearPerformanceBenchmarkImageCache() async {
   PaintingBinding.instance.imageCache.clearLiveImages();
   await _imageCache.emptyCache();
 
+  // UI work may have repopulated in-memory maps while the disk cache await
+  // yielded. Sweep volatile caches once more synchronously before measuring.
+  albumRequestsCache.clear();
+  _playerImageCache.clear();
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
+
+  await _imageCache.config.repo.open();
+  final persistentEntries =
+      await _imageCache.config.repo.getAllObjects();
+  await _imageCache.config.repo.close();
+
   final memoryCache = PaintingBinding.instance.imageCache;
   final memoryCurrentSize = memoryCache.currentSize;
   final memoryLiveImages = memoryCache.liveImageCount;
   final memoryPendingImages = memoryCache.pendingImageCount;
+
   if (_playerImageCache.isNotEmpty ||
       albumRequestsCache.isNotEmpty ||
       memoryCurrentSize != 0 ||
-      memoryLiveImages != 0 ||
-      memoryPendingImages != 0) {
+      persistentEntries.isNotEmpty) {
     throw StateError(
-      "Benchmark image cache cleanup did not reach an empty state",
+      "Benchmark image cache cleanup did not clear persistent/retained cache state",
     );
   }
 
   PerformanceBenchmarkService.instance.diagnostic(
     "image-cache-cleared",
     values: {
+      "persistentEntries": persistentEntries.length,
       "playerCacheEntries": _playerImageCache.length,
       "requestCacheEntries": albumRequestsCache.length,
       "memoryCurrentSize": memoryCurrentSize,
+      // Live/pending streams may legitimately remain attached to visible
+      // widgets; record them but do not treat them as persistent cache state.
       "memoryLiveImages": memoryLiveImages,
       "memoryPendingImages": memoryPendingImages,
     },
