@@ -189,3 +189,40 @@ Performance changes should be evaluated both by user-visible latency and by
 amount of work performed. A faster first frame that leaves the same expensive
 work running in the background is useful but must be described separately from
 a structural reduction in work.
+
+
+## Crash, hang and cleanup recovery
+
+Every active run is checkpointed persistently after benchmark events and metric
+updates. If the next app start finds an unfinished run, it is finalized as
+`unexpectedExit` with the last completed benchmark step.
+
+Uncaught Flutter and Dart errors are attached to the active run using Finamp's
+existing log censorship before they are persisted. This preserves diagnostic
+context without exporting server URLs, access tokens or user identifiers.
+
+Long-running benchmark operations should use the benchmark step timeout helper.
+Timed out steps are stored as `timeout`, including the last step and censored
+diagnostic information.
+
+Native process termination such as iOS Jetsam cannot be read directly from the
+application sandbox. It is represented by the persistent `unexpectedExit`
+record and benchmark run id. The same run id is emitted to Finamp logs so a
+device crash/Jetsam report can be correlated afterwards.
+
+Benchmark downloads set a persistent cleanup-required marker before modifying
+download state. A new benchmark run is refused while that marker remains.
+Deleting the benchmark download clears it only after cleanup finishes.
+
+The benchmark runner must perform pending cleanup before resuming a suite after
+an interrupted download.
+
+## Exact alphabet jump path
+
+Alphabet jump benchmarks use the real MusicScreen fast-scroller path rather
+than a synthetic server query. The benchmark records each page requested while
+searching for the target letter, the number of loaded items at each request,
+and the point where the target becomes visible.
+
+This is intended to expose scaling behaviour where jumping to a later letter
+requires sequential page loading.
