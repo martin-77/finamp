@@ -27,6 +27,24 @@ case "$smoke_define" in
   *) echo "FINAMP_BENCH_SMOKE must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
 esac
 
+search_query_1="${FINAMP_BENCH_SEARCH_QUERY_1:-}"
+search_query_2="${FINAMP_BENCH_SEARCH_QUERY_2:-}"
+search_query_3="${FINAMP_BENCH_SEARCH_QUERY_3:-}"
+[[ -n "$search_query_1" ]] || {
+  echo "FINAMP_BENCH_SEARCH_QUERY_1 must be set locally for every benchmark run" >&2
+  exit 2
+}
+if [[ "$smoke_define" == "false" ]]; then
+  [[ -n "$search_query_2" ]] || {
+    echo "FINAMP_BENCH_SEARCH_QUERY_2 must be set locally for a full benchmark run" >&2
+    exit 2
+  }
+  [[ -n "$search_query_3" ]] || {
+    echo "FINAMP_BENCH_SEARCH_QUERY_3 must be set locally for a full benchmark run" >&2
+    exit 2
+  }
+fi
+
 log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
 }
@@ -60,6 +78,9 @@ flutter build ios \
   --profile \
   --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
   --dart-define=FINAMP_BENCH_SMOKE="$smoke_define" \
+  --dart-define=FINAMP_BENCH_SEARCH_QUERY_1="$search_query_1" \
+  --dart-define=FINAMP_BENCH_SEARCH_QUERY_2="$search_query_2" \
+  --dart-define=FINAMP_BENCH_SEARCH_QUERY_3="$search_query_3" \
   --dart-define=FINAMP_BENCH_VARIANT="$variant" \
   --dart-define=FINAMP_BENCH_RUN_ID="$run_id" 2>&1 | tee -a "$raw_log"
 
