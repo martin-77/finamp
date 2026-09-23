@@ -403,6 +403,53 @@ class QueueService {
     return info.trackCount;
   }
 
+  /// Test-only setup for exercising explicit persisted-queue restore.
+  ///
+  /// Clearing the active queue normally updates the persisted `latest` queue
+  /// when queue saving is active. The benchmark needs the opposite: remove the
+  /// active queue while retaining the exact snapshot it just persisted, then
+  /// exercise the normal explicit restore path against that snapshot.
+  Future<int> clearActiveQueuePreservingPerformanceBenchmarkSnapshot() async {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark queue preparation is only available in benchmark mode",
+      );
+    }
+
+    final snapshot = _queuesBox.get("latest");
+    if (snapshot == null || snapshot.trackCount == 0) {
+      throw StateError(
+        "Benchmark queue preparation requires a non-empty persisted queue",
+      );
+    }
+
+    await stopAndClearQueue();
+
+    // stopAndClearQueue may persist the now-empty active queue. Restore the
+    // previously flushed benchmark snapshot after the clear has completed.
+    await _queuesBox.put("latest", snapshot);
+    await _queuesBox.flush();
+
+    final persisted = _queuesBox.get("latest");
+    final activeCount = getQueue().trackCount;
+    if (persisted == null ||
+        persisted.trackCount != snapshot.trackCount ||
+        activeCount != 0) {
+      throw StateError(
+        "Benchmark queue preparation did not preserve the persisted snapshot",
+      );
+    }
+
+    PerformanceBenchmarkService.instance.diagnostic(
+      "queue-benchmark-active-cleared-snapshot-preserved",
+      values: {
+        "storedTrackCount": persisted.trackCount,
+        "activeTrackCount": activeCount,
+      },
+    );
+    return persisted.trackCount;
+  }
+
   /// Test-only deterministic restore of the persisted latest queue.
   ///
   /// Normal startup still honors the user's autoload setting. The benchmark
