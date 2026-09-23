@@ -520,16 +520,16 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final api = GetIt.instance<JellyfinApiHelper>();
 
-    const queries = <String, String>{
-      "iron-maiden": "Iron Maiden",
-      "metallica": "Metallica",
-      "kettcar": "Kettcar",
-    };
+    const queries = <(String, String, bool)>[
+      ("iron-maiden", "Iron Maiden", true),
+      ("metallica", "Metallica", true),
+      ("kettcar", "Kettcar", true),
+      ("broad-m", "m", false),
+    ];
     const tabs = <String>["artists", "albums", "tracks"];
 
-    for (final queryEntry in queries.entries) {
-      final queryAlias = queryEntry.key;
-      final query = queryEntry.value;
+    for (final queryEntry in queries) {
+      final (queryAlias, query, deriveTargetChain) = queryEntry;
 
       // Resolve a deterministic private artist -> album -> track chain once
       // for later detail/playback scenarios. Only aliases are exported.
@@ -555,7 +555,7 @@ class PerformanceBenchmarkSuiteRunner {
         },
       );
 
-      if (artistMatches.length == 1) {
+      if (deriveTargetChain && artistMatches.length == 1) {
         final artist = artistMatches.single;
         await recorder.saveTarget(
           alias: "search-artist-$queryAlias",
@@ -1006,6 +1006,15 @@ class PerformanceBenchmarkSuiteRunner {
       ("detail-track", "track"),
       ("detail-album", "album"),
       ("detail-artist", "artist"),
+      ("search-track-iron-maiden", "track"),
+      ("search-album-iron-maiden", "album"),
+      ("search-artist-iron-maiden", "artist"),
+      ("search-track-metallica", "track"),
+      ("search-album-metallica", "album"),
+      ("search-artist-metallica", "artist"),
+      ("search-track-kettcar", "track"),
+      ("search-album-kettcar", "album"),
+      ("search-artist-kettcar", "artist"),
       ("bench-10", "playlist"),
       ("bench-100", "playlist"),
       ("bench-1000", "playlist"),
@@ -1128,6 +1137,12 @@ class PerformanceBenchmarkSuiteRunner {
     const aliases = <(String, String)>[
       ("detail-album", "album"),
       ("detail-artist", "artist"),
+      ("search-artist-iron-maiden", "artist"),
+      ("search-album-iron-maiden", "album"),
+      ("search-artist-metallica", "artist"),
+      ("search-album-metallica", "album"),
+      ("search-artist-kettcar", "artist"),
+      ("search-album-kettcar", "album"),
       ("bench-10", "playlist"),
       ("bench-100", "playlist"),
       ("bench-1000", "playlist"),
