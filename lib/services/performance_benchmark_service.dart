@@ -64,8 +64,13 @@ class PerformanceBenchmarkTabCommand {
 
   final String contentType;
   final Completer<void> _completer = Completer<void>();
+  bool selected = false;
 
   Future<void> get completed => _completer.future;
+
+  void markSelected() {
+    selected = true;
+  }
 
   void complete() {
     if (!_completer.isCompleted) _completer.complete();
