@@ -79,7 +79,6 @@ class FinampUserHelper {
     _isar.writeTxnSync(() {
       _isar.finampUsers.putSync(newUser, saveLinks: false);
     });
-    _currentUserCache = newUser;
 
     if (PerformanceBenchmarkService.enabled &&
         previous != null &&
