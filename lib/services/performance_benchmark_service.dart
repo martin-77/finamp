@@ -269,7 +269,8 @@ class PerformanceBenchmarkService {
   static const _boxName = "PerformanceBenchmark";
   static const _targetKeyPrefix = "target:";
   static const _runKeyPrefix = "run:";
-  static const _activeRunKey = "active-run";
+  static String get _activeRunKey =>
+      "active-run:$suiteRunId";
   static const _cleanupRequiredKey = "cleanup-required";
   static String get _originalOfflineKey =>
       "original-offline:$suiteRunId";
