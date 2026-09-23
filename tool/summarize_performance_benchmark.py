@@ -29,6 +29,8 @@ def main():
     source = Path(args.jsonl)
     groups = defaultdict(list)
     startup_tasks = defaultdict(list)
+    queue_restores = []
+    startup_network = []
     phases = []
     diagnostics = []
 
@@ -57,6 +59,20 @@ def main():
                 task = values.get("task")
                 if isinstance(duration, (int, float)) and isinstance(task, str):
                     startup_tasks[task].append(float(duration))
+            elif name == "queue-restore-complete":
+                queue_restores.append({
+                    "storedTrackCount": values.get("storedTrackCount"),
+                    "durationMs": values.get("durationMs"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name == "startup-network-summary":
+                startup_network.append({
+                    "requestCount": values.get("requestCount"),
+                    "responseBytes": values.get("responseBytes"),
+                    "durationMicrosTotal": values.get("durationMicrosTotal"),
+                    "durationMicrosMax": values.get("durationMicrosMax"),
+                    "emittedAt": record.get("emittedAt"),
+                })
             elif name == "suite-phase-complete":
                 phase = values.get("phase")
                 if phase:
@@ -151,6 +167,8 @@ def main():
         "source": source.name,
         "completedPhases": phases,
         "startupTasks": startup_summary,
+        "startupNetwork": startup_network,
+        "queueRestores": queue_restores,
         "groups": summary_groups,
         "milestones": diagnostics,
     }
@@ -183,6 +201,41 @@ def main():
             f"| {item['task']} | {item['runs']} | {item['medianMs']:.3f} | "
             f"{item['p90Ms']:.3f} | {item['minMs']:.3f} | {item['maxMs']:.3f} |"
         )
+
+    lines.extend([
+        "",
+        "## Startup network",
+        "",
+        "| Requests | Response bytes | HTTP total ms | HTTP max ms |",
+        "|---:|---:|---:|---:|",
+    ])
+    if startup_network:
+        for item in startup_network:
+            total_us = item.get("durationMicrosTotal")
+            max_us = item.get("durationMicrosMax")
+            total_ms = "" if not isinstance(total_us, (int, float)) else round(total_us / 1000.0, 3)
+            max_ms = "" if not isinstance(max_us, (int, float)) else round(max_us / 1000.0, 3)
+            lines.append(
+                f"| {item.get('requestCount', '')} | {item.get('responseBytes', '')} | "
+                f"{total_ms} | {max_ms} |"
+            )
+    else:
+        lines.append("|  |  |  |  |")
+
+    lines.extend([
+        "",
+        "## Queue restore",
+        "",
+        "| Stored tracks | Duration ms |",
+        "|---:|---:|",
+    ])
+    if queue_restores:
+        for item in queue_restores:
+            lines.append(
+                f"| {item.get('storedTrackCount', '')} | {item.get('durationMs', '')} |"
+            )
+    else:
+        lines.append("|  |  |")
 
     lines.extend([
         "",
