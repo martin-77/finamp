@@ -6,6 +6,7 @@ import 'package:file/local.dart';
 // Directly use LocalFile to avoid touching every cached file on initialization
 import 'package:file/src/backends/local/local_file.dart';
 import 'package:finamp/services/theme_provider.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,21 @@ Future<void> initImageCache() async {
     );
   }
   await _imageCache.config.repo.close();
+}
+
+Future<void> clearPerformanceBenchmarkImageCache() async {
+  if (!PerformanceBenchmarkService.enabled) {
+    throw StateError("Image cache clearing is only allowed in benchmark mode");
+  }
+
+  albumRequestsCache.clear();
+  _playerImageCache.clear();
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
+  await _imageCache.emptyCache();
+  PerformanceBenchmarkService.instance.diagnostic(
+    "image-cache-cleared",
+  );
 }
 
 final Map<String?, AlbumImageRequest> albumRequestsCache = {};
