@@ -24,6 +24,8 @@ def main():
                     "alphabetJumpPagesLoaded": 47,
                     "playlistItemsSeen": 123,
                     "playlistPagesFetched": 4,
+                    "loadedItems": 183,
+                    "itemsAdded": 83,
                     "pageItemsAdded": 100,
                     "pageSize": 83,
                     "rssDeltaBytes": 123456,
@@ -196,6 +198,8 @@ def main():
         assert "alphabetJumpPagesLoaded" not in metrics
         assert "playlistItemsSeen" not in metrics
         assert "playlistPagesFetched" not in metrics
+        assert "loadedItems" not in metrics
+        assert "itemsAdded" not in metrics
         assert "pageItemsAdded" not in metrics
         assert "pageSize" not in metrics
 
