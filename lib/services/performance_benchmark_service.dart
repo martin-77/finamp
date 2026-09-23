@@ -436,14 +436,14 @@ class PerformanceBenchmarkService {
         _startupSelectedContentType != contentType) {
       return;
     }
-    diagnostic(
-      "startup-screen-first-rendered-content",
-      values: {
-        "contentType": contentType,
-        "processElapsedMs": processElapsedMs,
-      },
-    );
+
     _startupScreenReady.complete();
+    unawaited(
+      reportStartupMilestone(
+        "startup-screen-first-rendered-content",
+        values: {"contentType": contentType},
+      ),
+    );
   }
 
   Future<void> waitForStartupScreenReady({
