@@ -74,8 +74,30 @@ Future<void> clearPerformanceBenchmarkImageCache() async {
   PaintingBinding.instance.imageCache.clear();
   PaintingBinding.instance.imageCache.clearLiveImages();
   await _imageCache.emptyCache();
+
+  final memoryCache = PaintingBinding.instance.imageCache;
+  final memoryCurrentSize = memoryCache.currentSize;
+  final memoryLiveImages = memoryCache.liveImageCount;
+  final memoryPendingImages = memoryCache.pendingImageCount;
+  if (_playerImageCache.isNotEmpty ||
+      albumRequestsCache.isNotEmpty ||
+      memoryCurrentSize != 0 ||
+      memoryLiveImages != 0 ||
+      memoryPendingImages != 0) {
+    throw StateError(
+      "Benchmark image cache cleanup did not reach an empty state",
+    );
+  }
+
   PerformanceBenchmarkService.instance.diagnostic(
     "image-cache-cleared",
+    values: {
+      "playerCacheEntries": _playerImageCache.length,
+      "requestCacheEntries": albumRequestsCache.length,
+      "memoryCurrentSize": memoryCurrentSize,
+      "memoryLiveImages": memoryLiveImages,
+      "memoryPendingImages": memoryPendingImages,
+    },
   );
 }
 
