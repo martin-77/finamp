@@ -642,6 +642,7 @@ class PerformanceBenchmarkSuiteRunner {
           parentItem: artist,
           includeItemTypes: "MusicAlbum",
           recursive: true,
+          artistType: ArtistType.albumArtist,
         );
         if (albums != null && albums.isNotEmpty) {
           final album = albums.first;
