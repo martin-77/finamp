@@ -196,6 +196,7 @@ class PerformanceBenchmarkSuiteRunner {
     );
     recorder.reportStartupFrameSummary(phase);
     recorder.reportStartupNetworkSummary(phase: phase);
+    recorder.reportStartupPhaseResult(phase);
     recorder.diagnostic(
       "startup-fully-ready",
       values: {
