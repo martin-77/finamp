@@ -3,8 +3,10 @@ set -euo pipefail
 
 device_id="${1:-}"
 variant="${2:-}"
-[[ -n "$device_id" ]] || { echo "Usage: $0 <ios-device-id> <variant>" >&2; exit 2; }
-[[ -n "$variant" ]] || { echo "Usage: $0 <ios-device-id> <variant>" >&2; exit 2; }
+run_id="${3:-}"
+[[ -n "$device_id" ]] || { echo "Usage: $0 <ios-device-id> <variant> <run-id>" >&2; exit 2; }
+[[ -n "$variant" ]] || { echo "Usage: $0 <ios-device-id> <variant> <run-id>" >&2; exit 2; }
+[[ -n "$run_id" ]] || { echo "Usage: $0 <ios-device-id> <variant> <run-id>" >&2; exit 2; }
 
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
 out_dir="${FINAMP_BENCH_OUT:-benchmark-results}"
@@ -13,9 +15,9 @@ mkdir -p "$out_dir"
 raw_log="$out_dir/finamp-benchmark-$timestamp.log"
 jsonl="$out_dir/finamp-benchmark-$timestamp.jsonl"
 app_path="build/ios/iphoneos/Runner.app"
-remote_stream="Documents/finamp-benchmark-stream-$variant.jsonl"
+remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
-timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-1800}"
+timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-28800}"
 
 log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
@@ -27,7 +29,11 @@ printf 'Full log: %s\nBenchmark JSONL: %s\n' "$raw_log" "$jsonl"
 
 log ""
 log "==> Building PROFILE app with benchmark mode enabled"
-flutter build ios   --profile   --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true   --dart-define=FINAMP_BENCH_VARIANT="$variant" 2>&1 | tee -a "$raw_log"
+flutter build ios \
+  --profile \
+  --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
+  --dart-define=FINAMP_BENCH_VARIANT="$variant" \
+  --dart-define=FINAMP_BENCH_RUN_ID="$run_id" 2>&1 | tee -a "$raw_log"
 
 [[ -d "$app_path" ]] || {
   log "ERROR: Built app not found at $app_path"
@@ -59,6 +65,7 @@ trap 'rm -rf "$pull_root"' EXIT INT TERM
 
 start_epoch="$(date +%s)"
 last_size=-1
+restart_done=0
 
 while true; do
   now_epoch="$(date +%s)"
@@ -68,7 +75,7 @@ while true; do
     exit 124
   fi
 
-  pulled_file="$pull_root/finamp-benchmark-stream-$variant.jsonl"
+  pulled_file="$pull_root/finamp-benchmark-stream-$variant-$run_id.jsonl"
   rm -f "$pulled_file"
 
   set +e
@@ -88,6 +95,18 @@ while true; do
     if [[ "$size" != "$last_size" ]]; then
       log "Pulled benchmark stream: ${size} bytes"
       last_size="$size"
+    fi
+
+    if [[ "$restart_done" -eq 0 ]] && grep -q '"name":"host-restart-requested"' "$jsonl"; then
+      log ""
+      log "==> Full suite requested a real process restart"
+      log "Relaunching the installed app with the same persistent container/cache..."
+      xcrun devicectl device process launch \
+        --device "$device_id" \
+        --terminate-existing \
+        "$bundle_id" 2>&1 | tee -a "$raw_log"
+      restart_done=1
+      sleep 3
     fi
 
     if grep -q '"name":"suite-complete"' "$jsonl"; then
