@@ -9,6 +9,7 @@ import 'package:finamp/services/downloads_service.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/playon_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
@@ -37,6 +38,8 @@ final StreamSubscription<List<ConnectivityResult>> _listener = Connectivity().on
 
 @riverpod
 class AutoOffline extends _$AutoOffline {
+  static AppLifecycleListener? _lifecycleListener;
+
   static void startWatching() {
     ProviderContainer container = GetIt.instance<ProviderContainer>();
 
@@ -52,6 +55,35 @@ class AutoOffline extends _$AutoOffline {
         _listener.pause();
       }
     });
+
+    _lifecycleListener ??= AppLifecycleListener(
+      onShow: () {
+        unawaited(reevaluateTargetUrl(reason: "app-show"));
+      },
+    );
+  }
+
+  static Future<void> reevaluateTargetUrl({
+    required String reason,
+    bool reconnectPlayOn = true,
+  }) async {
+    final connections = await Connectivity().checkConnectivity();
+    final user = GetIt.instance<FinampUserHelper>().currentUser;
+
+    _networkAutomationLogger.info(
+      "Reevaluating target URL: reason=$reason, "
+      "connectivity=${connections.map((connection) => connection.toString()).join(", ")}, "
+      "preferLocalNetwork=${user?.preferLocalNetwork ?? false}, "
+      "activeAddress=${user?.isLocal == true ? "local" : "public"}",
+    );
+
+    final baseUrlChanged = await changeTargetUrl();
+
+    if (baseUrlChanged &&
+        reconnectPlayOn &&
+        GetIt.instance.isRegistered<PlayOnService>()) {
+      _reconnectPlayOnService(connections);
+    }
   }
 
   @override
