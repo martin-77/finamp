@@ -40,6 +40,11 @@ PUBLIC_NUMERIC_METRIC_DENYLIST = {
     # Combined with known page size, this can approximate private library
     # cardinality for late alphabet targets such as Z.
     "alphabetJumpPagesLoaded",
+
+    # Target discovery needs these internally, but publishing them would expose
+    # playlist cardinality or a tight approximation of it.
+    "playlistItemsSeen",
+    "playlistPagesFetched",
 }
 
 
