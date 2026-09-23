@@ -1651,6 +1651,16 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await Future<void>.delayed(const Duration(seconds: 1));
 
+      final persistedQueueCount =
+          GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
+      recorder.diagnostic(
+        "offline-large-queue-persisted",
+        values: {
+          "targetAlias": targetAlias,
+          "trackCount": persistedQueueCount,
+        },
+      );
+
       await _cleanupDownloadedBenchmarkTarget(
         targetAlias: targetAlias,
         stub: stub,
