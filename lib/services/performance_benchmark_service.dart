@@ -389,6 +389,26 @@ class PerformanceBenchmarkService {
         : jsonDecode(encoded) as Map<String, dynamic>;
   }
 
+  Future<bool> isDownloadCleanupTarget(String itemId) async {
+    final requirement = await getDownloadCleanupRequirement();
+    if (requirement == null) return false;
+    final alias = requirement["targetAlias"] as String?;
+    if (alias == null) return false;
+    final target = await getTarget(alias);
+    return target?.itemId == itemId;
+  }
+
+  Future<void> markDownloadCleanupStarted() async {
+    mark("download-cleanup-start");
+    await _persistActiveRun();
+  }
+
+  Future<void> markDownloadCleanupCompleted() async {
+    mark("download-cleanup-complete");
+    await setDownloadCleanupRequired(targetAlias: "", required: false);
+    await _persistActiveRun();
+  }
+
   Future<PerformanceBenchmarkRun> finishRun({
     Map<String, Object?> metrics = const {},
   }) async {
