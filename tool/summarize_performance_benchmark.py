@@ -95,10 +95,26 @@ def main():
                 })
             elif name == "startup-network-summary":
                 startup_network.append({
+                    "phase": values.get("phase"),
                     "requestCount": values.get("requestCount"),
                     "responseBytes": values.get("responseBytes"),
                     "durationMicrosTotal": values.get("durationMicrosTotal"),
                     "durationMicrosMax": values.get("durationMicrosMax"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name == "startup-frame-summary":
+                startup_frames.append({
+                    "phase": values.get("phase"),
+                    "frameCount": values.get("frameCount"),
+                    "framesOver16_7ms": values.get("framesOver16_7ms"),
+                    "framesOver33_3ms": values.get("framesOver33_3ms"),
+                    "framesOver50ms": values.get("framesOver50ms"),
+                    "buildMicrosMax": values.get("buildMicrosMax"),
+                    "rasterMicrosMax": values.get("rasterMicrosMax"),
+                    "frameMicrosMax": values.get("frameMicrosMax"),
+                    "rssBytes": values.get("rssBytes"),
+                    "maxRssBytes": values.get("maxRssBytes"),
+                    "processElapsedMs": values.get("processElapsedMs"),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name in {
@@ -299,8 +315,8 @@ def main():
         "",
         "## Startup network",
         "",
-        "| Requests | Response bytes | HTTP total ms | HTTP max ms |",
-        "|---:|---:|---:|---:|",
+        "| Phase | Requests | Response bytes | HTTP total ms | HTTP max ms |",
+        "|---|---:|---:|---:|---:|",
     ])
     if startup_network:
         for item in startup_network:
@@ -309,11 +325,38 @@ def main():
             total_ms = "" if not isinstance(total_us, (int, float)) else round(total_us / 1000.0, 3)
             max_ms = "" if not isinstance(max_us, (int, float)) else round(max_us / 1000.0, 3)
             lines.append(
-                f"| {item.get('requestCount', '')} | {item.get('responseBytes', '')} | "
-                f"{total_ms} | {max_ms} |"
+                f"| {item.get('phase', '')} | {item.get('requestCount', '')} | "
+                f"{item.get('responseBytes', '')} | {total_ms} | {max_ms} |"
             )
     else:
-        lines.append("|  |  |  |  |")
+        lines.append("|  |  |  |  |  |")
+
+    lines.extend([
+        "",
+        "## Startup frames and memory",
+        "",
+        "| Phase | Ready ms | Frames | >16.7 ms | >33.3 ms | >50 ms | Max frame ms | Max build ms | Max raster ms | RSS MiB | Max RSS MiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    if startup_frames:
+        for item in startup_frames:
+            frame_max = item.get("frameMicrosMax")
+            build_max = item.get("buildMicrosMax")
+            raster_max = item.get("rasterMicrosMax")
+            rss = item.get("rssBytes")
+            max_rss = item.get("maxRssBytes")
+            lines.append(
+                f"| {item.get('phase', '')} | {item.get('processElapsedMs', '')} | "
+                f"{item.get('frameCount', '')} | {item.get('framesOver16_7ms', '')} | "
+                f"{item.get('framesOver33_3ms', '')} | {item.get('framesOver50ms', '')} | "
+                f"{'' if not isinstance(frame_max, (int, float)) else round(frame_max / 1000.0, 3)} | "
+                f"{'' if not isinstance(build_max, (int, float)) else round(build_max / 1000.0, 3)} | "
+                f"{'' if not isinstance(raster_max, (int, float)) else round(raster_max / 1000.0, 3)} | "
+                f"{'' if not isinstance(rss, (int, float)) else round(rss / (1024 * 1024), 3)} | "
+                f"{'' if not isinstance(max_rss, (int, float)) else round(max_rss / (1024 * 1024), 3)} |"
+            )
+    else:
+        lines.append("|  |  |  |  |  |  |  |  |  |  |  |")
 
     lines.extend([
         "",
