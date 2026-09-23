@@ -104,24 +104,23 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     }
   }
 
-  bool _homeSectionsReady() {
+  bool _watchHomeSectionsReady() {
     final sections =
-        ref.read(finampSettingsProvider.homeScreenConfiguration).sections;
+        ref.watch(finampSettingsProvider.homeScreenConfiguration).sections;
     for (final section in sections) {
-      final resolved = ref.read(resolveSectionProvider(section));
+      final resolved = ref.watch(resolveSectionProvider(section));
       if (resolved.isLoading) return false;
       final displayable = resolved.valueOrNull;
       if (displayable == null || displayable is UnavailableHomeSectionPlayable) {
         continue;
       }
-      final page = ref.read(pagedContentProvider(displayable));
+      final page = ref.watch(pagedContentProvider(displayable));
       if (page.isLoading || page.items == null) return false;
     }
     return true;
   }
 
-  void _maybeCompleteBenchmarkHome() {
-    final ready = _homeSectionsReady();
+  void _maybeCompleteBenchmarkHome(bool ready) {
     if (ready && !_startupReadyReported) {
       _startupReadyReported = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -173,8 +172,11 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
   Widget build(BuildContext context) {
     super.build(context);
     widget.refresh?.callback = _refresh;
+    final benchmarkHomeReady = PerformanceBenchmarkService.enabled
+        ? _watchHomeSectionsReady()
+        : false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _maybeCompleteBenchmarkHome();
+      if (mounted) _maybeCompleteBenchmarkHome(benchmarkHomeReady);
     });
     return RefreshIndicator(
       onRefresh: () async => _refresh(),
