@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:finamp/components/HomeScreen/finamp_music_screen_header.dart';
@@ -151,7 +152,6 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
         },
       );
 
-      refreshMap[contentTab]?.call();
       _tabController?.animateTo(index);
     });
   }
