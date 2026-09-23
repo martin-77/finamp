@@ -1101,7 +1101,9 @@ class PerformanceBenchmarkSuiteRunner {
           // runStep persists failures/timeouts.
         }
 
-        await Future<void>.delayed(const Duration(seconds: 2));
+        await _settleUi(
+          schedulerCooldown: const Duration(seconds: 1),
+        );
 
         await recorder.startRun(
           scenario: "ui-search-$tab",
@@ -1172,7 +1174,9 @@ class PerformanceBenchmarkSuiteRunner {
           }
         }
 
-        await Future<void>.delayed(const Duration(seconds: 4));
+        await _settleUi(
+          schedulerCooldown: const Duration(seconds: 2),
+        );
       }
     }
 
@@ -1243,7 +1247,9 @@ class PerformanceBenchmarkSuiteRunner {
         await _settleUi();
       }
 
-      await Future<void>.delayed(const Duration(seconds: 5));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
     }
   }
 
@@ -2539,7 +2545,9 @@ class PerformanceBenchmarkSuiteRunner {
       await GetIt.instance<MusicPlayerBackgroundTask>().pause(
         disableFade: true,
       );
-      await Future<void>.delayed(const Duration(seconds: 4));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
       await _runPlaybackBaseline(
         targetAlias: alias,
         playableType: type,
@@ -2548,7 +2556,9 @@ class PerformanceBenchmarkSuiteRunner {
       await GetIt.instance<MusicPlayerBackgroundTask>().pause(
         disableFade: true,
       );
-      await Future<void>.delayed(const Duration(seconds: 4));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
     }
   }
 
@@ -2731,14 +2741,18 @@ class PerformanceBenchmarkSuiteRunner {
         mode: "refreshed-detail",
         refresh: true,
       );
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
       await _runDetailBaseline(
         targetAlias: alias,
         detailType: detailType,
         mode: "warm-detail",
         refresh: false,
       );
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
     }
   }
 
@@ -2950,10 +2964,14 @@ class PerformanceBenchmarkSuiteRunner {
         } catch (_) {
           // runStep finalized the failed run.
         }
-        await Future<void>.delayed(const Duration(seconds: 1));
+        await _settleUi(
+          schedulerCooldown: const Duration(milliseconds: 750),
+        );
       }
 
-      await Future<void>.delayed(const Duration(seconds: 5));
+      await _settleUi(
+        schedulerCooldown: const Duration(seconds: 2),
+      );
     }
   }
 
