@@ -1690,10 +1690,16 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final queueService = GetIt.instance<QueueService>();
 
+    final expectedAlias = _smoke ? "bench-10" : "bench-1000";
+    final expectedTracks = _smoke ? 10 : 1000;
     final alreadyRestored = queueService.getQueue().trackCount;
     recorder.diagnostic(
       "queue-restore-benchmark-start",
-      values: {"alreadyRestoredTracks": alreadyRestored},
+      values: {
+        "alreadyRestoredTracks": alreadyRestored,
+        "targetAlias": expectedAlias,
+        "expectedTracks": expectedTracks,
+      },
     );
 
     if (alreadyRestored > 0) {
@@ -1701,12 +1707,12 @@ class PerformanceBenchmarkSuiteRunner {
         scenario: "persisted-queue-restore-verification",
         variant: PerformanceBenchmarkService.variant,
         mode: "startup-autoload",
-        targetAlias: "bench-1000",
+        targetAlias: expectedAlias,
         targetType: "queue",
       );
-      recorder.metric("expectedQueueLength", 1000);
+      recorder.metric("expectedQueueLength", expectedTracks);
       recorder.metric("restoredQueueLength", alreadyRestored);
-      if (alreadyRestored == 1000) {
+      if (alreadyRestored == expectedTracks) {
         await recorder.finishRun();
       } else {
         await recorder.failActiveRun(
@@ -1720,7 +1726,7 @@ class PerformanceBenchmarkSuiteRunner {
       }
     }
 
-    if (alreadyRestored != 1000) {
+    if (alreadyRestored != expectedTracks) {
       if (alreadyRestored > 0) {
         await queueService.stopAndClearQueue();
         await recorder.waitForNetworkQuiescence(
@@ -1739,7 +1745,7 @@ class PerformanceBenchmarkSuiteRunner {
         mode: alreadyRestored == 0
             ? "explicit-after-restart"
             : "explicit-after-partial-autoload",
-        targetAlias: "bench-1000",
+        targetAlias: expectedAlias,
         targetType: "queue",
       );
       try {
@@ -1749,9 +1755,9 @@ class PerformanceBenchmarkSuiteRunner {
           operation:
               queueService.restorePerformanceBenchmarkPersistedQueue,
         );
-        recorder.metric("expectedQueueLength", 1000);
+        recorder.metric("expectedQueueLength", expectedTracks);
         recorder.metric("restoredQueueLength", restored);
-        if (restored != 1000) {
+        if (restored != expectedTracks) {
           throw StateError(
             "Persisted benchmark queue restored an unexpected track count",
           );
@@ -2385,9 +2391,6 @@ class PerformanceBenchmarkSuiteRunner {
       );
     }
 
-    final offlineLetters = _smoke
-        ? const <String>["A", "Z"]
-        : const <String>["#", "A", "G", "M", "Z"];
     for (final letter in offlineLetters) {
       await recorder.startRun(
         scenario: "offline-alphabet-jump-tracks-$letter",
