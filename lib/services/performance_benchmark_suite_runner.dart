@@ -20,6 +20,7 @@ import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
+import 'package:hive_ce/hive.dart';
 
 /// Automated entry point for the test-only performance benchmark branch.
 ///
@@ -112,7 +113,7 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
-    if (stage == "offline-bench1000-running") {
+    if (stage.startsWith("offline-bench1000-")) {
       GetIt.instance<FinampUserHelper>().runUserHook(() {
         unawaited(_runOfflineBench1000PostRestart());
       });
@@ -1299,6 +1300,7 @@ class PerformanceBenchmarkSuiteRunner {
     if (targetAlias == "bench-1000") {
       await recorder.saveOriginalOfflineState(previousOffline);
       FinampSetters.setIsOffline(true);
+      await Hive.box("FinampSettings").flush();
       await recorder.setSuiteStage("offline-bench1000-running");
       recorder.diagnostic(
         "offline-mode-forced",
@@ -1660,7 +1662,7 @@ class PerformanceBenchmarkSuiteRunner {
       await Future<void>.delayed(const Duration(seconds: 1));
 
       final persistedQueueCount =
-          GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
+          await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
       recorder.diagnostic(
         "offline-large-queue-persisted",
         values: {
