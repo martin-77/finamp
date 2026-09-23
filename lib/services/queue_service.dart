@@ -426,8 +426,44 @@ class QueueService {
           }
 
           if (FinampSettingsHelper.finampSettings.autoloadLastQueueOnStartup && !await _hasInitialPlayLink()) {
-            await loadSavedQueue(info);
+            final benchmarkStopwatch = PerformanceBenchmarkService.enabled
+                ? (Stopwatch()..start())
+                : null;
+            try {
+              await loadSavedQueue(info);
+              if (benchmarkStopwatch != null) {
+                benchmarkStopwatch.stop();
+                PerformanceBenchmarkService.instance.diagnostic(
+                  "queue-restore-complete",
+                  values: {
+                    "storedTrackCount": info.trackCount,
+                    "durationMs":
+                        benchmarkStopwatch.elapsedMicroseconds / 1000.0,
+                  },
+                );
+              }
+            } catch (error) {
+              if (benchmarkStopwatch != null) {
+                benchmarkStopwatch.stop();
+                PerformanceBenchmarkService.instance.diagnostic(
+                  "queue-restore-failed",
+                  values: {
+                    "storedTrackCount": info.trackCount,
+                    "durationMs":
+                        benchmarkStopwatch.elapsedMicroseconds / 1000.0,
+                    "errorType": error.runtimeType.toString(),
+                  },
+                );
+              }
+              rethrow;
+            }
           } else {
+            if (PerformanceBenchmarkService.enabled) {
+              PerformanceBenchmarkService.instance.diagnostic(
+                "queue-restore-skipped",
+                values: {"storedTrackCount": info.trackCount},
+              );
+            }
             _savedQueueState = SavedQueueState.pendingSave;
           }
         }
