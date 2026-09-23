@@ -1710,6 +1710,47 @@ class DownloadsService {
         .watch(fireImmediately: true);
   }
 
+  /// Benchmark-only aggregate progress for a downloaded album/playlist.
+  /// No media names, ids or paths are exposed.
+  Map<String, int> getPerformanceBenchmarkCollectionProgress(
+    DownloadStub stub,
+  ) {
+    if (!PerformanceBenchmarkService.enabled) {
+      throw StateError(
+        "Benchmark download progress is only available in benchmark mode",
+      );
+    }
+    final tracks = _isar.downloadItems
+        .where()
+        .typeEqualTo(DownloadItemType.track)
+        .filter()
+        .infoFor((q) => q.isarIdEqualTo(stub.isarId))
+        .findAllSync();
+
+    var complete = 0;
+    var active = 0;
+    var failed = 0;
+    for (final track in tracks) {
+      if (track.state == DownloadItemState.complete ||
+          track.state == DownloadItemState.needsRedownloadComplete) {
+        complete++;
+      } else if (track.state == DownloadItemState.failed ||
+          track.state == DownloadItemState.syncFailed) {
+        failed++;
+      } else if (track.state == DownloadItemState.downloading ||
+          track.state == DownloadItemState.enqueued) {
+        active++;
+      }
+    }
+
+    return {
+      "totalTracks": tracks.length,
+      "completeTracks": complete,
+      "activeTracks": active,
+      "failedTracks": failed,
+    };
+  }
+
   /// Returns the size of a download by recursively calculating the size of all
   /// required children.  Used to display item sizes on downloads screen.
   Future<int> getFileSize(DownloadStub item) =>
