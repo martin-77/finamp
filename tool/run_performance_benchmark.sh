@@ -81,7 +81,21 @@ log "The app may remain open while the Mac copies benchmark checkpoints every ${
 log "Timeout: ${timeout_seconds}s"
 
 pull_root="$(mktemp -d)"
-trap 'rm -rf "$pull_root"' EXIT INT TERM
+
+cleanup() {
+  rm -rf "$pull_root"
+}
+
+interrupt_benchmark() {
+  local exit_code="$1"
+  log "Benchmark interrupted by host signal."
+  generate_summary
+  exit "$exit_code"
+}
+
+trap cleanup EXIT
+trap 'interrupt_benchmark 130' INT
+trap 'interrupt_benchmark 143' TERM
 
 start_epoch="$(date +%s)"
 last_size=-1
