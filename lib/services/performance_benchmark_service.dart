@@ -166,7 +166,7 @@ class PerformanceBenchmarkService {
   static const _runKeyPrefix = "run:";
   static const _activeRunKey = "active-run";
   static const _cleanupRequiredKey = "cleanup-required";
-  static const _hostStreamFileName = "finamp-benchmark-stream.jsonl";
+  static String get _hostStreamFileName => "finamp-benchmark-stream-$variant.jsonl";
 
   static final PerformanceBenchmarkService instance = PerformanceBenchmarkService._();
 
