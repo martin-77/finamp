@@ -218,6 +218,25 @@ completion prerequisite. The host runner also emits explicit blocked/error
 termination and the app restores the suite-owned original offline state before
 those terminal records.
 
+## Host-only compile preflight
+
+Before connecting the iPhone, run the complete static gate plus a real iOS
+PROFILE compile without code signing:
+
+```bash
+FINAMP_BENCH_PREFLIGHT_ONLY=true \
+  bash tool/bootstrap_performance_benchmark_macos.sh
+```
+
+This fetches/fast-forwards the benchmark branch, resolves Flutter dependencies,
+checks formatting, runs `flutter analyze`, validates the Python/shell helper
+tools, installs CocoaPods and performs `flutter build ios --profile
+--no-codesign` with benchmark instrumentation enabled. It then exits before
+device discovery, installation or launch. The compile uses neutral placeholder
+search strings only to exercise the build; they are never run against Jellyfin.
+
+Only after this gate passes should the physical-device smoke run be started.
+
 ## Benchmark app isolation
 
 The suite deliberately clears benchmark queue state, benchmark downloads and
