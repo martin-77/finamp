@@ -1573,7 +1573,7 @@ class PerformanceBenchmarkSuiteRunner {
           // runStep persists failures/timeouts.
         }
 
-        if (queryAlias == "broad-m" && resolvedSearchTab != null) {
+        if (queryAlias == "broad-1" && resolvedSearchTab != null) {
           for (var page = 2; page <= 6; page++) {
             await recorder.startRun(
               scenario: "ui-search-next-page-$tab",
