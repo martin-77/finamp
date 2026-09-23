@@ -439,6 +439,15 @@ class DownloadsService {
     final benchmark = PerformanceBenchmarkService.instance;
     benchmark.mark("download-add-start");
     benchmark.metric("downloadTargetType", stub.type.name);
+    final activeBenchmark = benchmark.activeRun;
+    if (activeBenchmark != null &&
+        activeBenchmark.scenario.contains("download") &&
+        activeBenchmark.targetAlias != null) {
+      await benchmark.setDownloadCleanupRequired(
+        targetAlias: activeBenchmark.targetAlias!,
+      );
+      benchmark.mark("download-cleanup-required");
+    }
     // Comment https://github.com/jmshrv/finamp/issues/134#issuecomment-1563441355
     // suggests this does not make a request and always returns failure
     /*if (downloadLocation.needsPermission) {
@@ -469,6 +478,11 @@ class DownloadsService {
   /// item to be deleted but may not result in deletion actually occurring as the
   /// item may be required by other collections.
   Future<void> deleteDownload({required DownloadStub stub}) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    final benchmarkCleanup = await benchmark.isDownloadCleanupTarget(stub.id);
+    if (benchmarkCleanup) {
+      await benchmark.markDownloadCleanupStarted();
+    }
     DownloadItem? canonItem;
     _isar.writeTxnSync(() {
       var anchorItem = _anchor.asItem(null);
@@ -503,6 +517,9 @@ class DownloadsService {
       _userDeleteRunning = false;
     }
     restartDownloads();
+    if (benchmarkCleanup) {
+      await benchmark.markDownloadCleanupCompleted();
+    }
   }
 
   /// Re-syncs every download node.
