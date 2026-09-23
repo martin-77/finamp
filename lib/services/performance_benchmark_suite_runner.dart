@@ -307,6 +307,7 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(
         phase: "post-restart",
       );
+      recorder.reportStartupNetworkSummary();
       recorder.diagnostic("post-restart-startup-quiescent");
 
       var stage = await recorder.getSuiteStage();
@@ -438,6 +439,7 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(
         phase: "main-cold-process",
       );
+      recorder.reportStartupNetworkSummary();
       recorder.diagnostic("startup-baseline-complete");
 
       var stage = await recorder.getSuiteStage();
@@ -2131,6 +2133,7 @@ class PerformanceBenchmarkSuiteRunner {
         await _waitForStartupReady(
           phase: "offline-bench1000-cold-process",
         );
+        recorder.reportStartupNetworkSummary();
 
         final item = await container.read(
           itemByIdProvider(BaseItemId(target.itemId)).future,
