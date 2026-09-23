@@ -432,6 +432,20 @@ class QueueService {
       return currentCount;
     }
 
+    if (currentCount > 0) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "queue-restore-explicit-clearing-partial-active-queue",
+        values: {
+          "storedTrackCount": info.trackCount,
+          "activeTrackCount": currentCount,
+        },
+      );
+      // stopAndClearQueue does not replace the persisted "latest" snapshot
+      // while a restored queue is still pending save, so the original
+      // benchmark snapshot remains available for the deterministic retry.
+      await stopAndClearQueue();
+    }
+
     final stopwatch = Stopwatch()..start();
     try {
       await loadSavedQueue(info);
