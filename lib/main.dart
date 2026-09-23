@@ -120,6 +120,7 @@ import 'setup_logging.dart';
 
 final _mainLog = Logger("Main()");
 late DateTime startTime;
+late Stopwatch benchmarkStartupStopwatch;
 
 final providerScopeKey = GlobalKey();
 
@@ -136,6 +137,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
 
   try {
     startTime = DateTime.now();
+    benchmarkStartupStopwatch = Stopwatch()..start();
     await setupLogging();
     await _setupEdgeToEdgeOverlayStyle();
     _mainLog.info("Setup edge-to-edge overlay");
@@ -281,11 +283,19 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
   if (!integrationTesting) {
     PerformanceBenchmarkService.instance.diagnostic(
       "startup-main-init-complete",
+      values: {
+        "processElapsedMs":
+            benchmarkStartupStopwatch.elapsedMicroseconds / 1000.0,
+      },
     );
     runApp(const Finamp());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PerformanceBenchmarkService.instance.diagnostic(
         "startup-first-frame",
+        values: {
+          "processElapsedMs":
+              benchmarkStartupStopwatch.elapsedMicroseconds / 1000.0,
+        },
       );
     });
     PerformanceBenchmarkSuiteRunner.instance.arm();
