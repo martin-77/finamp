@@ -391,6 +391,16 @@ Future<void> _setupDownloadsHelper() async {
         final benchmark = PerformanceBenchmarkService.instance;
         final suiteStage = await benchmark.getSuiteStage();
         if (suiteStage == null) {
+          final metadataStub = DownloadStub.fromFinampCollection(
+            FinampCollection(
+              type: FinampCollectionType.allPlaylistsMetadata,
+            ),
+          );
+          await benchmark.setDownloadCleanupRequired(
+            targetAlias: "all-playlists-metadata",
+            targetItemId: metadataStub.id,
+            targetItemType: metadataStub.type.name,
+          );
           benchmark.markStartupPlaylistMetadataWorkRan();
           try {
             await benchmark.runStartupTask(
