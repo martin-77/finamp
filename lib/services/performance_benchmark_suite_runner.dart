@@ -15,6 +15,7 @@ import 'package:finamp/screens/genre_screen.dart';
 import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
+import 'package:finamp/services/keep_screen_on_helper.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/music_providers.dart';
 import 'package:finamp/services/performance_benchmark_service.dart';
@@ -96,6 +97,8 @@ class PerformanceBenchmarkSuiteRunner {
   Future<void> _armAsync() async {
     final recorder = PerformanceBenchmarkService.instance;
     recorder.startHeartbeat();
+    GetIt.instance<KeepScreenOnHelper>()
+        .setPerformanceBenchmarkOverride(true);
     final stage = await recorder.getSuiteStage();
 
     recorder.diagnostic(
@@ -184,6 +187,8 @@ class PerformanceBenchmarkSuiteRunner {
 
     if (stage == "complete") {
       recorder.diagnostic("suite-already-complete");
+      GetIt.instance<KeepScreenOnHelper>()
+          .setPerformanceBenchmarkOverride(false);
       recorder.stopHeartbeat();
       return;
     }
@@ -294,6 +299,8 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _bestEffortTerminalCleanupAndRestore() async {
     final recorder = PerformanceBenchmarkService.instance;
+    GetIt.instance<KeepScreenOnHelper>()
+        .setPerformanceBenchmarkOverride(false);
 
     try {
       await _recoverPendingDownloadCleanup();
@@ -761,6 +768,8 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-complete",
         values: {"phase": "full-baseline"},
       );
+      GetIt.instance<KeepScreenOnHelper>()
+          .setPerformanceBenchmarkOverride(false);
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } catch (error) {
