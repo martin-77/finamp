@@ -656,7 +656,7 @@ class PerformanceBenchmarkSuiteRunner {
         timeout: const Duration(seconds: 120),
         operation: () => recorder.requestUiTab(
           contentType: tab,
-          refresh: mode == "refreshed-view",
+          refresh: mode.contains("refreshed"),
           timeout: const Duration(seconds: 115),
         ),
       );
