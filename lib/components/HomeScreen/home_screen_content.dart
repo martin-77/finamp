@@ -90,12 +90,17 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     _activeBenchmarkTab = command;
     _benchmarkDataMarked = false;
     _benchmarkFrameScheduled = false;
-    PerformanceBenchmarkService.instance.mark(
-      "ui-tab-refresh-start",
-      values: {"contentType": "home"},
-    );
     if (command.refresh) {
+      PerformanceBenchmarkService.instance.mark(
+        "ui-tab-refresh-start",
+        values: {"contentType": "home"},
+      );
       unawaited(_refresh());
+    } else {
+      PerformanceBenchmarkService.instance.mark(
+        "ui-tab-warm-state-reused",
+        values: {"contentType": "home"},
+      );
     }
   }
 
