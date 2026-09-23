@@ -112,6 +112,13 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
+    if (stage == "offline-bench1000-running") {
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runOfflineBench1000PostRestart());
+      });
+      return;
+    }
+
     if (stage == "cold-start-prepared") {
       await recorder.setSuiteStage("main-running");
       GetIt.instance<FinampUserHelper>().runUserHook(() {
@@ -1250,7 +1257,10 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       try {
-        await _runDownloadLifecycle(alias, expectedTracks);
+        final completed = await _runDownloadLifecycle(alias, expectedTracks);
+        if (!completed) {
+          return stage;
+        }
       } catch (error) {
         recorder.diagnostic(
           "download-target-phase-error",
@@ -1272,7 +1282,7 @@ class PerformanceBenchmarkSuiteRunner {
     return stage;
   }
 
-  Future<void> _runDownloadLifecycle(
+  Future<bool> _runDownloadLifecycle(
     String targetAlias,
     int expectedTracks,
   ) async {
@@ -1285,7 +1295,7 @@ class PerformanceBenchmarkSuiteRunner {
         "download-target-missing",
         values: {"targetAlias": targetAlias},
       );
-      return;
+      return true;
     }
 
     final item = await container.read(
@@ -1296,7 +1306,7 @@ class PerformanceBenchmarkSuiteRunner {
         "download-target-unresolvable",
         values: {"targetAlias": targetAlias},
       );
-      return;
+      return true;
     }
 
     final stub = DownloadStub.fromItem(
@@ -1420,6 +1430,29 @@ class PerformanceBenchmarkSuiteRunner {
         (onlineTracks?.isNotEmpty ?? false) ? onlineTracks!.first.name : null;
 
     final previousOffline = FinampSettingsHelper.finampSettings.isOffline;
+
+    if (targetAlias == "bench-1000") {
+      await recorder.saveOriginalOfflineState(previousOffline);
+      FinampSetters.setIsOffline(true);
+      await recorder.setSuiteStage("offline-bench1000-running");
+      recorder.diagnostic(
+        "offline-mode-forced",
+        values: {
+          "targetAlias": targetAlias,
+          "processRestart": true,
+        },
+      );
+      recorder.diagnostic(
+        "host-restart-requested",
+        values: {
+          "reason": "offline-bench1000-cold-process",
+          "nextStage": "offline-bench1000-running",
+        },
+      );
+      await recorder.flushHostStream();
+      return false;
+    }
+
     try {
       FinampSetters.setIsOffline(true);
       recorder.diagnostic(
@@ -1640,6 +1673,101 @@ class PerformanceBenchmarkSuiteRunner {
     } catch (_) {
       rethrow;
     }
+
+    return true;
+  }
+
+  Future<void> _runOfflineBench1000PostRestart() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    const targetAlias = "bench-1000";
+
+    try {
+      // Do not run generic pending-download recovery here: the retained
+      // benchmark download is intentional and is exactly what this process
+      // needs to exercise.
+      await WidgetsBinding.instance.endOfFrame;
+      await _waitForStartupReady(
+        phase: "offline-bench1000-cold-process",
+      );
+
+      final target = await recorder.getTarget(targetAlias);
+      if (target == null) {
+        throw StateError("Offline benchmark target is unavailable");
+      }
+
+      final container = GetIt.instance<ProviderContainer>();
+      final item = await container.read(
+        itemByIdProvider(BaseItemId(target.itemId)).future,
+      );
+      if (item == null) {
+        throw StateError("Offline benchmark item is unavailable");
+      }
+
+      final downloads = GetIt.instance<DownloadsService>();
+      final stub = DownloadStub.fromItem(
+        type: DownloadItemType.collection,
+        item: item,
+      );
+      final tracks = await downloads.getCollectionTracks(
+        item,
+        playable: true,
+      );
+      final privateOfflineSearchQuery =
+          tracks.isNotEmpty ? tracks.first.name : null;
+
+      await _runOfflineDownloadedScenarios(
+        targetAlias: targetAlias,
+        item: item,
+        privateOfflineSearchQuery: privateOfflineSearchQuery,
+        coldProcess: true,
+      );
+
+      final originalOffline =
+          await recorder.getOriginalOfflineState() ?? false;
+      FinampSetters.setIsOffline(originalOffline);
+      recorder.diagnostic(
+        "offline-mode-restored",
+        values: {
+          "targetAlias": targetAlias,
+          "restoredOffline": originalOffline,
+          "afterProcessRestart": true,
+        },
+      );
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      await _cleanupDownloadedBenchmarkTarget(
+        targetAlias: targetAlias,
+        stub: stub,
+        downloads: downloads,
+      );
+      await recorder.clearOriginalOfflineState();
+
+      await recorder.setSuiteStage("main-download-bench1000-done");
+      await recorder.setSuiteStage("main-download-done");
+      recorder.diagnostic(
+        "host-restart-requested",
+        values: {
+          "reason": "return-online-after-offline-cold-process",
+          "nextStage": "main-download-done",
+        },
+      );
+      await recorder.flushHostStream();
+    } catch (error) {
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "offline-bench1000-cold-process",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+    } finally {
+      _running = false;
+    }
   }
 
   Future<void> _waitForDownloadComplete(
@@ -1701,7 +1829,6 @@ class PerformanceBenchmarkSuiteRunner {
       ("detail-track", "track"),
       ("detail-album", "album"),
       ("detail-artist", "artist"),
-      ("detail-genre", "genre"),
       ("detail-genre", "genre"),
       ("search-track-iron-maiden", "track"),
       ("search-album-iron-maiden", "album"),
