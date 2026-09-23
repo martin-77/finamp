@@ -501,6 +501,51 @@ class PerformanceBenchmarkService {
     unawaited(_persistActiveRun());
   }
 
+  void incrementMetricBuffered(String name, [int amount = 1]) {
+    final run = _activeRun;
+    if (run == null) return;
+    final current = run.metrics[name];
+    run.setMetric(name, (current is int ? current : 0) + amount);
+  }
+
+  void maxMetricBuffered(String name, num value) {
+    final run = _activeRun;
+    if (run == null) return;
+    final current = run.metrics[name];
+    if (current is! num || value > current) {
+      run.setMetric(name, value);
+    }
+  }
+
+  void recordFrameTimings(List<FrameTiming> timings) {
+    final run = _activeRun;
+    if (run == null) return;
+
+    for (final timing in timings) {
+      final buildMicros = timing.buildDuration.inMicroseconds;
+      final rasterMicros = timing.rasterDuration.inMicroseconds;
+      final totalMicros = timing.totalSpan.inMicroseconds;
+
+      incrementMetricBuffered("frameCount");
+      incrementMetricBuffered("frameBuildMicrosTotal", buildMicros);
+      incrementMetricBuffered("frameRasterMicrosTotal", rasterMicros);
+      incrementMetricBuffered("frameTotalMicrosTotal", totalMicros);
+      maxMetricBuffered("frameBuildMicrosMax", buildMicros);
+      maxMetricBuffered("frameRasterMicrosMax", rasterMicros);
+      maxMetricBuffered("frameTotalMicrosMax", totalMicros);
+
+      if (totalMicros > 16667) {
+        incrementMetricBuffered("framesOver16_7ms");
+      }
+      if (totalMicros > 33333) {
+        incrementMetricBuffered("framesOver33_3ms");
+      }
+      if (totalMicros > 50000) {
+        incrementMetricBuffered("framesOver50ms");
+      }
+    }
+  }
+
   void incrementMetric(String name, [int amount = 1]) {
     final run = _activeRun;
     if (run == null) return;
@@ -559,10 +604,18 @@ class PerformanceBenchmarkService {
     _networkRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
+    incrementMetricBuffered("httpRequestCount");
+    maxMetricBuffered("httpMaxConcurrentRequests", _networkRequestsInFlight);
   }
 
-  void networkRequestCompleted() {
+  void networkRequestCompleted({int? responseBytes}) {
     if (!enabled) return;
+    if (responseBytes != null && responseBytes >= 0) {
+      incrementMetricBuffered("httpResponseBytes", responseBytes);
+      incrementMetricBuffered("httpResponsesWithKnownBytes");
+    } else {
+      incrementMetricBuffered("httpResponsesUnknownBytes");
+    }
     if (_networkRequestsInFlight > 0) {
       _networkRequestsInFlight--;
     }
