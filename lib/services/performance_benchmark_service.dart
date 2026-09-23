@@ -271,6 +271,8 @@ class PerformanceBenchmarkService {
   static const _runKeyPrefix = "run:";
   static const _activeRunKey = "active-run";
   static const _cleanupRequiredKey = "cleanup-required";
+  static String get _originalOfflineKey =>
+      "original-offline:$suiteRunId";
   static String get _hostStreamFileName =>
       "finamp-benchmark-stream-$variant-$suiteRunId.jsonl";
   static String get _suiteStageFileName =>
@@ -1154,6 +1156,23 @@ class PerformanceBenchmarkService {
     await box.delete(_activeRunKey);
     _emitHostRecord("run-end", {"run": run.toJson()});
     _activeRun = null;
+  }
+
+  Future<void> saveOriginalOfflineState(bool value) async {
+    final box = await _getBox();
+    await box.put(_originalOfflineKey, jsonEncode(value));
+  }
+
+  Future<bool?> getOriginalOfflineState() async {
+    final box = await _getBox();
+    final encoded = box.get(_originalOfflineKey);
+    if (encoded == null) return null;
+    return jsonDecode(encoded) as bool;
+  }
+
+  Future<void> clearOriginalOfflineState() async {
+    final box = await _getBox();
+    await box.delete(_originalOfflineKey);
   }
 
   Future<void> setDownloadCleanupRequired({
