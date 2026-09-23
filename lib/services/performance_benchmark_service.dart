@@ -614,15 +614,12 @@ class PerformanceBenchmarkService {
       return null;
     }
 
-    final capturedFailure = recovered["failure"];
     recovered["finished"] = true;
     recovered["result"] = PerformanceBenchmarkResult.unexpectedExit.name;
     recovered["recoveredAt"] = DateTime.now().toUtc().toIso8601String();
     recovered["failure"] = {
       "type": "unexpected-exit",
-      "message": "Previous benchmark process ended without completing the active run.",
       "lastStep": recovered["lastStep"],
-      if (capturedFailure != null) "capturedFailure": capturedFailure,
     };
 
     final id = recovered["id"] as String;
