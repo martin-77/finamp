@@ -56,6 +56,7 @@ def main():
     queue_restores = []
     queue_restore_content = []
     startup_network = []
+    startup_phase_results = []
     startup_frames = []
     startup_image_cache = []
     phase_memory = []
@@ -131,6 +132,31 @@ def main():
                     "workerOperationFailed": values.get("workerOperationFailed"),
                     "workerDurationMicrosTotal": values.get("workerDurationMicrosTotal"),
                     "workerDurationMicrosMax": values.get("workerDurationMicrosMax"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name == "startup-phase-result":
+                startup_phase_results.append({
+                    "phase": values.get("phase"),
+                    "fullyReadyMs": values.get("fullyReadyMs"),
+                    "requestCount": values.get("requestCount"),
+                    "responseBytes": values.get("responseBytes"),
+                    "httpDurationMicrosTotal": values.get("httpDurationMicrosTotal"),
+                    "httpDurationMicrosMax": values.get("httpDurationMicrosMax"),
+                    "workerOperationCount": values.get("workerOperationCount"),
+                    "workerOperationFailed": values.get("workerOperationFailed"),
+                    "workerDurationMicrosTotal": values.get("workerDurationMicrosTotal"),
+                    "workerDurationMicrosMax": values.get("workerDurationMicrosMax"),
+                    "frameCount": values.get("frameCount"),
+                    "framesOver16_7ms": values.get("framesOver16_7ms"),
+                    "framesOver33_3ms": values.get("framesOver33_3ms"),
+                    "framesOver50ms": values.get("framesOver50ms"),
+                    "frameMicrosMax": values.get("frameMicrosMax"),
+                    "imageLoadStarted": values.get("imageLoadStarted"),
+                    "imageLoadCompleted": values.get("imageLoadCompleted"),
+                    "imageLoadFailed": values.get("imageLoadFailed"),
+                    "imageMaxConcurrentLoads": values.get("imageMaxConcurrentLoads"),
+                    "rssBytes": values.get("rssBytes"),
+                    "maxRssBytes": values.get("maxRssBytes"),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name == "startup-frame-summary":
@@ -320,6 +346,7 @@ def main():
         "completedPhases": phases,
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
+        "startupPhaseResults": startup_phase_results,
         "startupFrames": startup_frames,
         "startupImageCache": startup_image_cache,
         "phaseMemory": phase_memory,
@@ -409,6 +436,32 @@ def main():
             )
     else:
         lines.append("|  |  |")
+
+    lines.extend([
+        "",
+        "## Startup phase comparison",
+        "",
+        "| Phase | Fully ready ms | Requests | HTTP total ms | Worker total ms | >50ms frames | Max frame ms | Image loads | RSS MiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    if startup_phase_results:
+        for item in startup_phase_results:
+            http_total_us = item.get("httpDurationMicrosTotal")
+            worker_total_us = item.get("workerDurationMicrosTotal")
+            frame_max_us = item.get("frameMicrosMax")
+            rss_bytes = item.get("rssBytes")
+            http_total_ms = "" if not isinstance(http_total_us, (int, float)) else round(http_total_us / 1000.0, 3)
+            worker_total_ms = "" if not isinstance(worker_total_us, (int, float)) else round(worker_total_us / 1000.0, 3)
+            frame_max_ms = "" if not isinstance(frame_max_us, (int, float)) else round(frame_max_us / 1000.0, 3)
+            rss_mib = "" if not isinstance(rss_bytes, (int, float)) else round(rss_bytes / (1024 * 1024), 3)
+            lines.append(
+                f"| {item.get('phase', '')} | {item.get('fullyReadyMs', '')} | "
+                f"{item.get('requestCount', '')} | {http_total_ms} | {worker_total_ms} | "
+                f"{item.get('framesOver50ms', '')} | {frame_max_ms} | "
+                f"{item.get('imageLoadStarted', '')} | {rss_mib} |"
+            )
+    else:
+        lines.append("|  |  |  |  |  |  |  |  |  |")
 
     lines.extend([
         "",
