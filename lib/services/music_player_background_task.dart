@@ -513,6 +513,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
       );
     });
 
+    String? benchmarkReadyRunId;
     String? benchmarkPlayingRunId;
     String? benchmarkPositionRunId;
     String? benchmarkUsefulBufferRunId;
@@ -590,6 +591,15 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     // Special processing for state transitions.
     _player.processingStateStream.listen((event) async {
+      if (event == ProcessingState.ready) {
+        final run = activePlaybackBenchmarkRun();
+        if (run != null && benchmarkReadyRunId != run.id) {
+          benchmarkReadyRunId = run.id;
+          PerformanceBenchmarkService.instance.mark(
+            "player-processing-ready",
+          );
+        }
+      }
       if (event == ProcessingState.completed) {
         await handleEndOfQueue();
       }
