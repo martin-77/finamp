@@ -182,8 +182,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   void _recordBenchmarkSortConfiguration() {
     final benchmark = PerformanceBenchmarkService.instance;
-    benchmark.metric("sortBy", widget.sortConfig.sortBy.name);
-    benchmark.metric("sortOrder", widget.sortConfig.sortOrder.name);
+    benchmark.metric(
+      "sortBy",
+      widget.sortConfig.sortBy?.name ?? "none",
+    );
+    benchmark.metric(
+      "sortOrder",
+      widget.sortConfig.sortOrder?.name ?? "none",
+    );
   }
 
   bool _matchesBenchmarkTab(PerformanceBenchmarkTabCommand command) {
