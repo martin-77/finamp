@@ -166,9 +166,23 @@ def main():
         numeric_metrics = defaultdict(list)
         event_elapsed = defaultdict(list)
         for run in runs:
-            for metric_name, metric_value in (run.get("metrics") or {}).items():
+            run_metrics = run.get("metrics") or {}
+            for metric_name, metric_value in run_metrics.items():
                 if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                     numeric_metrics[metric_name].append(float(metric_value))
+
+            if str(run.get("scenario", "")).startswith("collection-page-"):
+                worker_us = run_metrics.get("workerDurationMicrosTotal")
+                http_us = run_metrics.get("httpDurationMicrosTotal")
+                if (
+                    isinstance(worker_us, (int, float))
+                    and not isinstance(worker_us, bool)
+                    and isinstance(http_us, (int, float))
+                    and not isinstance(http_us, bool)
+                ):
+                    numeric_metrics["apiNonHttpMicrosApprox"].append(
+                        float(max(0, worker_us - http_us))
+                    )
             for event in run.get("events") or []:
                 event_name = event.get("name")
                 elapsed = event.get("elapsedMicros")
@@ -514,6 +528,32 @@ def main():
             )
     else:
         lines.append("| none |  |  |  |  |  |  |  |  |  |")
+
+    api_groups = [
+        item for item in summary_groups
+        if item["scenario"].startswith("collection-page-")
+    ]
+    lines.extend([
+        "",
+        "## Direct API timing breakdown",
+        "",
+        "Worker non-HTTP time is an approximation: worker-isolate duration minus measured HTTP duration for the direct API run.",
+        "",
+        "| Scenario | Mode | Median total ms | HTTP ms med | Worker ms med | Approx non-HTTP ms med |",
+        "|---|---|---:|---:|---:|---:|",
+    ])
+    for item in api_groups:
+        metrics = item.get("numericMetrics") or {}
+        http_us = metrics.get("httpDurationMicrosTotal", {}).get("median")
+        worker_us = metrics.get("workerDurationMicrosTotal", {}).get("median")
+        non_http_us = metrics.get("apiNonHttpMicrosApprox", {}).get("median")
+        lines.append(
+            f"| {item['scenario']} | {item['mode']} | "
+            f"{'' if item['medianMs'] is None else f'{item['medianMs']:.3f}'} | "
+            f"{'' if http_us is None else round(http_us / 1000.0, 3)} | "
+            f"{'' if worker_us is None else round(worker_us / 1000.0, 3)} | "
+            f"{'' if non_http_us is None else round(non_http_us / 1000.0, 3)} |"
+        )
 
     problem_groups = [
         item for item in summary_groups
