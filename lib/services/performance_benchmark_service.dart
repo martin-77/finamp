@@ -307,6 +307,7 @@ class PerformanceBenchmarkService {
       StreamController<int>.broadcast();
   String? _httpFirstRequestRunId;
   String? _httpFirstResponseRunId;
+  String? _playbackSourceRunId;
   bool _startupPlaylistMetadataWorkRan = false;
   int _startupNetworkRequestCount = 0;
   int _startupNetworkResponseBytes = 0;
@@ -668,6 +669,32 @@ class PerformanceBenchmarkService {
     if (current is! num || value > current) {
       run.setMetric(name, value);
     }
+  }
+
+  void reportPlaybackSourceSelected({
+    required String source,
+    String? serverTarget,
+    required bool transcoded,
+    required bool offline,
+  }) {
+    if (!enabled) return;
+    final run = _activeRun;
+    if (run == null || _playbackSourceRunId == run.id) return;
+    _playbackSourceRunId = run.id;
+
+    mark(
+      "playback-source-selected",
+      values: {
+        "source": source,
+        if (serverTarget != null) "serverTarget": serverTarget,
+        "transcoded": transcoded,
+        "offline": offline,
+      },
+    );
+    metric("playbackSourceLocalFile", source == "downloaded-file");
+    metric("playbackSourceServer", source == "server");
+    metric("playbackSourceTranscoded", transcoded);
+    metric("playbackSourceOffline", offline);
   }
 
   void recordFrameTimings(List<FrameTiming> timings) {
