@@ -25,7 +25,7 @@ allowed = {
     "?? pubspec_overrides.yaml",
 }
 for line in sys.stdin:
-    line = line.rstrip("\\n")
+    line = line.rstrip("\n")
     if line and line not in allowed:
         print(line)
 ')"
