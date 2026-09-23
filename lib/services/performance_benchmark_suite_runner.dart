@@ -65,6 +65,23 @@ class PerformanceBenchmarkSuiteRunner {
     return currentIndex >= 0 && targetIndex >= 0 && currentIndex >= targetIndex;
   }
 
+  static const _postStageOrder = <String>[
+    "post-restart-running",
+    "post-api-done",
+    "post-ui-done",
+    "post-detail-done",
+    "post-metadata-done",
+  ];
+
+  bool _postStageAtOrAfter(String? current, String target) {
+    final currentIndex =
+        _postStageOrder.indexOf(current ?? "post-restart-running");
+    final targetIndex = _postStageOrder.indexOf(target);
+    return currentIndex >= 0 &&
+        targetIndex >= 0 &&
+        currentIndex >= targetIndex;
+  }
+
   void arm() {
     if (!PerformanceBenchmarkService.enabled || _armed) return;
     _armed = true;
@@ -120,7 +137,7 @@ class PerformanceBenchmarkSuiteRunner {
     // A main-* stage means a previous process ended unexpectedly after
     // one or more durable phase checkpoints. Recovery records the interrupted
     // active run in main(); the suite resumes at the first unfinished phase.
-    if (stage == "post-restart-running") {
+    if (stage.startsWith("post-")) {
       GetIt.instance<FinampUserHelper>().runUserHook(() {
         unawaited(_runPostRestartPhase());
       });
@@ -219,76 +236,97 @@ class PerformanceBenchmarkSuiteRunner {
       );
       recorder.diagnostic("post-restart-startup-quiescent");
 
-      await _runCollectionFirstPageBaselines();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "post-restart-api-cache"},
-      );
+      var stage = await recorder.getSuiteStage();
 
-      for (final tab in const <String>[
-        "home",
-        "albums",
-        "artists",
-        "playlists",
-        "tracks",
-        "genres",
-      ]) {
-        await _runUiTabBaseline(
-          tab,
-          mode: "post-restart-refreshed",
-          round: 1,
+      if (!_postStageAtOrAfter(stage, "post-api-done")) {
+        await _runCollectionFirstPageBaselines();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "post-restart-api-cache"},
         );
-        await Future<void>.delayed(const Duration(seconds: 3));
-        await _runUiTabBaseline(
-          tab,
-          mode: "post-restart-warm",
-          round: 1,
-        );
-        await Future<void>.delayed(const Duration(seconds: 3));
+        await recorder.setSuiteStage("post-api-done");
+        stage = "post-api-done";
       }
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "post-restart-ui-cache"},
-      );
 
-      for (final alias in const <String>[
-        "detail-album",
-        "detail-artist",
-        "detail-genre",
-        "bench-100",
-      ]) {
-        final detailType = alias == "detail-album"
-            ? "album"
-            : alias == "detail-artist"
-            ? "artist"
-            : alias == "detail-genre"
-            ? "genre"
-            : "playlist";
-        await _runDetailBaseline(
-          targetAlias: alias,
-          detailType: detailType,
-          mode: "post-restart-refreshed",
-          refresh: true,
+      if (!_postStageAtOrAfter(stage, "post-ui-done")) {
+        for (final tab in const <String>[
+          "home",
+          "albums",
+          "artists",
+          "playlists",
+          "tracks",
+          "genres",
+        ]) {
+          await _runUiTabBaseline(
+            tab,
+            mode: "post-restart-refreshed",
+            round: 1,
+          );
+          await _settleUi(
+            schedulerCooldown: const Duration(seconds: 2),
+          );
+          await _runUiTabBaseline(
+            tab,
+            mode: "post-restart-warm",
+            round: 1,
+          );
+          await _settleUi(
+            schedulerCooldown: const Duration(seconds: 2),
+          );
+        }
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "post-restart-ui-cache"},
         );
-        await Future<void>.delayed(const Duration(seconds: 2));
-        await _runDetailBaseline(
-          targetAlias: alias,
-          detailType: detailType,
-          mode: "post-restart-warm",
-          refresh: false,
-        );
-        await Future<void>.delayed(const Duration(seconds: 2));
+        await recorder.setSuiteStage("post-ui-done");
+        stage = "post-ui-done";
       }
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "post-restart-detail-cache"},
-      );
 
-      await _runOneTimePlaylistMetadataBaseline();
-      recorder.diagnostic(
-        "suite-phase-complete",
-        values: {"phase": "one-time-playlist-metadata-sync"},
-      );
+      if (!_postStageAtOrAfter(stage, "post-detail-done")) {
+        for (final alias in const <String>[
+          "detail-album",
+          "detail-artist",
+          "detail-genre",
+          "bench-100",
+        ]) {
+          final detailType = alias == "detail-album"
+              ? "album"
+              : alias == "detail-artist"
+              ? "artist"
+              : alias == "detail-genre"
+              ? "genre"
+              : "playlist";
+          await _runDetailBaseline(
+            targetAlias: alias,
+            detailType: detailType,
+            mode: "post-restart-refreshed",
+            refresh: true,
+          );
+          await _settleUi();
+          await _runDetailBaseline(
+            targetAlias: alias,
+            detailType: detailType,
+            mode: "post-restart-warm",
+            refresh: false,
+          );
+          await _settleUi();
+        }
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "post-restart-detail-cache"},
+        );
+        await recorder.setSuiteStage("post-detail-done");
+        stage = "post-detail-done";
+      }
+
+      if (!_postStageAtOrAfter(stage, "post-metadata-done")) {
+        await _runOneTimePlaylistMetadataBaseline();
+        recorder.diagnostic(
+          "suite-phase-complete",
+          values: {"phase": "one-time-playlist-metadata-sync"},
+        );
+        await recorder.setSuiteStage("post-metadata-done");
+      }
 
       await recorder.setSuiteStage("complete");
       recorder.diagnostic(
