@@ -13,6 +13,7 @@ import 'package:finamp/services/current_track_metadata_provider.dart';
 import 'package:finamp/services/favorite_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/playback_history_service.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:finamp/services/queue_service.dart';
 import 'package:finamp/services/radio_service_helper.dart' as RadioServiceHelper;
 import 'package:flutter/foundation.dart';
@@ -506,10 +507,37 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     _player.errorStream.listen((error) {
       _audioServiceBackgroundTaskLogger.severe("Player error: $error", error);
+      PerformanceBenchmarkService.instance.mark(
+        "player-error",
+        values: {"errorType": error.runtimeType.toString()},
+      );
+    });
+
+    bool benchmarkSawPlaying = false;
+    bool benchmarkSawPositionAdvance = false;
+    _player.playingStream.listen((playing) {
+      if (playing && !benchmarkSawPlaying) {
+        benchmarkSawPlaying = true;
+        PerformanceBenchmarkService.instance.mark("player-playing");
+      }
+      if (!playing) {
+        benchmarkSawPlaying = false;
+        benchmarkSawPositionAdvance = false;
+      }
     });
 
     // trigger sleep timer early if we're almost at the end of the final track
     _player.positionStream.listen((position) {
+      if (_player.playing && position > Duration.zero && !benchmarkSawPositionAdvance) {
+        benchmarkSawPositionAdvance = true;
+        PerformanceBenchmarkService.instance.mark(
+          "player-first-position-advance",
+          values: {
+            "positionMs": position.inMilliseconds,
+            "bufferedPositionMs": _player.bufferedPosition.inMilliseconds,
+          },
+        );
+      }
       if (sleepTimer?.remainingTracks == 1 &&
           ((mediaItem.value?.duration ?? Duration.zero) - position).inMilliseconds / _player.speed <=
               // even if fade out is disabled, we stop a bit early to avoid advancing to the next track
