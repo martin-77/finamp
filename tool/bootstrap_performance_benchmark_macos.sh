@@ -19,15 +19,31 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "Run this inside the
 # real source changes. These files may be required for local signing/build setup.
 dirty_lines="$(git status --porcelain | python3 -c '
 import sys
-allowed = {
+allowed_exact = {
+    " M ios/Podfile.lock",
+    " M ios/Runner.xcodeproj/project.pbxproj",
+    " D ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    " D ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    " M ios/Runner/Info-Debug.plist",
+    " M ios/Runner/Info-Profile.plist",
+    " M ios/Runner/Info-Release.plist",
+    " M pubspec.lock",
     "?? ios/Runner/RunnerDebug.entitlements",
     "?? ios/Runner/RunnerRelease.entitlements",
     "?? pubspec_overrides.yaml",
 }
+allowed_prefixes = (
+    "?? benchmark-results/",
+)
 for line in sys.stdin:
     line = line.rstrip("\n")
-    if line and line not in allowed:
-        print(line)
+    if not line:
+        continue
+    if line in allowed_exact:
+        continue
+    if any(line.startswith(prefix) for prefix in allowed_prefixes):
+        continue
+    print(line)
 ')"
 if [[ -n "$dirty_lines" ]]; then
   printf '%s\n' "$dirty_lines" >&2
