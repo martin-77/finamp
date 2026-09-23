@@ -74,7 +74,10 @@ flutter pub get
 step "Static benchmark preflight"
 flutter analyze --no-fatal-infos --no-fatal-warnings
 
-python3 -m py_compile tool/summarize_performance_benchmark.py
+python3 -m py_compile \
+  tool/summarize_performance_benchmark.py \
+  tool/test_performance_benchmark_summary.py
+python3 tool/test_performance_benchmark_summary.py
 bash -n tool/run_performance_benchmark.sh
 bash -n tool/bootstrap_performance_benchmark_macos.sh
 
