@@ -156,14 +156,14 @@ class JellyfinApiHelper {
     final benchmarkStopwatch = PerformanceBenchmarkService.enabled
         ? (Stopwatch()..start())
         : null;
-    benchmark.backgroundApiOperationStarted();
+    benchmark.workerOperationStarted();
 
     final port = ReceivePort();
     try {
       _workerIsolatePort!.send((func, port.sendPort));
       final dynamic output = await port.first;
       benchmarkStopwatch?.stop();
-      benchmark.backgroundApiOperationCompleted(
+      benchmark.workerOperationCompleted(
         durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
         failed: output is! T,
       );
@@ -174,7 +174,7 @@ class JellyfinApiHelper {
     } catch (error) {
       if (benchmarkStopwatch?.isRunning ?? false) {
         benchmarkStopwatch!.stop();
-        benchmark.backgroundApiOperationCompleted(
+        benchmark.workerOperationCompleted(
           durationMicros: benchmarkStopwatch.elapsedMicroseconds,
           failed: true,
         );
