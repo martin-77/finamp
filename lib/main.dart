@@ -390,7 +390,19 @@ Future<void> _setupDownloadsHelper() async {
       if (PerformanceBenchmarkService.enabled) {
         final benchmark = PerformanceBenchmarkService.instance;
         final suiteStage = await benchmark.getSuiteStage();
-        if (suiteStage == null) {
+        final pendingCleanup =
+            await benchmark.getDownloadCleanupRequirement();
+        final pendingCleanupOwner =
+            pendingCleanup?["ownerSuiteRunId"] as String?;
+        final cleanupFromDifferentSuite = pendingCleanup != null &&
+            pendingCleanupOwner != PerformanceBenchmarkService.suiteRunId;
+
+        if (suiteStage == null && cleanupFromDifferentSuite) {
+          benchmark.diagnostic(
+            "startup-playlist-metadata-work-deferred",
+            values: {"reason": "stale-benchmark-cleanup"},
+          );
+        } else if (suiteStage == null) {
           final metadataStub = DownloadStub.fromFinampCollection(
             FinampCollection(
               type: FinampCollectionType.allPlaylistsMetadata,
