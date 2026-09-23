@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -53,6 +54,15 @@ class PerformanceBenchmarkEvent {
   };
 }
 
+enum PerformanceBenchmarkResult {
+  running,
+  success,
+  failed,
+  timeout,
+  unexpectedExit,
+  cancelled,
+}
+
 class PerformanceBenchmarkRun {
   PerformanceBenchmarkRun({
     required this.id,
@@ -76,8 +86,12 @@ class PerformanceBenchmarkRun {
   final List<PerformanceBenchmarkEvent> events = [];
   final Map<String, Object?> metrics = {};
   bool finished = false;
+  PerformanceBenchmarkResult result = PerformanceBenchmarkResult.running;
+  String? lastStep;
+  Map<String, Object?>? failure;
 
   void mark(String name, {Map<String, Object?> values = const {}}) {
+    lastStep = name;
     events.add(
       PerformanceBenchmarkEvent(
         name: name,
@@ -103,6 +117,9 @@ class PerformanceBenchmarkRun {
     "events": events.map((event) => event.toJson()).toList(),
     "metrics": metrics,
     "finished": finished,
+    "result": result.name,
+    if (lastStep != null) "lastStep": lastStep,
+    if (failure != null) "failure": failure,
   };
 }
 
@@ -114,6 +131,8 @@ class PerformanceBenchmarkService {
   static const _boxName = "PerformanceBenchmark";
   static const _targetKeyPrefix = "target:";
   static const _runKeyPrefix = "run:";
+  static const _activeRunKey = "active-run";
+  static const _cleanupRequiredKey = "cleanup-required";
 
   static final PerformanceBenchmarkService instance = PerformanceBenchmarkService._();
 
@@ -124,6 +143,7 @@ class PerformanceBenchmarkService {
   int _runSequence = 0;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
+  bool get hasActiveRun => _activeRun != null;
 
   Future<Box<String>> _getBox() async {
     final existing = _box;
@@ -173,13 +193,39 @@ class PerformanceBenchmarkService {
         .toList();
   }
 
-  PerformanceBenchmarkRun startRun({
+  Future<Map<String, dynamic>?> recoverInterruptedRun() async {
+    final box = await _getBox();
+    final encoded = box.get(_activeRunKey);
+    if (encoded == null) return null;
+
+    final recovered = jsonDecode(encoded) as Map<String, dynamic>;
+    if (recovered["finished"] == true) {
+      await box.delete(_activeRunKey);
+      return null;
+    }
+
+    recovered["finished"] = true;
+    recovered["result"] = PerformanceBenchmarkResult.unexpectedExit.name;
+    recovered["recoveredAt"] = DateTime.now().toUtc().toIso8601String();
+    recovered["failure"] = {
+      "type": "unexpected-exit",
+      "message": "Previous benchmark process ended without completing the active run.",
+      "lastStep": recovered["lastStep"],
+    };
+
+    final id = recovered["id"] as String;
+    await box.put("$_runKeyPrefix$id", jsonEncode(recovered));
+    await box.delete(_activeRunKey);
+    return recovered;
+  }
+
+  Future<PerformanceBenchmarkRun> startRun({
     required String scenario,
     required String variant,
     required String mode,
     String? targetAlias,
     String? targetType,
-  }) {
+  }) async {
     if (_activeRun != null) {
       throw StateError("A benchmark run is already active");
     }
@@ -198,15 +244,140 @@ class PerformanceBenchmarkService {
     );
     run.mark("run-start");
     _activeRun = run;
+    await _persistActiveRun();
     return run;
   }
 
   void mark(String name, {Map<String, Object?> values = const {}}) {
-    _activeRun?.mark(name, values: values);
+    final run = _activeRun;
+    if (run == null) return;
+    run.mark(name, values: values);
+    unawaited(_persistActiveRun());
   }
 
   void metric(String name, Object? value) {
-    _activeRun?.setMetric(name, value);
+    final run = _activeRun;
+    if (run == null) return;
+    run.setMetric(name, value);
+    unawaited(_persistActiveRun());
+  }
+
+  Future<void> _persistActiveRun() async {
+    final run = _activeRun;
+    if (run == null) return;
+    final box = await _getBox();
+    await box.put(_activeRunKey, jsonEncode(run.toJson()));
+  }
+
+  Future<T> runStep<T>({
+    required String name,
+    required Future<T> Function() operation,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    mark("$name-start");
+    try {
+      final result = await operation().timeout(timeout);
+      mark("$name-end");
+      return result;
+    } on TimeoutException catch (error, stackTrace) {
+      await failActiveRun(
+        result: PerformanceBenchmarkResult.timeout,
+        error: error,
+        stackTrace: stackTrace,
+        step: name,
+      );
+      rethrow;
+    } catch (error, stackTrace) {
+      await failActiveRun(
+        result: PerformanceBenchmarkResult.failed,
+        error: error,
+        stackTrace: stackTrace,
+        step: name,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> recordCrash(
+    Object error,
+    StackTrace stackTrace, {
+    required String source,
+  }) async {
+    final run = _activeRun;
+    if (run == null) return;
+
+    run.failure = {
+      "type": "dart-error",
+      "source": source,
+      "errorType": error.runtimeType.toString(),
+      "message": _sanitizeError(error.toString()),
+      "stackTrace": _sanitizeStack(stackTrace.toString()),
+      "lastStep": run.lastStep,
+    };
+    run.mark("uncaught-error", values: {"source": source});
+    await _persistActiveRun();
+  }
+
+  Future<void> failActiveRun({
+    required PerformanceBenchmarkResult result,
+    required Object error,
+    required StackTrace stackTrace,
+    String? step,
+  }) async {
+    final run = _activeRun;
+    if (run == null) return;
+
+    run.result = result;
+    run.failure = {
+      "type": result.name,
+      "errorType": error.runtimeType.toString(),
+      "message": _sanitizeError(error.toString()),
+      "stackTrace": _sanitizeStack(stackTrace.toString()),
+      "lastStep": step ?? run.lastStep,
+    };
+    run.mark("run-failed", values: {"result": result.name});
+    run.stopwatch.stop();
+    run.finished = true;
+
+    final box = await _getBox();
+    await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
+    await box.delete(_activeRunKey);
+    _activeRun = null;
+  }
+
+  String _sanitizeError(String value) {
+    final oneLine = value.replaceAll(RegExp(r'[\r\n]+'), ' ');
+    return oneLine.length <= 1000 ? oneLine : oneLine.substring(0, 1000);
+  }
+
+  String _sanitizeStack(String value) {
+    return value.length <= 12000 ? value : value.substring(0, 12000);
+  }
+
+  Future<void> setDownloadCleanupRequired({
+    required String targetAlias,
+    bool required = true,
+  }) async {
+    final box = await _getBox();
+    if (required) {
+      await box.put(
+        _cleanupRequiredKey,
+        jsonEncode({
+          "targetAlias": targetAlias,
+          "createdAt": DateTime.now().toUtc().toIso8601String(),
+        }),
+      );
+    } else {
+      await box.delete(_cleanupRequiredKey);
+    }
+  }
+
+  Future<Map<String, dynamic>?> getDownloadCleanupRequirement() async {
+    final box = await _getBox();
+    final encoded = box.get(_cleanupRequiredKey);
+    return encoded == null
+        ? null
+        : jsonDecode(encoded) as Map<String, dynamic>;
   }
 
   Future<PerformanceBenchmarkRun> finishRun({
@@ -223,17 +394,25 @@ class PerformanceBenchmarkService {
     run.mark("run-end");
     run.stopwatch.stop();
     run.finished = true;
+    run.result = PerformanceBenchmarkResult.success;
 
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
+    await box.delete(_activeRunKey);
     _activeRun = null;
     return run;
   }
 
-  void cancelRun() {
+  Future<void> cancelRun() async {
     final run = _activeRun;
     if (run == null) return;
+    run.mark("run-cancelled");
     run.stopwatch.stop();
+    run.finished = true;
+    run.result = PerformanceBenchmarkResult.cancelled;
+    final box = await _getBox();
+    await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
+    await box.delete(_activeRunKey);
     _activeRun = null;
   }
 
@@ -274,7 +453,7 @@ class PerformanceBenchmarkService {
   Future<Uint8List> exportBytes() async {
     final runs = await getRuns();
     final export = {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "generatedAt": DateTime.now().toUtc().toIso8601String(),
       "runs": runs,
     };
