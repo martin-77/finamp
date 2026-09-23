@@ -426,16 +426,18 @@ class PerformanceBenchmarkService {
 
   Future<void> resetHostStream() async {
     if (!enabled) return;
+    _hostWriteChain = _hostWriteChain.then((_) async {
+      final file = _hostStreamFile ??= File(
+        path_helper.join(
+          (await getApplicationDocumentsDirectory()).path,
+          _hostStreamFileName,
+        ),
+      );
+      if (await file.exists()) {
+        await file.delete();
+      }
+    });
     await _hostWriteChain;
-    final file = _hostStreamFile ??= File(
-      path_helper.join(
-        (await getApplicationDocumentsDirectory()).path,
-        _hostStreamFileName,
-      ),
-    );
-    if (await file.exists()) {
-      await file.delete();
-    }
   }
 
   Future<void> flushHostStream() async {
