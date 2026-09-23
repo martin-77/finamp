@@ -66,10 +66,12 @@ and ids are never exported.
    - startup network request count/bytes/duration and queue-restore cost
 
 2. **Direct API reference layer**
-   - Artists / Albums / Tracks / Playlists / Genres first page
-   - repeated warm request
-   - page-size scaling
-   - request count / bytes / decode-provider timing where instrumented
+   - Performing Artists and Album Artists as separate Jellyfin paths
+   - Albums / Tracks / Playlists / Genres
+   - three deterministic rotated rounds
+   - page sizes 25 / 100-first / 100-warm / 500
+   - real background-worker HTTP timing/bytes plus total Worker-isolate duration
+   - approximate non-HTTP Worker overhead = Worker duration - measured HTTP duration
 
 3. **Real MusicScreen UI**
    - Home / Artists / Albums / Tracks / Playlists / Genres
@@ -173,7 +175,7 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | realistic first startup | automated | includes normal playlist-metadata background work, per-process network/frame/RSS summary, then cleans benchmark-owned state |
 | controlled cold process | automated | host restart with preserved auth/settings and cleared image cache |
 | persistent-cache restart | automated | same installed build/container, explicit stage checkpoints |
-| API page-size reference | automated | 25/100/100-warm/500 for major collections |
+| API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown |
 | Home + main tabs | automated | rotated refreshed/warm rounds with first-rendered + quiescent timing |
 | deep paging | automated | repeated real UI next-page actions |
 | Search | automated | Iron Maiden, Metallica, Kettcar + broad query + search paging |
