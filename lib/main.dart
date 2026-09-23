@@ -393,20 +393,13 @@ Future<void> _setupDownloadsHelper() async {
           "default-playlist-metadata-lifecycle",
           () async {
             final suiteStage = await benchmark.getSuiteStage();
-            final pendingCleanup =
-                await benchmark.getDownloadCleanupRequirement();
-            if (suiteStage == null && pendingCleanup != null) {
-              benchmark.diagnostic(
-                "startup-playlist-metadata-work-deferred",
-                values: {"reason": "pending-benchmark-cleanup"},
-              );
-              return;
-            }
 
-            if (suiteStage != null) {
+            if (suiteStage != "realistic-startup-prepared") {
               benchmark.diagnostic(
-                "startup-playlist-metadata-work-not-repeated",
-                values: {"suiteStage": suiteStage},
+                suiteStage == null
+                    ? "startup-playlist-metadata-work-suppressed-for-preconditioning"
+                    : "startup-playlist-metadata-work-not-repeated",
+                values: {"suiteStage": suiteStage ?? "fresh-preconditioning"},
               );
               return;
             }
@@ -449,6 +442,7 @@ Future<void> _setupDownloadsHelper() async {
         }),
       );
     });
+
   } else if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
     GetIt.instance<FinampUserHelper>().runUserHook(() async {
       await downloadsService
