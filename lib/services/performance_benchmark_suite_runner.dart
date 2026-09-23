@@ -110,6 +110,7 @@ class PerformanceBenchmarkSuiteRunner {
         "variant": PerformanceBenchmarkService.variant,
         "suiteRunId": PerformanceBenchmarkService.suiteRunId,
         "stage": stage ?? "fresh",
+        "smoke": _smoke,
       },
     );
     recorder.diagnostic(
