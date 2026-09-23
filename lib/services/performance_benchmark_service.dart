@@ -260,6 +260,10 @@ class PerformanceBenchmarkService {
     "FINAMP_BENCH_VARIANT",
     defaultValue: "unknown",
   );
+  static const String suiteRunId = String.fromEnvironment(
+    "FINAMP_BENCH_RUN_ID",
+    defaultValue: "manual",
+  );
 
   static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
@@ -267,7 +271,10 @@ class PerformanceBenchmarkService {
   static const _runKeyPrefix = "run:";
   static const _activeRunKey = "active-run";
   static const _cleanupRequiredKey = "cleanup-required";
-  static String get _hostStreamFileName => "finamp-benchmark-stream-$variant.jsonl";
+  static String get _hostStreamFileName =>
+      "finamp-benchmark-stream-$variant-$suiteRunId.jsonl";
+  static String get _suiteStageFileName =>
+      "finamp-benchmark-stage-$variant-$suiteRunId.txt";
 
   static final PerformanceBenchmarkService instance = PerformanceBenchmarkService._();
 
@@ -316,6 +323,29 @@ class PerformanceBenchmarkService {
   PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
       _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
+
+  Future<File> _suiteStageFile() async {
+    final directory = (Platform.isAndroid || Platform.isIOS)
+        ? await getApplicationDocumentsDirectory()
+        : await getApplicationSupportDirectory();
+    return File(path_helper.join(directory.path, _suiteStageFileName));
+  }
+
+  Future<String?> getSuiteStage() async {
+    final file = await _suiteStageFile();
+    if (!await file.exists()) return null;
+    final value = (await file.readAsString()).trim();
+    return value.isEmpty ? null : value;
+  }
+
+  Future<void> setSuiteStage(String stage) async {
+    final file = await _suiteStageFile();
+    await file.writeAsString(stage, flush: true);
+    diagnostic(
+      "suite-stage",
+      values: {"stage": stage},
+    );
+  }
 
   Future<Box<String>> _getBox() async {
     final existing = _box;
