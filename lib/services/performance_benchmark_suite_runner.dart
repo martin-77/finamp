@@ -1,10 +1,15 @@
 import 'dart:async';
 
+import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/models/jellyfin_models.dart';
+import 'package:finamp/screens/album_screen.dart';
+import 'package:finamp/screens/artist_screen.dart';
+import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/performance_benchmark_service.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 
 /// Automated entry point for the test-only performance benchmark branch.
@@ -86,9 +91,15 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"phase": "alphabet-fast-scroller"},
       );
 
+      await _runDetailBaselines();
+      recorder.diagnostic(
+        "suite-phase-complete",
+        values: {"phase": "detail-screens"},
+      );
+
       recorder.diagnostic(
         "full-suite-incomplete",
-        values: {"nextPhase": "detail-search-playback-download"},
+        values: {"nextPhase": "search-paging-playback-download"},
       );
       await recorder.flushHostStream();
     } catch (error) {
@@ -184,6 +195,43 @@ class PerformanceBenchmarkSuiteRunner {
             recursive: true,
           ),
         );
+
+        if (alias == "bench-100" && children != null && children.isNotEmpty) {
+          final track = children.first;
+          await recorder.saveTarget(
+            alias: "detail-track",
+            itemType: "Audio",
+            itemId: track.id.raw,
+          );
+
+          BaseItemId? albumId;
+          BaseItemId? artistId;
+          for (final candidate in children) {
+            albumId ??= candidate.albumId;
+            if (artistId == null && (candidate.albumArtists?.isNotEmpty ?? false)) {
+              artistId = candidate.albumArtists!.first.id;
+            }
+            if (artistId == null && (candidate.artistItems?.isNotEmpty ?? false)) {
+              artistId = candidate.artistItems!.first.id;
+            }
+            if (albumId != null && artistId != null) break;
+          }
+
+          if (albumId != null) {
+            await recorder.saveTarget(
+              alias: "detail-album",
+              itemType: "MusicAlbum",
+              itemId: albumId.raw,
+            );
+          }
+          if (artistId != null) {
+            await recorder.saveTarget(
+              alias: "detail-artist",
+              itemType: "MusicArtist",
+              itemId: artistId.raw,
+            );
+          }
+        }
 
         final actualCount = children?.length ?? 0;
         final valid = actualCount == expectedCount;
@@ -295,6 +343,130 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       // runStep persists the failed/timeout run before rethrowing.
+    }
+  }
+
+  Future<void> _runDetailBaselines() async {
+    const aliases = <(String, String)>[
+      ("detail-album", "album"),
+      ("detail-artist", "artist"),
+      ("bench-10", "playlist"),
+      ("bench-100", "playlist"),
+      ("bench-1000", "playlist"),
+      ("bench-10000", "playlist"),
+    ];
+
+    for (final entry in aliases) {
+      final (alias, detailType) = entry;
+      await _runDetailBaseline(
+        targetAlias: alias,
+        detailType: detailType,
+        mode: "refreshed-detail",
+        refresh: true,
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+      await _runDetailBaseline(
+        targetAlias: alias,
+        detailType: detailType,
+        mode: "warm-detail",
+        refresh: false,
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+  }
+
+  Future<void> _runDetailBaseline({
+    required String targetAlias,
+    required String detailType,
+    required String mode,
+    required bool refresh,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final target = await recorder.getTarget(targetAlias);
+    if (target == null) {
+      recorder.diagnostic(
+        "detail-target-missing",
+        values: {
+          "targetAlias": targetAlias,
+          "targetType": detailType,
+        },
+      );
+      return;
+    }
+
+    final container = GetIt.instance<ProviderContainer>();
+    final item = await container.read(
+      itemByIdProvider(BaseItemId(target.itemId)).future,
+    );
+    if (item == null) {
+      recorder.diagnostic(
+        "detail-target-unresolvable",
+        values: {
+          "targetAlias": targetAlias,
+          "targetType": detailType,
+        },
+      );
+      return;
+    }
+
+    await recorder.startRun(
+      scenario: "detail-first-rendered-content-$detailType",
+      variant: PerformanceBenchmarkService.variant,
+      mode: mode,
+      targetAlias: targetAlias,
+      targetType: detailType,
+    );
+
+    try {
+      final navigator = GlobalSnackbar.navigatorState;
+      if (navigator == null) {
+        throw StateError("Navigator is not available for detail benchmark");
+      }
+
+      await recorder.runStep(
+        name: "detail-open",
+        timeout: const Duration(seconds: 180),
+        operation: () => recorder.requestDetail(
+          targetAlias: targetAlias,
+          targetType: detailType,
+          itemId: target.itemId,
+          refresh: refresh,
+          timeout: const Duration(seconds: 175),
+          open: () {
+            switch (detailType) {
+              case "artist":
+                navigator.push(
+                  MaterialPageRoute<ArtistScreen>(
+                    builder: (_) => ArtistScreen(widgetArtist: item),
+                  ),
+                );
+              case "album" || "playlist":
+                navigator.push(
+                  MaterialPageRoute<AlbumScreen>(
+                    builder: (_) => AlbumScreen(parent: item),
+                  ),
+                );
+              default:
+                throw UnsupportedError("Unsupported detail type $detailType");
+            }
+          },
+        ),
+      );
+      await recorder.finishRun();
+
+      if (navigator.canPop()) {
+        navigator.pop();
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    } catch (_) {
+      if (PerformanceBenchmarkService.instance.activeRun != null) {
+        // runStep already persisted failure/timeout where applicable.
+      }
+      final navigator = GlobalSnackbar.navigatorState;
+      if (navigator?.canPop() ?? false) {
+        navigator!.pop();
+        await WidgetsBinding.instance.endOfFrame;
+      }
     }
   }
 
