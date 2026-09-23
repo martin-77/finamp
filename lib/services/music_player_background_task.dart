@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:finamp/components/global_snackbar.dart';
 import 'package:finamp/l10n/app_localizations.dart';
 import 'package:finamp/models/finamp_models.dart';
@@ -158,6 +159,31 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
   ValueListenable<SleepTimer?> get timer => _timer;
 
   Future<bool> Function()? _queueCallbackPreviousTrack;
+  AppLifecycleListener? _playbackDiagnosticLifecycleListener;
+  Timer? _playbackDiagnosticTimer;
+
+  Future<void> _logPlaybackSnapshot(String reason, {Object? error}) async {
+    final connections = await Connectivity().checkConnectivity();
+    final user = GetIt.instance<FinampUserHelper>().currentUser;
+    final position = _player.position;
+    final bufferedPosition = _player.bufferedPosition;
+    final duration = _player.duration;
+
+    _audioServiceBackgroundTaskLogger.info(
+      "Playback snapshot: reason=$reason, "
+      "playing=${_player.playing}, "
+      "processingState=${_player.processingState}, "
+      "currentIndex=${_player.currentIndex}, "
+      "positionMs=${position.inMilliseconds}, "
+      "bufferedPositionMs=${bufferedPosition.inMilliseconds}, "
+      "bufferAheadMs=${(bufferedPosition - position).inMilliseconds}, "
+      "durationMs=${duration?.inMilliseconds}, "
+      "connectivity=${connections.map((connection) => connection.toString()).join(", ")}, "
+      "target=${user?.isLocal == true ? "local" : "public"}"
+      "${error == null ? "" : ", error=$error"}",
+    );
+  }
+
 
   List<int> get shuffleIndices => _player.shuffleIndices;
   List<AudioSource> get audioSources => _player.audioSources;
@@ -506,6 +532,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     _player.errorStream.listen((error) {
       _audioServiceBackgroundTaskLogger.severe("Player error: $error", error);
+      unawaited(_logPlaybackSnapshot("player-error", error: error));
     });
 
     // trigger sleep timer early if we're almost at the end of the final track
@@ -528,8 +555,22 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     // Special processing for state transitions.
     _player.processingStateStream.listen((event) async {
+      unawaited(_logPlaybackSnapshot("processing-state-$event"));
       if (event == ProcessingState.completed) {
         await handleEndOfQueue();
+      }
+    });
+
+    _playbackDiagnosticLifecycleListener = AppLifecycleListener(
+      onHide: () => unawaited(_logPlaybackSnapshot("app-hide")),
+      onShow: () => unawaited(_logPlaybackSnapshot("app-show")),
+      onPause: () => unawaited(_logPlaybackSnapshot("app-pause")),
+      onResume: () => unawaited(_logPlaybackSnapshot("app-resume")),
+    );
+
+    _playbackDiagnosticTimer = Timer.periodic(Duration(seconds: 60), (_) {
+      if (_player.playing) {
+        unawaited(_logPlaybackSnapshot("periodic"));
       }
     });
 
@@ -609,7 +650,11 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
   }
 
   /// Fully dispose the player instance.  Should only be called during app shutdown.
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() async {
+    _playbackDiagnosticTimer?.cancel();
+    _playbackDiagnosticLifecycleListener?.dispose();
+    await _player.dispose();
+  }
 
   @override
   Future<void> play({bool disableFade = false}) async {
