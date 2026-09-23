@@ -272,6 +272,76 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
   }
 
+  void _maybeFailBenchmarkCommands(
+    PagingState<int, FinampDisplayableOrPlayable> state,
+  ) {
+    final error = state.error;
+    if (error == null || state.isLoading) return;
+
+    final stackTrace = StackTrace.current;
+    final benchmark = PerformanceBenchmarkService.instance;
+    final contentType = widget.contentType?.name;
+
+    final pageCommand = _activeBenchmarkPage;
+    if (pageCommand != null) {
+      benchmark.mark(
+        "page-provider-error",
+        values: {
+          "contentType": pageCommand.contentType,
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      pageCommand.completeError(error, stackTrace);
+      _activeBenchmarkPage = null;
+      _benchmarkPageFrameScheduled = false;
+    }
+
+    final jumpCommand = _activeBenchmarkJump;
+    if (jumpCommand != null) {
+      benchmark.mark(
+        "alphabet-jump-provider-error",
+        values: {
+          "contentType": jumpCommand.contentType,
+          "letter": jumpCommand.letter,
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      timer?.cancel();
+      letterToSearch = null;
+      jumpCommand.completeError(error, stackTrace);
+      _activeBenchmarkJump = null;
+    }
+
+    final tabCommand = _activeBenchmarkTab;
+    if (tabCommand != null && tabCommand.selected) {
+      benchmark.mark(
+        "ui-tab-provider-error",
+        values: {
+          "contentType": contentType,
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      tabCommand.completeError(error, stackTrace);
+      _activeBenchmarkTab = null;
+      _benchmarkTabFrameScheduled = false;
+    }
+
+    final searchCommand = benchmark.activeSearchCommand;
+    if (searchCommand != null &&
+        searchCommand.selectedContentType == contentType) {
+      benchmark.mark(
+        "search-provider-error",
+        values: {
+          "contentType": contentType,
+          "queryAlias": searchCommand.queryAlias,
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+      searchCommand.completeError(error, stackTrace);
+      _benchmarkSearchFrameScheduled = false;
+    }
+  }
+
   void _maybeCompleteBenchmarkTab(
     PagingState<int, FinampDisplayableOrPlayable> state,
   ) {
@@ -573,6 +643,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     super.build(context);
     widget.refresh?.callback = _refresh;
     final benchmarkPageState = ref.watch(pageControl);
+    _maybeFailBenchmarkCommands(benchmarkPageState);
     _maybeReportStartupScreenReady(benchmarkPageState);
     _maybeCompleteBenchmarkTab(benchmarkPageState);
     _maybeCompleteBenchmarkPage(benchmarkPageState);
