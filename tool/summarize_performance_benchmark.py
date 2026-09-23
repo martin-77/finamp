@@ -188,8 +188,8 @@ def main():
         "",
         "## Scenario groups",
         "",
-        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | HTTP req med | Bytes med | >50ms frames med | Results |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
+        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | HTTP req med | HTTP total ms med | HTTP max ms med | Bytes med | RSS Δ MiB med | >50ms frames med | Results |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ])
     for item in summary_groups:
         target = item["targetAlias"] or item["targetType"] or ""
@@ -200,12 +200,62 @@ def main():
         p90_value = "" if item["p90Ms"] is None else f"{item['p90Ms']:.3f}"
         metrics = item.get("numericMetrics") or {}
         http_requests = metrics.get("httpRequestCount", {}).get("median", "")
+        http_total_us = metrics.get("httpDurationMicrosTotal", {}).get("median")
+        http_max_us = metrics.get("httpDurationMicrosMax", {}).get("median")
         response_bytes = metrics.get("httpResponseBytes", {}).get("median", "")
+        rss_delta = metrics.get("rssDeltaBytes", {}).get("median")
         frames_50 = metrics.get("framesOver50ms", {}).get("median", "")
+        http_total_ms = "" if http_total_us is None else round(http_total_us / 1000.0, 3)
+        http_max_ms = "" if http_max_us is None else round(http_max_us / 1000.0, 3)
+        rss_delta_mib = "" if rss_delta is None else round(rss_delta / (1024 * 1024), 3)
         lines.append(
             f"| {item['scenario']} | {item['mode']} | {target} | {item['runs']} | "
-            f"{median} | {p90_value} | {http_requests} | {response_bytes} | "
+            f"{median} | {p90_value} | {http_requests} | {http_total_ms} | "
+            f"{http_max_ms} | {response_bytes} | {rss_delta_mib} | "
             f"{frames_50} | {results} |"
+        )
+
+    problem_groups = [
+        item for item in summary_groups
+        if any(name != "success" and count > 0 for name, count in item["results"].items())
+    ]
+    lines.extend([
+        "",
+        "## Non-successful runs",
+        "",
+        "| Scenario | Mode | Target | Results |",
+        "|---|---|---|---|",
+    ])
+    if problem_groups:
+        for item in problem_groups:
+            target = item["targetAlias"] or item["targetType"] or ""
+            results = ", ".join(
+                f"{name}:{count}" for name, count in sorted(item["results"].items())
+            )
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | {results} |"
+            )
+    else:
+        lines.append("| none |  |  | all recorded runs successful |")
+
+    slowest = sorted(
+        [item for item in summary_groups if item["medianMs"] is not None],
+        key=lambda item: item["medianMs"],
+        reverse=True,
+    )[:25]
+    lines.extend([
+        "",
+        "## Slowest scenario groups",
+        "",
+        "| Scenario | Mode | Target | Median ms | p90 ms |",
+        "|---|---|---|---:|---:|",
+    ])
+    for item in slowest:
+        target = item["targetAlias"] or item["targetType"] or ""
+        p90_value = "" if item["p90Ms"] is None else f"{item['p90Ms']:.3f}"
+        lines.append(
+            f"| {item['scenario']} | {item['mode']} | {target} | "
+            f"{item['medianMs']:.3f} | {p90_value} |"
         )
 
     lines.extend([
