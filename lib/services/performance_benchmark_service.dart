@@ -59,6 +59,23 @@ class PerformanceBenchmarkJumpCommand {
   }
 }
 
+class PerformanceBenchmarkTabCommand {
+  PerformanceBenchmarkTabCommand({required this.contentType});
+
+  final String contentType;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkEvent {
   const PerformanceBenchmarkEvent({
     required this.name,
@@ -179,9 +196,13 @@ class PerformanceBenchmarkService {
   int _runSequence = 0;
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
+  final StreamController<PerformanceBenchmarkTabCommand> _tabController =
+      StreamController<PerformanceBenchmarkTabCommand>.broadcast();
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
+  Stream<PerformanceBenchmarkTabCommand> get tabCommands =>
+      _tabController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   bool get hasActiveRun => _activeRun != null;
@@ -354,6 +375,19 @@ class PerformanceBenchmarkService {
       "value": value,
     });
     unawaited(_persistActiveRun());
+  }
+
+  Future<void> requestUiTab({
+    required String contentType,
+    Duration timeout = const Duration(seconds: 90),
+  }) async {
+    final command = PerformanceBenchmarkTabCommand(contentType: contentType);
+    mark(
+      "ui-tab-requested",
+      values: {"contentType": contentType},
+    );
+    _tabController.add(command);
+    await command.completed.timeout(timeout);
   }
 
   Future<void> requestAlphabetJump({
