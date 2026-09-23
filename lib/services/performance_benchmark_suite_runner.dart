@@ -1106,6 +1106,78 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
+  Future<void> _runLargeQueueRestoreBaseline() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final queueService = GetIt.instance<QueueService>();
+
+    final alreadyRestored = queueService.getQueue().trackCount;
+    recorder.diagnostic(
+      "queue-restore-benchmark-start",
+      values: {"alreadyRestoredTracks": alreadyRestored},
+    );
+
+    if (alreadyRestored == 0) {
+      await recorder.startRun(
+        scenario: "persisted-queue-restore",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "explicit-after-restart",
+        targetAlias: "bench-1000",
+        targetType: "queue",
+      );
+      try {
+        final restored = await recorder.runStep(
+          name: "restore-persisted-queue",
+          timeout: const Duration(minutes: 20),
+          operation:
+              queueService.restorePerformanceBenchmarkPersistedQueue,
+        );
+        recorder.metric("expectedQueueLength", 1000);
+        recorder.metric("restoredQueueLength", restored);
+        if (restored != 1000) {
+          throw StateError(
+            "Persisted benchmark queue restored an unexpected track count",
+          );
+        }
+        await recorder.finishRun();
+      } catch (error, stackTrace) {
+        if (recorder.activeRun != null) {
+          await recorder.failActiveRun(
+            result: PerformanceBenchmarkResult.failed,
+            error: error,
+            stackTrace: stackTrace,
+            step: "restore-persisted-queue",
+          );
+        }
+      }
+    } else {
+      await recorder.startRun(
+        scenario: "persisted-queue-restore-verification",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "startup-autoload",
+        targetAlias: "bench-1000",
+        targetType: "queue",
+      );
+      recorder.metric("expectedQueueLength", 1000);
+      recorder.metric("restoredQueueLength", alreadyRestored);
+      if (alreadyRestored == 1000) {
+        await recorder.finishRun();
+      } else {
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: StateError(
+            "Startup queue restore produced an unexpected track count",
+          ),
+          stackTrace: StackTrace.current,
+          step: "verify-startup-queue-restore",
+        );
+      }
+    }
+
+    await queueService.clearPerformanceBenchmarkQueueState();
+    await Future<void>.delayed(const Duration(seconds: 2));
+    recorder.diagnostic("queue-restore-benchmark-clean");
+  }
+
   Future<void> _runImageCacheBaselines() async {
     final recorder = PerformanceBenchmarkService.instance;
 
