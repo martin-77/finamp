@@ -1457,174 +1457,15 @@ class PerformanceBenchmarkSuiteRunner {
       FinampSetters.setIsOffline(true);
       recorder.diagnostic(
         "offline-mode-forced",
-        values: {"targetAlias": targetAlias},
+        values: {"targetAlias": targetAlias, "processRestart": false},
       );
-      await Future<void>.delayed(const Duration(seconds: 2));
+      await _settleUi();
 
-      await _runUiTabBaseline(
-        "tracks",
-        mode: "local-downloaded-refreshed",
-        round: 1,
-        allowPendingDownloadCleanup: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-      await _runUiTabBaseline(
-        "tracks",
-        mode: "local-downloaded-warm",
-        round: 1,
-        allowPendingDownloadCleanup: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-
-      final offlineTracksTab = await recorder.requestUiTab(
-        contentType: "tracks",
-        refresh: true,
-        timeout: const Duration(seconds: 120),
-      );
-      for (var page = 2; page <= 4; page++) {
-        await recorder.startRun(
-          scenario: "offline-next-page-tracks",
-          variant: PerformanceBenchmarkService.variant,
-          mode: "local-downloaded",
-          targetAlias: targetAlias,
-          targetType: offlineTracksTab,
-          allowPendingDownloadCleanup: true,
-        );
-        recorder.metric("requestedPageOrdinal", page);
-        try {
-          await recorder.runStep(
-            name: "next-page",
-            timeout: const Duration(seconds: 120),
-            operation: () => recorder.requestNextPage(
-              contentType: offlineTracksTab,
-              timeout: const Duration(seconds: 115),
-            ),
-          );
-          await recorder.runStep(
-            name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
-            operation: recorder.waitForImageQuiescence,
-          );
-          await recorder.finishRun();
-        } catch (_) {
-          // runStep persists failures/timeouts.
-        }
-        await Future<void>.delayed(const Duration(seconds: 1));
-      }
-
-      if (privateOfflineSearchQuery != null &&
-          privateOfflineSearchQuery.trim().isNotEmpty) {
-        await recorder.startRun(
-          scenario: "offline-search-tracks",
-          variant: PerformanceBenchmarkService.variant,
-          mode: "local-downloaded-first",
-          targetAlias: targetAlias,
-          targetType: "tracks",
-          allowPendingDownloadCleanup: true,
-        );
-        try {
-          recorder.metric(
-            "queryLength",
-            privateOfflineSearchQuery.length,
-          );
-          await recorder.runStep(
-            name: "search",
-            timeout: const Duration(seconds: 120),
-            operation: () => recorder.requestSearch(
-              contentType: "tracks",
-              queryAlias: "download-target-track",
-              query: privateOfflineSearchQuery,
-              timeout: const Duration(seconds: 115),
-            ),
-          );
-          await recorder.runStep(
-            name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
-            operation: recorder.waitForImageQuiescence,
-          );
-          await recorder.finishRun();
-        } catch (_) {
-          // runStep persists failures/timeouts.
-        }
-
-        await Future<void>.delayed(const Duration(seconds: 2));
-        await recorder.startRun(
-          scenario: "offline-search-tracks",
-          variant: PerformanceBenchmarkService.variant,
-          mode: "local-downloaded-warm",
-          targetAlias: targetAlias,
-          targetType: "tracks",
-          allowPendingDownloadCleanup: true,
-        );
-        try {
-          recorder.metric(
-            "queryLength",
-            privateOfflineSearchQuery.length,
-          );
-          await recorder.runStep(
-            name: "search",
-            timeout: const Duration(seconds: 60),
-            operation: () => recorder.requestSearch(
-              contentType: "tracks",
-              queryAlias: "download-target-track",
-              query: privateOfflineSearchQuery,
-              timeout: const Duration(seconds: 55),
-            ),
-          );
-          await recorder.runStep(
-            name: "wait-images-quiescent",
-            timeout: const Duration(minutes: 2),
-            operation: recorder.waitForImageQuiescence,
-          );
-          await recorder.finishRun();
-        } catch (_) {
-          // runStep persists failures/timeouts.
-        }
-
-        await recorder.requestSearch(
-          contentType: "tracks",
-          queryAlias: "clear",
-          query: "",
-          timeout: const Duration(seconds: 120),
-        );
-        await _settleUi();
-      }
-
-      await _runDetailBaseline(
+      await _runOfflineDownloadedScenarios(
         targetAlias: targetAlias,
-        detailType: "playlist",
-        mode: "local-downloaded-refreshed",
-        refresh: true,
-        allowPendingDownloadCleanup: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-      await _runDetailBaseline(
-        targetAlias: targetAlias,
-        detailType: "playlist",
-        mode: "local-downloaded-warm",
-        refresh: false,
-        allowPendingDownloadCleanup: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-
-      await _runPlaybackBaseline(
-        targetAlias: targetAlias,
-        playableType: "playlist",
-        mode: "local-downloaded-first",
-        allowPendingDownloadCleanup: true,
-      );
-      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-        disableFade: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-      await _runPlaybackBaseline(
-        targetAlias: targetAlias,
-        playableType: "playlist",
-        mode: "local-downloaded-warm",
-        allowPendingDownloadCleanup: true,
-      );
-      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-        disableFade: true,
+        item: item,
+        privateOfflineSearchQuery: privateOfflineSearchQuery,
+        coldProcess: false,
       );
     } finally {
       FinampSetters.setIsOffline(previousOffline);
@@ -1635,9 +1476,213 @@ class PerformanceBenchmarkSuiteRunner {
           "restoredOffline": previousOffline,
         },
       );
-      await Future<void>.delayed(const Duration(seconds: 2));
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
 
+    await _cleanupDownloadedBenchmarkTarget(
+      targetAlias: targetAlias,
+      stub: stub,
+      downloads: downloads,
+    );
+
+    return true;
+  }
+
+  Future<void> _runOfflineDownloadedScenarios({
+    required String targetAlias,
+    required BaseItemDto item,
+    required String? privateOfflineSearchQuery,
+    required bool coldProcess,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final refreshedMode = coldProcess
+        ? "local-downloaded-cold-process-refreshed"
+        : "local-downloaded-refreshed";
+    final warmMode = coldProcess
+        ? "local-downloaded-cold-process-warm"
+        : "local-downloaded-warm";
+    final firstMode = coldProcess
+        ? "local-downloaded-cold-process"
+        : "local-downloaded-first";
+
+    await _runUiTabBaseline(
+      "tracks",
+      mode: refreshedMode,
+      round: 1,
+      allowPendingDownloadCleanup: true,
+    );
+    await _settleUi();
+    await _runUiTabBaseline(
+      "tracks",
+      mode: warmMode,
+      round: 1,
+      allowPendingDownloadCleanup: true,
+    );
+    await _settleUi();
+
+    final offlineTracksTab = await recorder.requestUiTab(
+      contentType: "tracks",
+      refresh: true,
+      timeout: const Duration(seconds: 120),
+    );
+    await _settleUi();
+
+    for (var page = 2; page <= 4; page++) {
+      await recorder.startRun(
+        scenario: "offline-next-page-tracks",
+        variant: PerformanceBenchmarkService.variant,
+        mode: coldProcess
+            ? "local-downloaded-cold-process"
+            : "local-downloaded",
+        targetAlias: targetAlias,
+        targetType: offlineTracksTab,
+        allowPendingDownloadCleanup: true,
+      );
+      recorder.metric("requestedPageOrdinal", page);
+      try {
+        await recorder.runStep(
+          name: "next-page",
+          timeout: const Duration(seconds: 120),
+          operation: () => recorder.requestNextPage(
+            contentType: offlineTracksTab,
+            timeout: const Duration(seconds: 115),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-images-quiescent",
+          timeout: const Duration(minutes: 2),
+          operation: recorder.waitForImageQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists failures/timeouts.
+      }
+      await _settleUi();
+    }
+
+    if (privateOfflineSearchQuery != null &&
+        privateOfflineSearchQuery.trim().isNotEmpty) {
+      await recorder.startRun(
+        scenario: "offline-search-tracks",
+        variant: PerformanceBenchmarkService.variant,
+        mode: firstMode,
+        targetAlias: targetAlias,
+        targetType: "tracks",
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        recorder.metric(
+          "queryLength",
+          privateOfflineSearchQuery.length,
+        );
+        await recorder.runStep(
+          name: "search",
+          timeout: const Duration(seconds: 120),
+          operation: () => recorder.requestSearch(
+            contentType: "tracks",
+            queryAlias: "download-target-track",
+            query: privateOfflineSearchQuery,
+            timeout: const Duration(seconds: 115),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-images-quiescent",
+          timeout: const Duration(minutes: 2),
+          operation: recorder.waitForImageQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists failures/timeouts.
+      }
+
+      await _settleUi();
+      await recorder.startRun(
+        scenario: "offline-search-tracks",
+        variant: PerformanceBenchmarkService.variant,
+        mode: warmMode,
+        targetAlias: targetAlias,
+        targetType: "tracks",
+        allowPendingDownloadCleanup: true,
+      );
+      try {
+        recorder.metric(
+          "queryLength",
+          privateOfflineSearchQuery.length,
+        );
+        await recorder.runStep(
+          name: "search",
+          timeout: const Duration(seconds: 60),
+          operation: () => recorder.requestSearch(
+            contentType: "tracks",
+            queryAlias: "download-target-track",
+            query: privateOfflineSearchQuery,
+            timeout: const Duration(seconds: 55),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-images-quiescent",
+          timeout: const Duration(minutes: 2),
+          operation: recorder.waitForImageQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep persists failures/timeouts.
+      }
+
+      await recorder.requestSearch(
+        contentType: "tracks",
+        queryAlias: "clear",
+        query: "",
+        timeout: const Duration(seconds: 120),
+      );
+      await _settleUi();
+    }
+
+    await _runDetailBaseline(
+      targetAlias: targetAlias,
+      detailType: "playlist",
+      mode: refreshedMode,
+      refresh: true,
+      allowPendingDownloadCleanup: true,
+    );
+    await _settleUi();
+    await _runDetailBaseline(
+      targetAlias: targetAlias,
+      detailType: "playlist",
+      mode: warmMode,
+      refresh: false,
+      allowPendingDownloadCleanup: true,
+    );
+    await _settleUi();
+
+    await _runPlaybackBaseline(
+      targetAlias: targetAlias,
+      playableType: "playlist",
+      mode: firstMode,
+      allowPendingDownloadCleanup: true,
+    );
+    await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+      disableFade: true,
+    );
+    await Future<void>.delayed(const Duration(seconds: 1));
+
+    await _runPlaybackBaseline(
+      targetAlias: targetAlias,
+      playableType: "playlist",
+      mode: warmMode,
+      allowPendingDownloadCleanup: true,
+    );
+    await GetIt.instance<MusicPlayerBackgroundTask>().pause(
+      disableFade: true,
+    );
+  }
+
+  Future<void> _cleanupDownloadedBenchmarkTarget({
+    required String targetAlias,
+    required DownloadStub stub,
+    required DownloadsService downloads,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
     await recorder.startRun(
       scenario: "download-cleanup",
       variant: PerformanceBenchmarkService.variant,
@@ -1660,6 +1705,15 @@ class PerformanceBenchmarkSuiteRunner {
           timeout: const Duration(minutes: 9),
         ),
       );
+      await recorder.runStep(
+        name: "cleanup-download-system-idle",
+        timeout: const Duration(minutes: 15),
+        operation: () =>
+            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          stableFor: const Duration(seconds: 3),
+          timeout: const Duration(minutes: 14),
+        ),
+      );
       final remainingBytes = await downloads.getFileSize(stub);
       recorder.metric("remainingDownloadedBytes", remainingBytes);
       if (remainingBytes != 0) {
@@ -1673,8 +1727,6 @@ class PerformanceBenchmarkSuiteRunner {
     } catch (_) {
       rethrow;
     }
-
-    return true;
   }
 
   Future<void> _runOfflineBench1000PostRestart() async {
