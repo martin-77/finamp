@@ -166,6 +166,34 @@ and ids are never exported.
 The suite-complete marker must refer to this entire matrix. Intermediate
 sub-suites emit phase-complete markers but must not emit suite-complete.
 
+## Implementation status
+
+| Area | Status | Notes |
+|---|---|---|
+| realistic first startup | automated | includes normal playlist-metadata background work, then cleans benchmark-owned state |
+| controlled cold process | automated | host restart with preserved auth/settings and cleared image cache |
+| persistent-cache restart | automated | same installed build/container, explicit stage checkpoints |
+| API page-size reference | automated | 25/100/100-warm/500 for major collections |
+| Home + main tabs | automated | rotated refreshed/warm rounds with first-rendered + quiescent timing |
+| deep paging | automated | repeated real UI next-page actions |
+| Search | automated | Iron Maiden, Metallica, Kettcar + broad query + search paging |
+| Artist → Album → Track | automated | deterministic private chain per named artist, cumulative drill-down and playback |
+| alphabet fast-scroller | automated | real `# → A → G → M → Z` path for Tracks/Artists/Albums, refreshed and warm-loaded |
+| details | automated | album, artist, genre and 10/100/1000/10000 playlist details |
+| queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position |
+| large queue restore | automated | normal autoload observed; explicit 1000-track restore if startup autoload did not run |
+| downloads | automated | 10/100/1000 original-file downloads, real bytes, throughput and cleanup |
+| download resync/repair | automated | force-resync + full repair on isolated bench-100 download graph |
+| offline/local | automated | cold-process for 1000, warm/local UI, paging, search, alphabet and playback |
+| image cache | automated | cleared persistent image cache vs warm view/detail |
+| network target transition | opportunistic diagnostic | real target changes/pings are recorded; iOS radios are not artificially toggled |
+| crash/hang recovery | automated | active-run recovery + phase checkpoints + bounded host relaunches |
+| summary | automated | median/p90, milestones, HTTP, RSS, frames, startup timeline, failures and recoveries |
+
+A `suite-complete` record means all mandatory automated rows above reached
+their terminal phase. Opportunistic network-transition diagnostics are not a
+completion prerequisite.
+
 ## Benchmark scenarios
 
 ### Startup
