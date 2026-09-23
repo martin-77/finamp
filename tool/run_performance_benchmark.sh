@@ -14,6 +14,8 @@ mkdir -p "$out_dir"
 
 raw_log="$out_dir/finamp-benchmark-$timestamp.log"
 jsonl="$out_dir/finamp-benchmark-$timestamp.jsonl"
+summary_json="$out_dir/finamp-benchmark-$timestamp-summary.json"
+summary_md="$out_dir/finamp-benchmark-$timestamp-summary.md"
 app_path="build/ios/iphoneos/Runner.app"
 remote_stream="Documents/finamp-benchmark-stream-$variant-$run_id.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
@@ -111,6 +113,13 @@ while true; do
 
     if grep -q '"name":"suite-complete"' "$jsonl"; then
       log "==> Benchmark suite completed"
+      log "Generating summary..."
+      python3 tool/summarize_performance_benchmark.py \
+        "$jsonl" \
+        --json-out "$summary_json" \
+        --md-out "$summary_md"
+      log "Summary JSON: $summary_json"
+      log "Summary Markdown: $summary_md"
       exit 0
     fi
     if grep -q '"name":"suite-blocked"' "$jsonl"; then
