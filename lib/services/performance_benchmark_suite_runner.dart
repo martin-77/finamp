@@ -159,6 +159,8 @@ class PerformanceBenchmarkSuiteRunner {
             "stage": stage,
           },
         );
+        GetIt.instance<KeepScreenOnHelper>()
+            .setPerformanceBenchmarkOverride(false);
         recorder.stopHeartbeat();
         await recorder.flushHostStream();
         return;
@@ -810,7 +812,7 @@ class PerformanceBenchmarkSuiteRunner {
       if (!_stageAtOrAfter(stage, "main-targets-done")) {
         final targetsReady = await _discoverAndValidateTargets();
         if (!targetsReady) {
-          await _restoreSuiteOriginalOfflineState();
+          await _bestEffortTerminalCleanupAndRestore();
           recorder.diagnostic(
             "suite-blocked",
             values: {"reason": "benchmark-target-validation"},
