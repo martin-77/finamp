@@ -403,27 +403,31 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
-    final container = GetIt.instance<ProviderContainer>();
-    final item = await container.read(
-      itemByIdProvider(BaseItemId(target.itemId)).future,
-    );
-    if (item == null) {
-      recorder.diagnostic(
-        "download-cleanup-recovery-item-missing",
-        values: {"targetAlias": alias},
-      );
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: alias,
-        required: false,
-      );
-      return;
-    }
-
     final downloads = GetIt.instance<DownloadsService>();
-    final stub = DownloadStub.fromItem(
-      type: DownloadItemType.collection,
-      item: item,
-    );
+    final DownloadStub stub;
+
+    if (target.itemType == "finampCollection" &&
+        alias == "all-playlists-metadata") {
+      stub = DownloadStub.fromFinampCollection(
+        FinampCollection(
+          type: FinampCollectionType.allPlaylistsMetadata,
+        ),
+      );
+    } else {
+      final container = GetIt.instance<ProviderContainer>();
+      final item = await container.read(
+        itemByIdProvider(BaseItemId(target.itemId)).future,
+      );
+      if (item == null) {
+        throw StateError(
+          "Benchmark cleanup target could not be resolved",
+        );
+      }
+      stub = DownloadStub.fromItem(
+        type: DownloadItemType.collection,
+        item: item,
+      );
+    }
     await downloads.deleteDownload(stub: stub);
     await _waitForDownloadRemoved(downloads, stub);
     await recorder.setDownloadCleanupRequired(
@@ -954,9 +958,13 @@ class PerformanceBenchmarkSuiteRunner {
       await downloads.waitForPerformanceBenchmarkCleanup(stub: stub);
     }
 
-    final locationId =
-        FinampSettingsHelper.finampSettings.defaultDownloadLocation ??
-        FinampSettingsHelper.finampSettings.internalTrackDir.id;
+    String? locationId =
+        FinampSettingsHelper.finampSettings.defaultDownloadLocation;
+    if (!FinampSettingsHelper.finampSettings.downloadLocationsMap
+        .containsKey(locationId)) {
+      locationId = null;
+    }
+    locationId ??= FinampSettingsHelper.finampSettings.internalTrackDir.id;
     final profile = DownloadProfile(
       transcodeCodec: FinampTranscodingCodec.original,
       downloadLocationId: locationId,
