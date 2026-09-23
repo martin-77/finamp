@@ -2254,7 +2254,13 @@ class PerformanceBenchmarkSuiteRunner {
           "trackCount": persistedQueueCount,
         },
       );
-      await GetIt.instance<QueueService>().stopAndClearQueue();
+      final preservedTracks = await GetIt.instance<QueueService>()
+          .clearActiveQueuePreservingPerformanceBenchmarkSnapshot();
+      if (preservedTracks != persistedQueueCount) {
+        throw StateError(
+          "Smoke queue snapshot changed while preparing explicit restore",
+        );
+      }
     }
 
     await _cleanupDownloadedBenchmarkTarget(
