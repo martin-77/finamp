@@ -990,21 +990,22 @@ class PerformanceBenchmarkService {
     final run = _activeRun;
     if (run == null) return;
 
-    final censored = LogRecord(
-      Level.SEVERE,
-      error.toString(),
-      "PerformanceBenchmark",
-      error,
-      stackTrace,
-    ).censoredMessage;
+    // Benchmark exports are deliberately stricter than normal Finamp logs.
+    // Exception messages and stack traces can contain media names, item ids,
+    // server URLs or local user paths, so never place them in BENCH_JSON.
     run.failure = {
       "type": "dart-error",
       "source": source,
       "errorType": error.runtimeType.toString(),
-      "diagnostic": _sanitizeStack(censored),
       "lastStep": run.lastStep,
     };
-    run.mark("uncaught-error", values: {"source": source});
+    run.mark(
+      "uncaught-error",
+      values: {
+        "source": source,
+        "errorType": error.runtimeType.toString(),
+      },
+    );
     await _persistActiveRun();
   }
 
@@ -1018,20 +1019,18 @@ class PerformanceBenchmarkService {
     if (run == null) return;
 
     run.result = result;
-    final censored = LogRecord(
-      Level.SEVERE,
-      error.toString(),
-      "PerformanceBenchmark",
-      error,
-      stackTrace,
-    ).censoredMessage;
     run.failure = {
       "type": result.name,
       "errorType": error.runtimeType.toString(),
-      "diagnostic": _sanitizeStack(censored),
       "lastStep": step ?? run.lastStep,
     };
-    run.mark("run-failed", values: {"result": result.name});
+    run.mark(
+      "run-failed",
+      values: {
+        "result": result.name,
+        "errorType": error.runtimeType.toString(),
+      },
+    );
     run.stopwatch.stop();
     run.finished = true;
 
@@ -1040,10 +1039,6 @@ class PerformanceBenchmarkService {
     await box.delete(_activeRunKey);
     _emitHostRecord("run-end", {"run": run.toJson()});
     _activeRun = null;
-  }
-
-  String _sanitizeStack(String value) {
-    return value.length <= 12000 ? value : value.substring(0, 12000);
   }
 
   Future<void> setDownloadCleanupRequired({
