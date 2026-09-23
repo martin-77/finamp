@@ -205,8 +205,11 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
           await _imageCache.store.putFile(cacheObject);
         }
         _playerImageCache[key] = imageFile;
+        final fileImage = FileImage(imageFile.file, scale: 0.25);
         ref.state = AlbumImageInfo(
-          FileImage(imageFile.file, scale: 0.25),
+          PerformanceBenchmarkService.enabled
+              ? CachedImage(fileImage, key)
+              : fileImage,
           request,
           Uri.file(imageFile.file.path),
           fullQuality: true,
@@ -227,7 +230,10 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
 
   // downloads are already de-dupped by blurHash and do not need CachedImage
   // Allow drawing albums up to 4X intrinsic size by setting scale
-  ImageProvider out = FileImage(downloadedImage, scale: 0.25);
+  final fileImage = FileImage(downloadedImage, scale: 0.25);
+  ImageProvider out = PerformanceBenchmarkService.enabled
+      ? CachedImage(fileImage, key)
+      : fileImage;
   if (!request.fullQuality) {
     // Limit memory cached image size to twice displayed size
     // This helps keep cache usage by fileImages in check
