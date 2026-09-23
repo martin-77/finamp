@@ -656,7 +656,6 @@ class PerformanceBenchmarkSuiteRunner {
 
       try {
         var pagesFetched = 0;
-        var playlistItemsSeen = 0;
         final normalizedAlias = alias.trim().toLowerCase();
 
         final matches = await recorder.runStep(
@@ -675,7 +674,6 @@ class PerformanceBenchmarkSuiteRunner {
               );
               pagesFetched++;
               final items = page.items ?? const <BaseItemDto>[];
-              playlistItemsSeen += items.length;
               matches.addAll(
                 items.where((item) {
                   final normalizedName = item.name?.trim().toLowerCase();
@@ -693,7 +691,6 @@ class PerformanceBenchmarkSuiteRunner {
         );
 
         recorder.metric("playlistPagesFetched", pagesFetched);
-        recorder.metric("playlistItemsSeen", playlistItemsSeen);
         recorder.metric("matchingPlaylists", matches.length);
         if (matches.length != 1) {
           recorder.metric("valid", false);
