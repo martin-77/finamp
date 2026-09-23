@@ -210,21 +210,21 @@ class PerformanceBenchmarkSuiteRunner {
       await WidgetsBinding.instance.endOfFrame;
       final pendingCleanup =
           await recorder.getDownloadCleanupRequirement();
-      final pendingCleanupOwner =
-          pendingCleanup?["ownerSuiteRunId"] as String?;
-      final staleCleanupRecovered = pendingCleanup != null &&
-          pendingCleanupOwner != PerformanceBenchmarkService.suiteRunId;
+      final interruptedStartupCleanup =
+          pendingCleanup != null &&
+          !recorder.startupPlaylistMetadataWorkRan;
 
       await _recoverPendingDownloadCleanup(
-        skipCurrentSuiteOwned: true,
+        skipCurrentSuiteOwned:
+            recorder.startupPlaylistMetadataWorkRan,
       );
 
-      if (staleCleanupRecovered &&
+      if (interruptedStartupCleanup &&
           !recorder.startupPlaylistMetadataWorkRan) {
         recorder.diagnostic(
           "host-restart-requested",
           values: {
-            "reason": "stale-benchmark-cleanup-recovered",
+            "reason": "interrupted-startup-cleanup-recovered",
             "nextStage": "fresh",
           },
         );
