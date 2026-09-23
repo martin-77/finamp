@@ -373,7 +373,14 @@ Future<void> _setupDownloadsHelper() async {
         try {
           await PerformanceBenchmarkService.instance.runStartupTask(
             "default-playlist-metadata-download",
-            downloadsService.addDefaultPlaylistInfoDownload,
+            () async {
+              await downloadsService.addDefaultPlaylistInfoDownload();
+              await downloadsService
+                  .waitForPerformanceBenchmarkDownloadSystemIdle(
+                stableFor: const Duration(seconds: 5),
+                timeout: const Duration(hours: 3),
+              );
+            },
           );
           PerformanceBenchmarkService.instance
               .markStartupPlaylistMetadataWorkRan();
