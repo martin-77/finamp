@@ -57,6 +57,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
 
   TabController? _tabController;
   StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
+  StreamSubscription<PerformanceBenchmarkSearchCommand>? _benchmarkSearchSubscription;
 
   final _audioServiceHelper = GetIt.instance<AudioServiceHelper>();
   final _jellyfinApiHelper = GetIt.instance<JellyfinApiHelper>();
@@ -155,11 +156,60 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       );
       setState(() {});
     });
+
+    _benchmarkSearchSubscription =
+        PerformanceBenchmarkService.instance.searchCommands.listen((command) {
+      if (!mounted || widget.singleTabConfig != null) return;
+
+      final tabs = ref
+          .read(finampSettingsProvider.tabOrder)
+          .where((e) => ref.read(finampSettingsProvider.showTabs(e)) ?? false)
+          .toList();
+
+      final index = tabs.indexWhere((tab) {
+        if (command.contentType == "artists") {
+          return tab == ContentType.genericArtists ||
+              tab == ContentType.albumArtists ||
+              tab == ContentType.performingArtists;
+        }
+        return tab.name == command.contentType;
+      });
+
+      if (index < 0) {
+        command.completeError(
+          StateError("Requested benchmark search tab is not visible"),
+          StackTrace.current,
+        );
+        return;
+      }
+
+      final targetTab = tabs[index];
+      final contentTab = targetTab == ContentType.genericArtists
+          ? ref.read(finampSettingsProvider.defaultArtistType).tabType
+          : targetTab;
+
+      _tabController?.index = index;
+      textEditingController.text = command.query;
+      searchQuery = command.query.isEmpty ? null : command.query;
+      isSearching = command.query.isNotEmpty;
+      command.markSelected(contentTab.name);
+
+      PerformanceBenchmarkService.instance.mark(
+        "search-applied",
+        values: {
+          "contentType": contentTab.name,
+          "queryAlias": command.queryAlias,
+          "queryLength": command.query.length,
+        },
+      );
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _benchmarkTabSubscription?.cancel();
+    _benchmarkSearchSubscription?.cancel();
     _tabController?.dispose();
     textEditingController.dispose();
     super.dispose();
