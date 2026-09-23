@@ -198,54 +198,72 @@ class PerformanceBenchmarkSuiteRunner {
   Future<void> _runUiTabBaselines() async {
     final recorder = PerformanceBenchmarkService.instance;
 
-    const tabs = <String>[
-      "albums",
-      "artists",
-      "playlists",
-      "tracks",
-      "genres",
+    const rounds = <List<String>>[
+      ["albums", "artists", "playlists", "tracks", "genres"],
+      ["genres", "tracks", "playlists", "artists", "albums"],
+      ["playlists", "albums", "genres", "artists", "tracks"],
     ];
 
-    // Do not include stabilization time in any benchmark result. The first real
-    // UI run otherwise inherits startup/background work, while subsequent tabs
-    // benefit from that work already being complete.
+    // Fixed delays are only stabilization boundaries and are deliberately
+    // outside measured runs. "refreshed-view" means provider refresh inside
+    // one running process; true cold-process measurements require relaunch.
     recorder.diagnostic(
       "ui-stabilization-start",
-      values: {"seconds": 10},
+      values: {"seconds": 15},
     );
-    await Future<void>.delayed(const Duration(seconds: 10));
+    await Future<void>.delayed(const Duration(seconds: 15));
     recorder.diagnostic("ui-stabilization-complete");
 
-    for (final tab in tabs) {
-      await _runUiTabBaseline(tab, mode: "cold-view");
-
+    for (var round = 0; round < rounds.length; round++) {
       recorder.diagnostic(
-        "ui-tab-cooldown-start",
-        values: {"contentType": tab, "seconds": 5},
-      );
-      await Future<void>.delayed(const Duration(seconds: 5));
-      recorder.diagnostic(
-        "ui-tab-cooldown-complete",
-        values: {"contentType": tab},
+        "ui-round-start",
+        values: {"round": round + 1},
       );
 
-      await _runUiTabBaseline(tab, mode: "warm-view");
+      for (final tab in rounds[round]) {
+        await _runUiTabBaseline(
+          tab,
+          mode: "refreshed-view",
+          round: round + 1,
+        );
+
+        await _uiCooldown(recorder, tab);
+
+        await _runUiTabBaseline(
+          tab,
+          mode: "warm-view",
+          round: round + 1,
+        );
+
+        await _uiCooldown(recorder, tab);
+      }
 
       recorder.diagnostic(
-        "ui-tab-cooldown-start",
-        values: {"contentType": tab, "seconds": 5},
-      );
-      await Future<void>.delayed(const Duration(seconds: 5));
-      recorder.diagnostic(
-        "ui-tab-cooldown-complete",
-        values: {"contentType": tab},
+        "ui-round-complete",
+        values: {"round": round + 1},
       );
     }
+  }
+
+  Future<void> _uiCooldown(
+    PerformanceBenchmarkService recorder,
+    String tab,
+  ) async {
+    recorder.diagnostic(
+      "ui-tab-cooldown-start",
+      values: {"contentType": tab, "seconds": 5},
+    );
+    await Future<void>.delayed(const Duration(seconds: 5));
+    recorder.diagnostic(
+      "ui-tab-cooldown-complete",
+      values: {"contentType": tab},
+    );
   }
 
   Future<void> _runUiTabBaseline(
     String tab, {
     required String mode,
+    required int round,
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
 
@@ -255,6 +273,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: mode,
       targetType: tab,
     );
+    recorder.metric("round", round);
 
     try {
       await recorder.runStep(
@@ -262,7 +281,7 @@ class PerformanceBenchmarkSuiteRunner {
         timeout: const Duration(seconds: 120),
         operation: () => recorder.requestUiTab(
           contentType: tab,
-          refresh: mode == "cold-view",
+          refresh: mode == "refreshed-view",
           timeout: const Duration(seconds: 115),
         ),
       );
