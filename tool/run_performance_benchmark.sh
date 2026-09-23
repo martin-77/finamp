@@ -279,6 +279,9 @@ PY
       log "Pulled benchmark stream: ${size} bytes"
       last_size="$size"
       last_stream_change_epoch="$(date +%s)"
+      if (( size > 0 )); then
+        benchmark_started=1
+      fi
       print_progress
     fi
 
