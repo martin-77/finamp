@@ -2163,6 +2163,15 @@ class PerformanceBenchmarkSuiteRunner {
           timeout: const Duration(minutes: 25),
         ),
       );
+      await recorder.runStep(
+        name: "metadata-cleanup-idle",
+        timeout: const Duration(minutes: 30),
+        operation: () =>
+            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          stableFor: const Duration(seconds: 5),
+          timeout: const Duration(minutes: 25),
+        ),
+      );
       await recorder.setDownloadCleanupRequired(
         targetAlias: "",
         required: false,
