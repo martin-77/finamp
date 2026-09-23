@@ -331,6 +331,11 @@ class PerformanceBenchmarkService {
   int _startupFrameRasterMicrosTotal = 0;
   int _startupFrameTotalMicrosTotal = 0;
 
+  int _startupImageLoadStarted = 0;
+  int _startupImageLoadCompleted = 0;
+  int _startupImageLoadFailed = 0;
+  int _startupImageLoadSynchronous = 0;
+  int _startupImageMaxConcurrentLoads = 0;
   int _imageLoadsInFlight = 0;
   int _imageLoadGeneration = 0;
   final StreamController<int> _imageLoadController =
@@ -780,6 +785,11 @@ class PerformanceBenchmarkService {
         "buildMicrosMax": _startupFrameBuildMicrosMax,
         "rasterMicrosMax": _startupFrameRasterMicrosMax,
         "frameMicrosMax": _startupFrameTotalMicrosMax,
+        "imageLoadStarted": _startupImageLoadStarted,
+        "imageLoadCompleted": _startupImageLoadCompleted,
+        "imageLoadFailed": _startupImageLoadFailed,
+        "imageLoadSynchronous": _startupImageLoadSynchronous,
+        "imageMaxConcurrentLoads": _startupImageMaxConcurrentLoads,
         "rssBytes": ProcessInfo.currentRss,
         "maxRssBytes": ProcessInfo.maxRss,
         "processElapsedMs": processElapsedMs,
@@ -843,6 +853,12 @@ class PerformanceBenchmarkService {
   void imageLoadStarted() {
     if (!enabled) return;
     _imageLoadsInFlight++;
+    if (_startupFrameCollectionOpen) {
+      _startupImageLoadStarted++;
+      if (_imageLoadsInFlight > _startupImageMaxConcurrentLoads) {
+        _startupImageMaxConcurrentLoads = _imageLoadsInFlight;
+      }
+    }
     _imageLoadGeneration++;
     _imageLoadController.add(_imageLoadsInFlight);
     incrementMetricBuffered("imageLoadStarted");
@@ -851,6 +867,16 @@ class PerformanceBenchmarkService {
 
   void imageLoadCompleted({bool failed = false, bool synchronous = false}) {
     if (!enabled) return;
+    if (_startupFrameCollectionOpen) {
+      if (failed) {
+        _startupImageLoadFailed++;
+      } else {
+        _startupImageLoadCompleted++;
+      }
+      if (synchronous) {
+        _startupImageLoadSynchronous++;
+      }
+    }
     if (_imageLoadsInFlight > 0) {
       _imageLoadsInFlight--;
     }
@@ -1281,9 +1307,20 @@ class PerformanceBenchmarkService {
     Map<String, Object?> values = const {},
   }) {
     if (!enabled) return;
+
+    Map<String, Object?> outputValues = values;
+    if (name == "suite-phase-complete" || name == "suite-complete") {
+      outputValues = {
+        ...values,
+        "rssBytes": ProcessInfo.currentRss,
+        "maxRssBytes": ProcessInfo.maxRss,
+        "processElapsedMs": processElapsedMs,
+      };
+    }
+
     _emitHostRecord("diagnostic", {
       "name": name,
-      if (values.isNotEmpty) "values": values,
+      if (outputValues.isNotEmpty) "values": outputValues,
     });
   }
 
