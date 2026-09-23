@@ -2300,6 +2300,10 @@ class PerformanceBenchmarkSuiteRunner {
         ),
       );
 
+      final readyFuture = recorder.waitForEvent(
+        "player-processing-ready",
+        timeout: const Duration(minutes: 3),
+      );
       final playingFuture = recorder.waitForEvent(
         "player-playing",
         timeout: const Duration(minutes: 3),
@@ -2312,6 +2316,7 @@ class PerformanceBenchmarkSuiteRunner {
         "player-first-position-advance",
         timeout: const Duration(minutes: 3),
       );
+      unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
       unawaited(usefulBufferFuture.catchError((_) {}));
       unawaited(firstPositionFuture.catchError((_) {}));
@@ -2495,6 +2500,11 @@ class PerformanceBenchmarkSuiteRunner {
         operation: () => GetIt.instance<QueueService>().startSlicePlayback(slice),
       );
 
+      await recorder.runStep(
+        name: "wait-player-ready",
+        timeout: const Duration(minutes: 3),
+        operation: () => readyFuture,
+      );
       await recorder.runStep(
         name: "wait-player-playing",
         timeout: const Duration(minutes: 3),
