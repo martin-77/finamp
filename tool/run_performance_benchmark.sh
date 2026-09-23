@@ -120,6 +120,7 @@ while true; do
         --device "$device_id" \
         --terminate-existing \
         "$bundle_id" 2>&1 | tee -a "$raw_log"
+      benchmark_started=1
       last_stream_change_epoch="$(date +%s)"
       sleep 5
     fi
