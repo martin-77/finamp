@@ -10,6 +10,7 @@ import 'package:finamp/models/finamp_models.dart';
 import 'package:finamp/models/music_models.dart';
 import 'package:finamp/screens/album_screen.dart';
 import 'package:finamp/screens/artist_screen.dart';
+import 'package:finamp/screens/genre_screen.dart';
 import 'package:finamp/services/item_by_id_provider.dart';
 import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
@@ -253,12 +254,15 @@ class PerformanceBenchmarkSuiteRunner {
       for (final alias in const <String>[
         "detail-album",
         "detail-artist",
+        "detail-genre",
         "bench-100",
       ]) {
         final detailType = alias == "detail-album"
             ? "album"
             : alias == "detail-artist"
             ? "artist"
+            : alias == "detail-genre"
+            ? "genre"
             : "playlist";
         await _runDetailBaseline(
           targetAlias: alias,
@@ -611,6 +615,7 @@ class PerformanceBenchmarkSuiteRunner {
 
           BaseItemId? albumId;
           BaseItemId? artistId;
+          BaseItemId? genreId;
           for (final candidate in children) {
             albumId ??= candidate.albumId;
             if (artistId == null && (candidate.albumArtists?.isNotEmpty ?? false)) {
@@ -619,7 +624,10 @@ class PerformanceBenchmarkSuiteRunner {
             if (artistId == null && (candidate.artistItems?.isNotEmpty ?? false)) {
               artistId = candidate.artistItems!.first.id;
             }
-            if (albumId != null && artistId != null) break;
+            if (genreId == null && (candidate.genreItems?.isNotEmpty ?? false)) {
+              genreId = candidate.genreItems!.first.id;
+            }
+            if (albumId != null && artistId != null && genreId != null) break;
           }
 
           if (albumId != null) {
@@ -634,6 +642,13 @@ class PerformanceBenchmarkSuiteRunner {
               alias: "detail-artist",
               itemType: "MusicArtist",
               itemId: artistId.raw,
+            );
+          }
+          if (genreId != null) {
+            await recorder.saveTarget(
+              alias: "detail-genre",
+              itemType: "MusicGenre",
+              itemId: genreId.raw,
             );
           }
         }
@@ -1642,6 +1657,8 @@ class PerformanceBenchmarkSuiteRunner {
       ("detail-track", "track"),
       ("detail-album", "album"),
       ("detail-artist", "artist"),
+      ("detail-genre", "genre"),
+      ("detail-genre", "genre"),
       ("search-track-iron-maiden", "track"),
       ("search-album-iron-maiden", "album"),
       ("search-artist-iron-maiden", "artist"),
@@ -1718,6 +1735,7 @@ class PerformanceBenchmarkSuiteRunner {
       "track" => Track.fromItem(item),
       "album" => Album.fromItem(item),
       "artist" => Artist.fromItem(item),
+      "genre" => Genre.fromItem(item),
       "playlist" => Playlist.fromItem(item),
       _ => throw UnsupportedError("Unsupported playback type $playableType"),
     };
@@ -1894,6 +1912,12 @@ class PerformanceBenchmarkSuiteRunner {
               navigator.push(
                 MaterialPageRoute<ArtistScreen>(
                   builder: (_) => ArtistScreen(widgetArtist: item),
+                ),
+              );
+            } else if (detailType == "genre") {
+              navigator.push(
+                MaterialPageRoute<GenreScreen>(
+                  builder: (_) => GenreScreen(widgetGenre: item),
                 ),
               );
             } else if (detailType == "album" || detailType == "playlist") {
