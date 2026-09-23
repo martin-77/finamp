@@ -267,8 +267,10 @@ class PerformanceBenchmarkService {
 
   static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
-  static const _targetKeyPrefix = "target:";
-  static const _runKeyPrefix = "run:";
+  static String get _targetKeyPrefix =>
+      "target:$suiteRunId:";
+  static String get _runKeyPrefix =>
+      "run:$suiteRunId:";
   static String get _activeRunKey =>
       "active-run:$suiteRunId";
   static const _cleanupRequiredKey = "cleanup-required";
@@ -496,6 +498,19 @@ class PerformanceBenchmarkService {
     final encoded = box.get("$_targetKeyPrefix$alias");
     if (encoded == null) return null;
 
+    return PerformanceBenchmarkTarget.fromLocalJson(
+      jsonDecode(encoded) as Map<String, dynamic>,
+    );
+  }
+
+  /// Transitional fallback for a cleanup marker written by an older
+  /// benchmark build before targets were namespaced by suite run id.
+  Future<PerformanceBenchmarkTarget?> getLegacyTargetForCleanup(
+    String alias,
+  ) async {
+    final box = await _getBox();
+    final encoded = box.get("target:$alias");
+    if (encoded == null) return null;
     return PerformanceBenchmarkTarget.fromLocalJson(
       jsonDecode(encoded) as Map<String, dynamic>,
     );
@@ -1273,14 +1288,24 @@ class PerformanceBenchmarkService {
 
   Future<void> setDownloadCleanupRequired({
     required String targetAlias,
+    String? targetItemId,
+    String? targetItemType,
     bool required = true,
   }) async {
     final box = await _getBox();
     if (required) {
+      final target = targetItemId == null
+          ? await getTarget(targetAlias)
+          : null;
       await box.put(
         _cleanupRequiredKey,
         jsonEncode({
           "targetAlias": targetAlias,
+          "ownerSuiteRunId": suiteRunId,
+          if (targetItemId ?? target?.itemId case final itemId?)
+            "targetItemId": itemId,
+          if (targetItemType ?? target?.itemType case final itemType?)
+            "targetItemType": itemType,
           "createdAt": DateTime.now().toUtc().toIso8601String(),
         }),
       );
@@ -1300,9 +1325,16 @@ class PerformanceBenchmarkService {
   Future<bool> isDownloadCleanupTarget(String itemId) async {
     final requirement = await getDownloadCleanupRequirement();
     if (requirement == null) return false;
+
+    final storedItemId = requirement["targetItemId"] as String?;
+    if (storedItemId != null) {
+      return storedItemId == itemId;
+    }
+
     final alias = requirement["targetAlias"] as String?;
     if (alias == null) return false;
-    final target = await getTarget(alias);
+    final target =
+        await getTarget(alias) ?? await getLegacyTargetForCleanup(alias);
     return target?.itemId == itemId;
   }
 
