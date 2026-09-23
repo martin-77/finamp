@@ -13,7 +13,7 @@ mkdir -p "$out_dir"
 raw_log="$out_dir/finamp-benchmark-$timestamp.log"
 jsonl="$out_dir/finamp-benchmark-$timestamp.jsonl"
 app_path="build/ios/iphoneos/Runner.app"
-remote_stream="Documents/finamp-benchmark-stream.jsonl"
+remote_stream="Documents/finamp-benchmark-stream-$variant.jsonl"
 poll_seconds="${FINAMP_BENCH_POLL_SECONDS:-2}"
 timeout_seconds="${FINAMP_BENCH_TIMEOUT_SECONDS:-1800}"
 
@@ -68,7 +68,7 @@ while true; do
     exit 124
   fi
 
-  pulled_file="$pull_root/finamp-benchmark-stream.jsonl"
+  pulled_file="$pull_root/finamp-benchmark-stream-$variant.jsonl"
   rm -f "$pulled_file"
 
   set +e
