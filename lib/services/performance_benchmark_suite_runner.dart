@@ -209,6 +209,52 @@ class PerformanceBenchmarkSuiteRunner {
     );
   }
 
+  Future<void> _ensureSuiteOnlineBaseline() async {
+    final recorder = PerformanceBenchmarkService.instance;
+    var originalOffline = await recorder.getOriginalOfflineState();
+    if (originalOffline == null) {
+      originalOffline = FinampSettingsHelper.finampSettings.isOffline;
+      await recorder.saveOriginalOfflineState(originalOffline);
+      recorder.diagnostic(
+        "suite-original-offline-state-saved",
+        values: {"offline": originalOffline},
+      );
+    }
+
+    if (FinampSettingsHelper.finampSettings.isOffline) {
+      FinampSetters.setIsOffline(false);
+      await Hive.box("FinampSettings").flush();
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(milliseconds: 750),
+        timeout: const Duration(minutes: 5),
+      );
+      recorder.diagnostic(
+        "suite-online-baseline-forced",
+        values: {"originalOffline": originalOffline},
+      );
+    }
+  }
+
+  Future<void> _restoreSuiteOriginalOfflineState({
+    bool clearSavedState = true,
+  }) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final originalOffline = await recorder.getOriginalOfflineState();
+    if (originalOffline == null) return;
+
+    if (FinampSettingsHelper.finampSettings.isOffline != originalOffline) {
+      FinampSetters.setIsOffline(originalOffline);
+      await Hive.box("FinampSettings").flush();
+    }
+    recorder.diagnostic(
+      "suite-original-offline-state-restored",
+      values: {"offline": originalOffline},
+    );
+    if (clearSavedState) {
+      await recorder.clearOriginalOfflineState();
+    }
+  }
+
   Future<void> _prepareFreshSuiteState() async {
     if (_running) return;
     _running = true;
@@ -216,6 +262,7 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     try {
       await WidgetsBinding.instance.endOfFrame;
+      await _ensureSuiteOnlineBaseline();
 
       // Recover any stale cleanup marker from an older interrupted suite first.
       await _recoverPendingDownloadCleanup();
@@ -261,6 +308,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
+      await _restoreSuiteOriginalOfflineState();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -337,6 +385,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
+      await _restoreSuiteOriginalOfflineState();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -458,6 +507,7 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.setSuiteStage("post-metadata-done");
       }
 
+      await _restoreSuiteOriginalOfflineState();
       await recorder.setSuiteStage("complete");
       recorder.diagnostic(
         "suite-complete",
@@ -466,6 +516,7 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } catch (error) {
+      await _restoreSuiteOriginalOfflineState();
       recorder.diagnostic(
         "suite-error",
         values: {
@@ -644,6 +695,7 @@ class PerformanceBenchmarkSuiteRunner {
       );
       await recorder.flushHostStream();
     } catch (error) {
+      await _restoreSuiteOriginalOfflineState();
       recorder.diagnostic(
         "suite-error",
         values: {"errorType": error.runtimeType.toString()},
@@ -1844,7 +1896,6 @@ class PerformanceBenchmarkSuiteRunner {
     final previousOffline = FinampSettingsHelper.finampSettings.isOffline;
 
     if (targetAlias == "bench-1000") {
-      await recorder.saveOriginalOfflineState(previousOffline);
       FinampSetters.setIsOffline(true);
       await Hive.box("FinampSettings").flush();
       await recorder.setSuiteStage("offline-bench1000-running");
@@ -2297,16 +2348,15 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (stage == "offline-bench1000-cleanup") {
-        final originalOffline =
-            await recorder.getOriginalOfflineState() ?? false;
-        FinampSetters.setIsOffline(originalOffline);
+        FinampSetters.setIsOffline(false);
         await Hive.box("FinampSettings").flush();
         recorder.diagnostic(
           "offline-mode-restored",
           values: {
             "targetAlias": targetAlias,
-            "restoredOffline": originalOffline,
+            "restoredOffline": false,
             "afterProcessRestart": true,
+            "scope": "suite-online-baseline",
           },
         );
 
@@ -2328,8 +2378,6 @@ class PerformanceBenchmarkSuiteRunner {
           stub: stub,
           downloads: downloads,
         );
-        await recorder.clearOriginalOfflineState();
-
         await recorder.setSuiteStage("main-download-bench1000-done");
         await recorder.setSuiteStage("main-download-done");
         recorder.diagnostic(
@@ -2342,6 +2390,7 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.flushHostStream();
       }
     } catch (error) {
+      await _restoreSuiteOriginalOfflineState();
       recorder.diagnostic(
         "suite-error",
         values: {
