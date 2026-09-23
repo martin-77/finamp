@@ -291,6 +291,7 @@ class PerformanceBenchmarkService {
 
   Timer? _heartbeatTimer;
   Future<void> _hostWriteChain = Future<void>.value();
+  Future<void> _persistWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
   PerformanceBenchmarkTabCommand? _activeTabCommand;
   PerformanceBenchmarkDetailCommand? _activeDetailCommand;
@@ -1103,11 +1104,23 @@ class PerformanceBenchmarkService {
     await command.completed.timeout(timeout);
   }
 
-  Future<void> _persistActiveRun() async {
+  Future<void> _persistActiveRun() {
     final run = _activeRun;
-    if (run == null) return;
-    final box = await _getBox();
-    await box.put(_activeRunKey, jsonEncode(run.toJson()));
+    if (run == null) return Future<void>.value();
+
+    // Snapshot synchronously, then serialize writes in scheduling order.
+    // This prevents an older asynchronous Hive write from completing after a
+    // newer checkpoint and replacing it with stale recovery state.
+    final encoded = jsonEncode(run.toJson());
+    _persistWriteChain = _persistWriteChain.then((_) async {
+      final box = await _getBox();
+      await box.put(_activeRunKey, encoded);
+    });
+    return _persistWriteChain;
+  }
+
+  Future<void> _flushActiveRunPersistence() async {
+    await _persistWriteChain;
   }
 
   void diagnostic(
@@ -1262,6 +1275,7 @@ class PerformanceBenchmarkService {
     run.stopwatch.stop();
     run.finished = true;
 
+    await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
@@ -1374,6 +1388,7 @@ class PerformanceBenchmarkService {
         ? PerformanceBenchmarkResult.success
         : PerformanceBenchmarkResult.failed;
 
+    await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
@@ -1396,6 +1411,7 @@ class PerformanceBenchmarkService {
     run.stopwatch.stop();
     run.finished = true;
     run.result = PerformanceBenchmarkResult.cancelled;
+    await _flushActiveRunPersistence();
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
