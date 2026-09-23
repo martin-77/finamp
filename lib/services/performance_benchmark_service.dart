@@ -151,6 +151,15 @@ class PerformanceBenchmarkRun {
 /// Timings use one monotonic [Stopwatch] per run. Target IDs are stored only in
 /// a device-local Hive box and are deliberately excluded from exported data.
 class PerformanceBenchmarkService {
+  static const bool enabled = bool.fromEnvironment(
+    "FINAMP_PERFORMANCE_BENCHMARK",
+    defaultValue: false,
+  );
+  static const String variant = String.fromEnvironment(
+    "FINAMP_BENCH_VARIANT",
+    defaultValue: "unknown",
+  );
+
   static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
   static const _targetKeyPrefix = "target:";
@@ -366,6 +375,17 @@ class PerformanceBenchmarkService {
     if (run == null) return;
     final box = await _getBox();
     await box.put(_activeRunKey, jsonEncode(run.toJson()));
+  }
+
+  void diagnostic(
+    String name, {
+    Map<String, Object?> values = const {},
+  }) {
+    if (!enabled) return;
+    _emitHostRecord("diagnostic", {
+      "name": name,
+      if (values.isNotEmpty) "values": values,
+    });
   }
 
   void _emitHostRecord(
