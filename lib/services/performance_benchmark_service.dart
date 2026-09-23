@@ -474,13 +474,17 @@ class PerformanceBenchmarkService {
   }) async {
     if (!enabled) return;
     final nativeElapsed = await nativeLaunchElapsedMs();
+    final dartElapsed = processElapsedMs;
     diagnostic(
       name,
       values: {
         ...values,
-        "processElapsedMs": processElapsedMs,
-        if (nativeElapsed != null)
+        "processElapsedMs": dartElapsed,
+        if (nativeElapsed != null) ...{
           "nativeLaunchElapsedMs": nativeElapsed,
+          "nativeToDartMainMs":
+              (nativeElapsed - dartElapsed).clamp(0.0, double.infinity),
+        },
       },
     );
   }
@@ -814,8 +818,14 @@ class PerformanceBenchmarkService {
       values: {
         "phase": phase,
         "fullyReadyMs": processElapsedMs,
-        if (nativeElapsed != null)
+        if (nativeElapsed != null) ...{
           "nativeFullyReadyMs": nativeElapsed,
+          "nativeToDartMainMs":
+              (nativeElapsed - processElapsedMs).clamp(
+                0.0,
+                double.infinity,
+              ),
+        },
         "requestCount": _startupNetworkRequestCount,
         "responseBytes": _startupNetworkResponseBytes,
         "httpDurationMicrosTotal": _startupNetworkDurationMicros,
