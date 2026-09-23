@@ -87,6 +87,23 @@ def main():
         for run in runs:
             results[str(run.get("result", "unknown"))] += 1
 
+        numeric_metrics = defaultdict(list)
+        for run in runs:
+            for metric_name, metric_value in (run.get("metrics") or {}).items():
+                if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
+                    numeric_metrics[metric_name].append(float(metric_value))
+
+        metric_summary = {
+            metric_name: {
+                "median": statistics.median(values),
+                "p90": p90(values),
+                "min": min(values),
+                "max": max(values),
+            }
+            for metric_name, values in sorted(numeric_metrics.items())
+            if values
+        }
+
         summary_groups.append({
             "scenario": key[0],
             "mode": key[1],
@@ -98,6 +115,7 @@ def main():
             "minMs": ms(min(durations)) if durations else None,
             "maxMs": ms(max(durations)) if durations else None,
             "results": dict(results),
+            "numericMetrics": metric_summary,
         })
 
     startup_summary = []
@@ -152,8 +170,8 @@ def main():
         "",
         "## Scenario groups",
         "",
-        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | Results |",
-        "|---|---|---|---:|---:|---:|---|",
+        "| Scenario | Mode | Target | Runs | Median ms | p90 ms | HTTP req med | Bytes med | >50ms frames med | Results |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
     ])
     for item in summary_groups:
         target = item["targetAlias"] or item["targetType"] or ""
@@ -162,9 +180,14 @@ def main():
         )
         median = "" if item["medianMs"] is None else f"{item['medianMs']:.3f}"
         p90_value = "" if item["p90Ms"] is None else f"{item['p90Ms']:.3f}"
+        metrics = item.get("numericMetrics") or {}
+        http_requests = metrics.get("httpRequestCount", {}).get("median", "")
+        response_bytes = metrics.get("httpResponseBytes", {}).get("median", "")
+        frames_50 = metrics.get("framesOver50ms", {}).get("median", "")
         lines.append(
             f"| {item['scenario']} | {item['mode']} | {target} | {item['runs']} | "
-            f"{median} | {p90_value} | {results} |"
+            f"{median} | {p90_value} | {http_requests} | {response_bytes} | "
+            f"{frames_50} | {results} |"
         )
 
     Path(args.md_out).write_text("\n".join(lines) + "\n", encoding="utf-8")
