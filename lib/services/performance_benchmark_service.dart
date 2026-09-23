@@ -193,6 +193,7 @@ class PerformanceBenchmarkService {
   File? _hostStreamFile;
   Future<void> _hostWriteChain = Future<void>.value();
   PerformanceBenchmarkRun? _activeRun;
+  PerformanceBenchmarkTabCommand? _activeTabCommand;
   int _runSequence = 0;
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
@@ -205,6 +206,7 @@ class PerformanceBenchmarkService {
       _tabController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
+  PerformanceBenchmarkTabCommand? get activeTabCommand => _activeTabCommand;
   bool get hasActiveRun => _activeRun != null;
 
   Future<Box<String>> _getBox() async {
@@ -381,13 +383,23 @@ class PerformanceBenchmarkService {
     required String contentType,
     Duration timeout = const Duration(seconds: 90),
   }) async {
+    if (_activeTabCommand != null) {
+      throw StateError("Another benchmark UI tab command is already active");
+    }
     final command = PerformanceBenchmarkTabCommand(contentType: contentType);
+    _activeTabCommand = command;
     mark(
       "ui-tab-requested",
       values: {"contentType": contentType},
     );
     _tabController.add(command);
-    await command.completed.timeout(timeout);
+    try {
+      await command.completed.timeout(timeout);
+    } finally {
+      if (identical(_activeTabCommand, command)) {
+        _activeTabCommand = null;
+      }
+    }
   }
 
   Future<void> requestAlphabetJump({
