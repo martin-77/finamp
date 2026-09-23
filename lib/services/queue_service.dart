@@ -20,6 +20,7 @@ import 'package:finamp/services/finamp_user_helper.dart';
 import 'package:finamp/services/jellyfin_api_helper.dart';
 import 'package:finamp/services/music_player_background_task.dart';
 import 'package:finamp/services/playback_history_service.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:finamp/services/radio_service_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -643,19 +644,31 @@ class QueueService {
     _queueServiceLogger.info("Items for queue: [${items.map((e) => e.name).join(", ")}]");
   }
 
-  Future<void> startSlicePlayback(PlayableSlice slice) async => _startSlicePlayback(slice: slice);
+  Future<void> startSlicePlayback(PlayableSlice slice) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    benchmark.mark("playback-action-received");
+    await _startSlicePlayback(slice: slice);
+  }
 
   Future<void> _startSlicePlayback({required PlayableSlice slice, bool beginPlaying = true}) async {
     switch (slice) {
       case BasePlayableSlice():
       case GroupedPlayableSlice():
       case PreCachedPlayableSlice() when slice.shuffleState == SliceShuffleState.playerShuffled:
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.mark("playable-slice-resolve-start");
         final base = await slice.resolve();
+        benchmark.mark(
+          "playable-slice-resolve-end",
+          values: {"resolvedTrackCount": base.items.length},
+        );
+        benchmark.metric("resolvedTrackCount", base.items.length);
         final order = switch (base.shuffleState) {
           SliceShuffleState.preShuffled => FinampPlaybackOrder.linear,
           SliceShuffleState.playerShuffled => FinampPlaybackOrder.shuffled,
           SliceShuffleState.linear => FinampPlaybackOrder.linear,
         };
+        benchmark.mark("queue-replace-start");
         await _replaceWholeQueue(
           itemList: base.items,
           source: base.source,
@@ -663,12 +676,22 @@ class QueueService {
           initialIndex: order == FinampPlaybackOrder.linear ? base.startingIndex : null,
           beginPlaying: beginPlaying,
         );
+        benchmark.mark(
+          "queue-replace-end",
+          values: {"queueLength": base.items.length},
+        );
+        benchmark.metric("queueLength", base.items.length);
         _queueServiceLogger.info(
           "Started playing '${base.source.name.getLocalized(GlobalSnackbar.requireL10n)}' (${base.source.type}) in order $order from index ${base.startingIndex}",
         );
         _queueServiceLogger.info("Items for queue: [${base.items.map((e) => e.name).join(", ")}]");
       // TODO also do pre-cache work in other queue add methods?
       case PreCachedPlayableSlice slice:
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.mark(
+          "queue-replace-start",
+          values: {"cachedTrackCount": slice.cachedTracks.length},
+        );
         // Shuffle state is linear or preshuffled, so ignore.
         await _replaceWholeQueue(
           itemList: slice.cachedTracks,
@@ -677,11 +700,22 @@ class QueueService {
           initialIndex: slice.startingOffset,
           beginPlaying: beginPlaying,
         );
+        benchmark.mark(
+          "queue-replace-end",
+          values: {"queueLength": slice.cachedTracks.length},
+        );
+        benchmark.metric("initialQueueLength", slice.cachedTracks.length);
         _queueServiceLogger.info(
           "Started playing '${slice.source.name.getLocalized(GlobalSnackbar.requireL10n)}' (${slice.source.type}), pending additional tracks",
         );
         _queueServiceLogger.info("Items for queue: [${slice.cachedTracks.map((e) => e.name).join(", ")}]");
+        benchmark.mark("followup-tracks-fetch-start");
         final additionalTracks = List.of(await slice.fetchTracks);
+        benchmark.mark(
+          "followup-tracks-fetch-end",
+          values: {"resolvedTrackCount": additionalTracks.length},
+        );
+        benchmark.metric("resolvedTrackCount", additionalTracks.length);
         if (!slice.combineTracks) {
           assert(() {
             for (int i = 0; i < slice.cachedTracks.length; i++) {
