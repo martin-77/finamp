@@ -60,9 +60,18 @@ def main():
                 task = values.get("task")
                 if isinstance(duration, (int, float)) and isinstance(task, str):
                     startup_tasks[task].append(float(duration))
-            elif name == "queue-restore-complete":
+            elif name in {
+                "queue-restore-complete",
+                "queue-restore-explicit-complete",
+            }:
                 queue_restores.append({
+                    "mode": (
+                        "startup-autoload"
+                        if name == "queue-restore-complete"
+                        else "explicit-after-restart"
+                    ),
                     "storedTrackCount": values.get("storedTrackCount"),
+                    "restoredTrackCount": values.get("restoredTrackCount"),
                     "durationMs": values.get("durationMs"),
                     "emittedAt": record.get("emittedAt"),
                 })
@@ -256,8 +265,8 @@ def main():
         "",
         "## Queue restore",
         "",
-        "| Stored tracks | Duration ms | Loaded tracks | Dropped tracks |",
-        "|---:|---:|---:|---:|",
+        "| Mode | Stored tracks | Restored tracks | Duration ms | Loaded tracks | Dropped tracks |",
+        "|---|---:|---:|---:|---:|---:|",
     ])
     if queue_restores or queue_restore_content:
         row_count = max(len(queue_restores), len(queue_restore_content))
@@ -273,12 +282,14 @@ def main():
                 content.get("storedTrackCount", ""),
             )
             lines.append(
-                f"| {stored} | {timing.get('durationMs', '')} | "
+                f"| {timing.get('mode', '')} | {stored} | "
+                f"{timing.get('restoredTrackCount', '')} | "
+                f"{timing.get('durationMs', '')} | "
                 f"{content.get('loadedTrackCount', '')} | "
                 f"{content.get('droppedTrackCount', '')} |"
             )
     else:
-        lines.append("|  |  |  |  |")
+        lines.append("|  |  |  |  |  |  |")
 
     lines.extend([
         "",
