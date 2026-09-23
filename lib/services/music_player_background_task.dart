@@ -515,6 +515,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     bool benchmarkSawPlaying = false;
     bool benchmarkSawPositionAdvance = false;
+    bool benchmarkSawUsefulBuffer = false;
     _player.playingStream.listen((playing) {
       if (playing && !benchmarkSawPlaying) {
         benchmarkSawPlaying = true;
@@ -523,6 +524,22 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
       if (!playing) {
         benchmarkSawPlaying = false;
         benchmarkSawPositionAdvance = false;
+        benchmarkSawUsefulBuffer = false;
+      }
+    });
+
+    _player.bufferedPositionStream.listen((bufferedPosition) {
+      if (!_player.playing || benchmarkSawUsefulBuffer) return;
+      final usefulBuffer = bufferedPosition - _player.position;
+      if (usefulBuffer >= const Duration(seconds: 2)) {
+        benchmarkSawUsefulBuffer = true;
+        PerformanceBenchmarkService.instance.mark(
+          "player-useful-buffer-ready",
+          values: {
+            "bufferedPositionMs": bufferedPosition.inMilliseconds,
+            "bufferAheadMs": usefulBuffer.inMilliseconds,
+          },
+        );
       }
     });
 
