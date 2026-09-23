@@ -112,6 +112,23 @@ class PerformanceBenchmarkDetailCommand {
   }
 }
 
+class PerformanceBenchmarkPageCommand {
+  PerformanceBenchmarkPageCommand({required this.contentType});
+
+  final String contentType;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkEvent {
   const PerformanceBenchmarkEvent({
     required this.name,
@@ -238,11 +255,15 @@ class PerformanceBenchmarkService {
       StreamController<PerformanceBenchmarkTabCommand>.broadcast();
   final StreamController<String> _eventNameController =
       StreamController<String>.broadcast();
+  final StreamController<PerformanceBenchmarkPageCommand> _pageController =
+      StreamController<PerformanceBenchmarkPageCommand>.broadcast();
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
   Stream<PerformanceBenchmarkTabCommand> get tabCommands =>
       _tabController.stream;
+  Stream<PerformanceBenchmarkPageCommand> get pageCommands =>
+      _pageController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   PerformanceBenchmarkTabCommand? get activeTabCommand => _activeTabCommand;
@@ -499,6 +520,19 @@ class PerformanceBenchmarkService {
         _activeDetailCommand = null;
       }
     }
+  }
+
+  Future<void> requestNextPage({
+    required String contentType,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final command = PerformanceBenchmarkPageCommand(contentType: contentType);
+    mark(
+      "page-requested",
+      values: {"contentType": contentType},
+    );
+    _pageController.add(command);
+    await command.completed.timeout(timeout);
   }
 
   Future<void> requestAlphabetJump({
