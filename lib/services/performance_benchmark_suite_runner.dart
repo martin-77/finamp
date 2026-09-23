@@ -337,6 +337,13 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(
         phase: "realistic-first-startup",
       );
+      if (!recorder.startupPlaylistMetadataWorkRan ||
+          recorder.startupPlaylistMetadataWorkSucceeded != true) {
+        throw StateError(
+          "Realistic first-start playlist metadata workload did not complete successfully",
+        );
+      }
+
       final downloads = GetIt.instance<DownloadsService>();
       final metadataStub = DownloadStub.fromFinampCollection(
         FinampCollection(
