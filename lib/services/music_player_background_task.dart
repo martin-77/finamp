@@ -513,26 +513,39 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
       );
     });
 
-    bool benchmarkSawPlaying = false;
-    bool benchmarkSawPositionAdvance = false;
-    bool benchmarkSawUsefulBuffer = false;
+    String? benchmarkPlayingRunId;
+    String? benchmarkPositionRunId;
+    String? benchmarkUsefulBufferRunId;
+
+    PerformanceBenchmarkRun? activePlaybackBenchmarkRun() {
+      final run = PerformanceBenchmarkService.instance.activeRun;
+      if (run == null ||
+          !run.scenario.startsWith("playback-startup-") ||
+          !run.events.any(
+            (event) => event.name == "playback-action-received",
+          )) {
+        return null;
+      }
+      return run;
+    }
+
     _player.playingStream.listen((playing) {
-      if (playing && !benchmarkSawPlaying) {
-        benchmarkSawPlaying = true;
-        PerformanceBenchmarkService.instance.mark("player-playing");
-      }
-      if (!playing) {
-        benchmarkSawPlaying = false;
-        benchmarkSawPositionAdvance = false;
-        benchmarkSawUsefulBuffer = false;
-      }
+      if (!playing) return;
+      final run = activePlaybackBenchmarkRun();
+      if (run == null || benchmarkPlayingRunId == run.id) return;
+
+      benchmarkPlayingRunId = run.id;
+      PerformanceBenchmarkService.instance.mark("player-playing");
     });
 
     _player.bufferedPositionStream.listen((bufferedPosition) {
-      if (!_player.playing || benchmarkSawUsefulBuffer) return;
+      if (!_player.playing) return;
+      final run = activePlaybackBenchmarkRun();
+      if (run == null || benchmarkUsefulBufferRunId == run.id) return;
+
       final usefulBuffer = bufferedPosition - _player.position;
       if (usefulBuffer >= const Duration(seconds: 2)) {
-        benchmarkSawUsefulBuffer = true;
+        benchmarkUsefulBufferRunId = run.id;
         PerformanceBenchmarkService.instance.mark(
           "player-useful-buffer-ready",
           values: {
@@ -545,8 +558,12 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     // trigger sleep timer early if we're almost at the end of the final track
     _player.positionStream.listen((position) {
-      if (_player.playing && position > Duration.zero && !benchmarkSawPositionAdvance) {
-        benchmarkSawPositionAdvance = true;
+      final run = activePlaybackBenchmarkRun();
+      if (_player.playing &&
+          position > Duration.zero &&
+          run != null &&
+          benchmarkPositionRunId != run.id) {
+        benchmarkPositionRunId = run.id;
         PerformanceBenchmarkService.instance.mark(
           "player-first-position-advance",
           values: {
