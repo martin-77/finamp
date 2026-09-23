@@ -32,6 +32,7 @@ def main():
     queue_restores = []
     queue_restore_content = []
     startup_network = []
+    network_target_events = []
     recovered_runs = []
     phases = []
     diagnostics = []
@@ -98,6 +99,15 @@ def main():
                     "responseBytes": values.get("responseBytes"),
                     "durationMicrosTotal": values.get("durationMicrosTotal"),
                     "durationMicrosMax": values.get("durationMicrosMax"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name in {
+                "network-target-ping",
+                "network-target-state-changed",
+            }:
+                network_target_events.append({
+                    "name": name,
+                    "values": values,
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name == "suite-phase-complete":
@@ -198,6 +208,7 @@ def main():
         "completedPhases": phases,
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
+        "networkTargetEvents": network_target_events,
         "queueRestores": queue_restores,
         "queueRestoreContent": queue_restore_content,
         "recoveredRuns": recovered_runs,
@@ -303,6 +314,30 @@ def main():
             )
     else:
         lines.append("|  |  |  |  |")
+
+    lines.extend([
+        "",
+        "## Network target diagnostics",
+        "",
+        "| Event | Target/state | Success | Duration ms |",
+        "|---|---|---|---:|",
+    ])
+    if network_target_events:
+        for item in network_target_events:
+            values = item.get("values") or {}
+            state = values.get("target")
+            if state is None and "toLocalTarget" in values:
+                state = (
+                    "local"
+                    if values.get("toLocalTarget")
+                    else "public"
+                )
+            lines.append(
+                f"| {item.get('name', '')} | {state or ''} | "
+                f"{values.get('success', '')} | {values.get('durationMs', '')} |"
+            )
+    else:
+        lines.append("| none observed |  |  |  |")
 
     lines.extend([
         "",
