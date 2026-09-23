@@ -217,6 +217,28 @@ completion prerequisite. The host runner also emits explicit blocked/error
 termination and the app restores the suite-owned original offline state before
 those terminal records.
 
+## Benchmark app isolation
+
+The suite deliberately clears benchmark queue state, benchmark downloads and
+persistent image/cache state. Therefore the built iOS app must normally use a
+separate benchmark bundle identifier and app container rather than replacing a
+normal Finamp installation.
+
+The lower-level runner checks the built `CFBundleIdentifier` before
+installation. It refuses the normal Finamp identifier
+`com.unicornsonlsd.finamp-ios` by default. A deliberately destructive run can
+be enabled only with:
+
+```bash
+FINAMP_BENCH_ALLOW_PRODUCTION_BUNDLE=true \
+  FINAMP_BENCH_SMOKE=true \
+  bash tool/bootstrap_performance_benchmark_macos.sh
+```
+
+The safer setup is to keep a machine-local Xcode project change with a distinct
+benchmark bundle identifier; the bootstrap already permits that known local
+project-file modification while still rejecting unrelated source changes.
+
 ## Smoke orchestration run
 
 Before the multi-hour baseline, run the same harness with a reduced matrix:
