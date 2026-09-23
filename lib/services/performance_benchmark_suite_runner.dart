@@ -52,6 +52,7 @@ class PerformanceBenchmarkSuiteRunner {
     "main-search-done",
     "main-alphabet-done",
     "main-details-done",
+    "main-drilldown-done",
     "main-playback-done",
     "main-download-bench10-done",
     "main-download-bench100-done",
@@ -514,12 +515,17 @@ class PerformanceBenchmarkSuiteRunner {
         stage = "main-details-done";
       }
 
-      if (!_stageAtOrAfter(stage, "main-playback-done")) {
+      if (!_stageAtOrAfter(stage, "main-drilldown-done")) {
         await _runSearchDrilldownBaselines();
         recorder.diagnostic(
           "suite-phase-complete",
           values: {"phase": "artist-album-track-drilldown"},
         );
+        await recorder.setSuiteStage("main-drilldown-done");
+        stage = "main-drilldown-done";
+      }
+
+      if (!_stageAtOrAfter(stage, "main-playback-done")) {
         await _runPlaybackBaselines();
         recorder.diagnostic(
           "suite-phase-complete",
