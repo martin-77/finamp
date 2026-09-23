@@ -547,12 +547,17 @@ def main():
         http_us = metrics.get("httpDurationMicrosTotal", {}).get("median")
         worker_us = metrics.get("workerDurationMicrosTotal", {}).get("median")
         non_http_us = metrics.get("apiNonHttpMicrosApprox", {}).get("median")
+        total_ms_text = (
+            "" if item["medianMs"] is None else f"{item['medianMs']:.3f}"
+        )
+        http_ms_text = "" if http_us is None else round(http_us / 1000.0, 3)
+        worker_ms_text = "" if worker_us is None else round(worker_us / 1000.0, 3)
+        non_http_ms_text = (
+            "" if non_http_us is None else round(non_http_us / 1000.0, 3)
+        )
         lines.append(
-            f"| {item['scenario']} | {item['mode']} | "
-            f"{'' if item['medianMs'] is None else f'{item['medianMs']:.3f}'} | "
-            f"{'' if http_us is None else round(http_us / 1000.0, 3)} | "
-            f"{'' if worker_us is None else round(worker_us / 1000.0, 3)} | "
-            f"{'' if non_http_us is None else round(non_http_us / 1000.0, 3)} |"
+            f"| {item['scenario']} | {item['mode']} | {total_ms_text} | "
+            f"{http_ms_text} | {worker_ms_text} | {non_http_ms_text} |"
         )
 
     problem_groups = [
