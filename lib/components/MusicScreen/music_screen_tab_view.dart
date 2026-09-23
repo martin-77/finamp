@@ -84,6 +84,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   PerformanceBenchmarkPageCommand? _activeBenchmarkPage;
   int _benchmarkPageInitialCount = 0;
   bool _benchmarkPageFrameScheduled = false;
+  PerformanceBenchmarkSearchCommand? _lastCompletedSearchCommand;
+  bool _benchmarkSearchFrameScheduled = false;
   PerformanceBenchmarkTabCommand? _activeBenchmarkTab;
   bool _benchmarkTabDataMarked = false;
   bool _benchmarkTabFrameScheduled = false;
@@ -293,6 +295,57 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
   }
 
+  void _maybeCompleteBenchmarkSearch(
+    PagingState<int, FinampDisplayableOrPlayable> state,
+  ) {
+    final command = PerformanceBenchmarkService.instance.activeSearchCommand;
+    if (command == null ||
+        identical(_lastCompletedSearchCommand, command) ||
+        command.selectedContentType != widget.contentType?.name ||
+        state.isLoading) {
+      return;
+    }
+
+    if (state.items == null && state.hasNextPage) return;
+
+    final resultCount = state.items?.length ?? 0;
+    final benchmark = PerformanceBenchmarkService.instance;
+    benchmark.mark(
+      "search-data-ready",
+      values: {
+        "contentType": widget.contentType?.name,
+        "queryAlias": command.queryAlias,
+        "resultCount": resultCount,
+      },
+    );
+    benchmark.metric("searchResultCount", resultCount);
+
+    if (_benchmarkSearchFrameScheduled) return;
+    _benchmarkSearchFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(
+            PerformanceBenchmarkService.instance.activeSearchCommand,
+            command,
+          )) {
+        _benchmarkSearchFrameScheduled = false;
+        return;
+      }
+      final current = ref.read(pageControl);
+      benchmark.mark(
+        "search-first-rendered-content",
+        values: {
+          "contentType": widget.contentType?.name,
+          "queryAlias": command.queryAlias,
+          "resultCount": current.items?.length ?? 0,
+        },
+      );
+      _lastCompletedSearchCommand = command;
+      _benchmarkSearchFrameScheduled = false;
+      command.complete();
+    });
+  }
+
   // Scrolls the list to the first occurrence of the letter in the list
   // If clicked in the # element, it goes to the first or last one item, depending on sort order
   Future<void> scrollToLetter(String letter) async {
@@ -462,6 +515,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final benchmarkPageState = ref.watch(pageControl);
     _maybeCompleteBenchmarkTab(benchmarkPageState);
     _maybeCompleteBenchmarkPage(benchmarkPageState);
+    _maybeCompleteBenchmarkSearch(benchmarkPageState);
     if (letterToSearch != null) {
       scrollToLetter(letterToSearch!);
     }
