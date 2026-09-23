@@ -341,12 +341,67 @@ def main():
             "maxMs": round(max(durations), 3),
         })
 
+    startup_phase_grouped = []
+    startup_phase_groups = defaultdict(list)
+    for item in startup_phase_results:
+        phase = item.get("phase") or "unknown"
+        if phase.startswith("persistent-cache-startup-repeat-"):
+            phase = "persistent-cache-startup"
+        startup_phase_groups[phase].append(item)
+
+    for phase, items in sorted(startup_phase_groups.items()):
+        def numeric_values(key):
+            return [
+                float(item[key])
+                for item in items
+                if isinstance(item.get(key), (int, float))
+                and not isinstance(item.get(key), bool)
+            ]
+
+        ready = numeric_values("fullyReadyMs")
+        requests = numeric_values("requestCount")
+        http_total = numeric_values("httpDurationMicrosTotal")
+        worker_total = numeric_values("workerDurationMicrosTotal")
+        frames_50 = numeric_values("framesOver50ms")
+        frame_max = numeric_values("frameMicrosMax")
+        images = numeric_values("imageLoadStarted")
+        rss = numeric_values("rssBytes")
+
+        startup_phase_grouped.append({
+            "phase": phase,
+            "runs": len(items),
+            "fullyReadyMedianMs": statistics.median(ready) if ready else None,
+            "fullyReadyP90Ms": p90(ready) if ready else None,
+            "requestMedian": statistics.median(requests) if requests else None,
+            "httpTotalMedianMs": (
+                statistics.median(http_total) / 1000.0
+                if http_total else None
+            ),
+            "workerTotalMedianMs": (
+                statistics.median(worker_total) / 1000.0
+                if worker_total else None
+            ),
+            "framesOver50Median": (
+                statistics.median(frames_50) if frames_50 else None
+            ),
+            "frameMaxMedianMs": (
+                statistics.median(frame_max) / 1000.0
+                if frame_max else None
+            ),
+            "imageLoadMedian": statistics.median(images) if images else None,
+            "rssMedianMiB": (
+                statistics.median(rss) / (1024 * 1024)
+                if rss else None
+            ),
+        })
+
     output = {
         "source": source.name,
         "completedPhases": phases,
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
         "startupPhaseResults": startup_phase_results,
+        "startupPhaseGroups": startup_phase_grouped,
         "startupFrames": startup_frames,
         "startupImageCache": startup_image_cache,
         "phaseMemory": phase_memory,
@@ -441,27 +496,28 @@ def main():
         "",
         "## Startup phase comparison",
         "",
-        "| Phase | Fully ready ms | Requests | HTTP total ms | Worker total ms | >50ms frames | Max frame ms | Image loads | RSS MiB |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Phase | Runs | Fully ready median ms | p90 ms | Requests med | HTTP total med ms | Worker total med ms | >50ms frames med | Max frame med ms | Image loads med | RSS med MiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
-    if startup_phase_results:
-        for item in startup_phase_results:
-            http_total_us = item.get("httpDurationMicrosTotal")
-            worker_total_us = item.get("workerDurationMicrosTotal")
-            frame_max_us = item.get("frameMicrosMax")
-            rss_bytes = item.get("rssBytes")
-            http_total_ms = "" if not isinstance(http_total_us, (int, float)) else round(http_total_us / 1000.0, 3)
-            worker_total_ms = "" if not isinstance(worker_total_us, (int, float)) else round(worker_total_us / 1000.0, 3)
-            frame_max_ms = "" if not isinstance(frame_max_us, (int, float)) else round(frame_max_us / 1000.0, 3)
-            rss_mib = "" if not isinstance(rss_bytes, (int, float)) else round(rss_bytes / (1024 * 1024), 3)
+    if startup_phase_grouped:
+        for item in startup_phase_grouped:
+            def fmt(value):
+                return "" if value is None else round(value, 3)
+
             lines.append(
-                f"| {item.get('phase', '')} | {item.get('fullyReadyMs', '')} | "
-                f"{item.get('requestCount', '')} | {http_total_ms} | {worker_total_ms} | "
-                f"{item.get('framesOver50ms', '')} | {frame_max_ms} | "
-                f"{item.get('imageLoadStarted', '')} | {rss_mib} |"
+                f"| {item['phase']} | {item['runs']} | "
+                f"{fmt(item['fullyReadyMedianMs'])} | "
+                f"{fmt(item['fullyReadyP90Ms'])} | "
+                f"{fmt(item['requestMedian'])} | "
+                f"{fmt(item['httpTotalMedianMs'])} | "
+                f"{fmt(item['workerTotalMedianMs'])} | "
+                f"{fmt(item['framesOver50Median'])} | "
+                f"{fmt(item['frameMaxMedianMs'])} | "
+                f"{fmt(item['imageLoadMedian'])} | "
+                f"{fmt(item['rssMedianMiB'])} |"
             )
     else:
-        lines.append("|  |  |  |  |  |  |  |  |  |")
+        lines.append("|  |  |  |  |  |  |  |  |  |  |  |")
 
     lines.extend([
         "",
