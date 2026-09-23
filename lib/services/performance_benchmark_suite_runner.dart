@@ -2398,19 +2398,19 @@ class PerformanceBenchmarkSuiteRunner {
 
       final readyFuture = recorder.waitForEvent(
         "player-processing-ready",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final playingFuture = recorder.waitForEvent(
         "player-playing",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final usefulBufferFuture = recorder.waitForEvent(
         "player-useful-buffer-ready",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final firstPositionFuture = recorder.waitForEvent(
         "player-first-position-advance",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
@@ -2596,6 +2596,18 @@ class PerformanceBenchmarkSuiteRunner {
       _ => throw UnsupportedError("Unsupported playback type $playableType"),
     };
 
+    final isVeryLargePlaylist =
+        playableType == "playlist" && targetAlias == "bench-10000";
+    final sliceTimeout = isVeryLargePlaylist
+        ? const Duration(minutes: 15)
+        : const Duration(minutes: 5);
+    final queueStartTimeout = isVeryLargePlaylist
+        ? const Duration(minutes: 30)
+        : const Duration(minutes: 10);
+    final playerStateTimeout = isVeryLargePlaylist
+        ? const Duration(minutes: 5)
+        : const Duration(minutes: 3);
+
     await recorder.startRun(
       scenario: "playback-startup-$playableType",
       variant: PerformanceBenchmarkService.variant,
@@ -2608,7 +2620,7 @@ class PerformanceBenchmarkSuiteRunner {
     try {
       final slice = await recorder.runStep(
         name: "playable-slice-provider",
-        timeout: const Duration(minutes: 5),
+        timeout: sliceTimeout,
         operation: () => container.read(
           getPlayableSliceProvider(
             item: playable,
@@ -2622,19 +2634,19 @@ class PerformanceBenchmarkSuiteRunner {
       // leave an unobserved timeout behind.
       final readyFuture = recorder.waitForEvent(
         "player-processing-ready",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final playingFuture = recorder.waitForEvent(
         "player-playing",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final usefulBufferFuture = recorder.waitForEvent(
         "player-useful-buffer-ready",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       final firstPositionFuture = recorder.waitForEvent(
         "player-first-position-advance",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
       );
       unawaited(readyFuture.catchError((_) {}));
       unawaited(playingFuture.catchError((_) {}));
@@ -2643,28 +2655,28 @@ class PerformanceBenchmarkSuiteRunner {
 
       await recorder.runStep(
         name: "queue-and-player-start",
-        timeout: const Duration(minutes: 10),
+        timeout: queueStartTimeout,
         operation: () => GetIt.instance<QueueService>().startSlicePlayback(slice),
       );
 
       await recorder.runStep(
         name: "wait-player-ready",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
         operation: () => readyFuture,
       );
       await recorder.runStep(
         name: "wait-player-playing",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
         operation: () => playingFuture,
       );
       await recorder.runStep(
         name: "wait-useful-buffer",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
         operation: () => usefulBufferFuture,
       );
       await recorder.runStep(
         name: "wait-first-position",
-        timeout: const Duration(minutes: 3),
+        timeout: playerStateTimeout,
         operation: () => firstPositionFuture,
       );
       await recorder.runStep(
