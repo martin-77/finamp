@@ -225,12 +225,15 @@ while true; do
   set -e
 
   if [[ "$copy_status" -eq 0 && -f "$pulled_file" ]]; then
+    delta_file="$pull_root/delta.jsonl"
+    : > "$delta_file"
+
     set +e
-    merge_output="$(python3 - "$jsonl" "$pulled_file" <<'PY'
+    merge_output="$(python3 - "$jsonl" "$pulled_file" "$delta_file" <<'PY'
 import os
 import sys
 
-local_path, remote_path = sys.argv[1:3]
+local_path, remote_path, delta_path = sys.argv[1:4]
 with open(local_path, "rb") as handle:
     local = handle.read()
 with open(remote_path, "rb") as handle:
@@ -247,6 +250,8 @@ if not remote.startswith(local):
 suffix = remote[len(local):]
 if suffix:
     with open(local_path, "ab") as handle:
+        handle.write(suffix)
+    with open(delta_path, "wb") as handle:
         handle.write(suffix)
 
 print(f"ok:{len(remote)}:{len(suffix)}")
@@ -277,40 +282,42 @@ PY
       print_progress
     fi
 
-    if grep -q '"name":"suite-authenticated"' "$jsonl" ||
-       grep -q '"name":"startup-baseline-complete"' "$jsonl"; then
-      benchmark_started=1
-    fi
+    if [[ -s "$delta_file" ]]; then
+      if grep -q '"name":"suite-authenticated"' "$delta_file" ||
+         grep -q '"name":"startup-baseline-complete"' "$delta_file"; then
+        benchmark_started=1
+      fi
 
-    planned_restart_count="$(grep -c '"name":"host-restart-requested"' "$jsonl" || true)"
-    if (( planned_restart_count > handled_planned_restarts )); then
-      handled_planned_restarts="$planned_restart_count"
-      log ""
-      log "==> Full suite requested planned process restart #$handled_planned_restarts"
-      log "Relaunching the installed app with the same auth/settings/container..."
-      xcrun devicectl device process launch \
-        --device "$device_id" \
-        --terminate-existing \
-        "$bundle_id" 2>&1 | tee -a "$raw_log"
-      benchmark_started=1
-      last_stream_change_epoch="$(date +%s)"
-      sleep 5
-    fi
+      new_planned_restarts="$(grep -c '"name":"host-restart-requested"' "$delta_file" || true)"
+      if (( new_planned_restarts > 0 )); then
+        handled_planned_restarts="$((handled_planned_restarts + new_planned_restarts))"
+        log ""
+        log "==> Full suite requested planned process restart #$handled_planned_restarts"
+        log "Relaunching the installed app with the same auth/settings/container..."
+        xcrun devicectl device process launch \
+          --device "$device_id" \
+          --terminate-existing \
+          "$bundle_id" 2>&1 | tee -a "$raw_log"
+        benchmark_started=1
+        last_stream_change_epoch="$(date +%s)"
+        sleep 5
+      fi
 
-    if grep -q '"name":"suite-complete"' "$jsonl"; then
-      log "==> Benchmark suite completed"
-      generate_summary
-      exit 0
-    fi
-    if grep -q '"name":"suite-blocked"' "$jsonl"; then
-      log "ERROR: Benchmark suite blocked; inspect $jsonl"
-      generate_summary
-      exit 3
-    fi
-    if grep -q '"name":"suite-error"' "$jsonl"; then
-      log "ERROR: Benchmark suite reported an error; inspect $jsonl"
-      generate_summary
-      exit 4
+      if grep -q '"name":"suite-complete"' "$delta_file"; then
+        log "==> Benchmark suite completed"
+        generate_summary
+        exit 0
+      fi
+      if grep -q '"name":"suite-blocked"' "$delta_file"; then
+        log "ERROR: Benchmark suite blocked; inspect $jsonl"
+        generate_summary
+        exit 3
+      fi
+      if grep -q '"name":"suite-error"' "$delta_file"; then
+        log "ERROR: Benchmark suite reported an error; inspect $jsonl"
+        generate_summary
+        exit 4
+      fi
     fi
   else
     if [[ "$last_size" -lt 0 ]]; then
