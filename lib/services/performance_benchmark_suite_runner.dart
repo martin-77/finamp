@@ -51,6 +51,9 @@ class PerformanceBenchmarkSuiteRunner {
     "main-alphabet-done",
     "main-details-done",
     "main-playback-done",
+    "main-download-bench10-done",
+    "main-download-bench100-done",
+    "main-download-bench1000-done",
     "main-download-done",
     "main-image-cache-done",
   ];
@@ -391,7 +394,7 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (!_stageAtOrAfter(stage, "main-download-done")) {
-        await _runDownloadAndOfflineBaselines();
+        stage = await _runDownloadAndOfflineBaselines(stage);
         recorder.diagnostic(
           "suite-phase-complete",
           values: {"phase": "download-offline"},
@@ -1141,20 +1144,31 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
-  Future<void> _runDownloadAndOfflineBaselines() async {
+  Future<String> _runDownloadAndOfflineBaselines(
+    String? currentStage,
+  ) async {
     final recorder = PerformanceBenchmarkService.instance;
-    for (final entry in const <(String, int)>[
-      ("bench-10", 10),
-      ("bench-100", 100),
-      ("bench-1000", 1000),
-    ]) {
+    var stage = currentStage ?? "main-playback-done";
+
+    final entries = const <(String, int, String)>[
+      ("bench-10", 10, "main-download-bench10-done"),
+      ("bench-100", 100, "main-download-bench100-done"),
+      ("bench-1000", 1000, "main-download-bench1000-done"),
+    ];
+
+    for (final entry in entries) {
+      final (alias, expectedTracks, completedStage) = entry;
+      if (_stageAtOrAfter(stage, completedStage)) {
+        continue;
+      }
+
       try {
-        await _runDownloadLifecycle(entry.$1, entry.$2);
+        await _runDownloadLifecycle(alias, expectedTracks);
       } catch (error) {
         recorder.diagnostic(
           "download-target-phase-error",
           values: {
-            "targetAlias": entry.$1,
+            "targetAlias": alias,
             "errorType": error.runtimeType.toString(),
           },
         );
@@ -1162,8 +1176,13 @@ class PerformanceBenchmarkSuiteRunner {
         // possible. Cleanup failure itself remains fatal.
         await _recoverPendingDownloadCleanup();
       }
+
+      await recorder.setSuiteStage(completedStage);
+      stage = completedStage;
       await Future<void>.delayed(const Duration(seconds: 5));
     }
+
+    return stage;
   }
 
   Future<void> _runDownloadLifecycle(
