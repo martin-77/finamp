@@ -1444,7 +1444,7 @@ class PerformanceBenchmarkService {
       }
       return sanitized;
     }
-    if (value is Iterable) {
+    if (value is Iterable<Object?>) {
       final sanitized = <Object?>[];
       for (final item in value) {
         if (item is Map<Object?, Object?> &&
