@@ -935,6 +935,7 @@ class PerformanceBenchmarkSuiteRunner {
           downloads,
           stub,
           expectedTracks,
+          targetAlias,
         ),
       );
 
@@ -1168,17 +1169,43 @@ class PerformanceBenchmarkSuiteRunner {
     DownloadsService downloads,
     DownloadStub stub,
     int expectedTracks,
+    String targetAlias,
   ) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    var lastComplete = -1;
+    var lastTotal = -1;
+
     while (true) {
-      final info = await downloads.getCollectionInfo(
-        id: BaseItemId(stub.id),
-      );
-      if (info is DownloadItem && info.state.isComplete) {
-        final status = downloads.getStatus(stub, expectedTracks);
-        if (status.isDownloaded && !status.outdated) {
-          return;
-        }
+      final progress =
+          downloads.getPerformanceBenchmarkCollectionProgress(stub);
+      final total = progress["totalTracks"] ?? 0;
+      final complete = progress["completeTracks"] ?? 0;
+      final active = progress["activeTracks"] ?? 0;
+      final failed = progress["failedTracks"] ?? 0;
+
+      if (complete != lastComplete || total != lastTotal) {
+        recorder.diagnostic(
+          "download-progress",
+          values: {
+            "targetAlias": targetAlias,
+            "expectedTracks": expectedTracks,
+            "totalTracks": total,
+            "completeTracks": complete,
+            "activeTracks": active,
+            "failedTracks": failed,
+          },
+        );
+        lastComplete = complete;
+        lastTotal = total;
       }
+
+      if (failed > 0) {
+        throw StateError("Benchmark download contains failed tracks");
+      }
+      if (total == expectedTracks && complete == expectedTracks) {
+        return;
+      }
+
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
   }
