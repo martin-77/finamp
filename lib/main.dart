@@ -304,13 +304,20 @@ Future<void> _setupDownloadsHelper() async {
   await downloadsService.startQueues();
 
   if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
-    GetIt.instance<FinampUserHelper>().runUserHook(() async {
-      await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
-        // log error without snackbar, we don't want users to be greeted with errors on first launch
-        _mainLog.severe("Failed to download playlist metadata: $e");
+    if (PerformanceBenchmarkService.enabled) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "startup-background-work-suppressed",
+        values: {"task": "default-playlist-metadata-download"},
+      );
+    } else {
+      GetIt.instance<FinampUserHelper>().runUserHook(() async {
+        await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
+          // log error without snackbar, we don't want users to be greeted with errors on first launch
+          _mainLog.severe("Failed to download playlist metadata: $e");
+        });
+        FinampSetters.setHasDownloadedPlaylistInfo(true);
       });
-      FinampSetters.setHasDownloadedPlaylistInfo(true);
-    });
+    }
   }
 }
 
