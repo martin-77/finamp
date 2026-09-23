@@ -55,31 +55,12 @@ class JellyfinApiHelper {
   JellyfinApiHelper() {
     final startupPort = ReceivePort();
     final loggingPort = ReceivePort();
-    final benchmarkHttpPort = ReceivePort();
     final logsHelper = GetIt.instance<FinampLogsHelper>();
 
     loggingPort.listen((record) {
       final event = record as LogRecord;
       performDebugLogPrinting(event);
       logsHelper.addLog(event);
-    });
-
-    benchmarkHttpPort.listen((dynamic raw) {
-      if (!PerformanceBenchmarkService.enabled ||
-          raw is! Map<Object?, Object?>) {
-        return;
-      }
-      final type = raw["type"];
-      final benchmark = PerformanceBenchmarkService.instance;
-      if (type == "start") {
-        benchmark.networkRequestStarted();
-      } else if (type == "complete") {
-        benchmark.networkRequestCompleted(
-          responseBytes: raw["responseBytes"] as int?,
-          durationMicros: raw["durationMicros"] as int?,
-          statusCode: raw["statusCode"] as int?,
-        );
-      }
     });
 
     var rootToken = RootIsolateToken.instance!;
@@ -94,7 +75,6 @@ class JellyfinApiHelper {
       FinampSettingsHelper.finampSettings.deviceId,
       loggingPort.sendPort,
       FinampSettingsHelper.finampSettings.verboseLogging,
-      benchmarkHttpPort.sendPort,
     ));
     Future.sync(() async {
       _workerIsolatePort = await startupPort.first as SendPort?;
@@ -106,15 +86,8 @@ class JellyfinApiHelper {
   /// This should only be run in a worker isolate
   /// Sets up singletons and listens for work.
   static Future<void> _processRequestsBackground(
-    (
-      SendPort,
-      RootIsolateToken,
-      ClientCertificate?,
-      String,
-      SendPort,
-      bool,
-      SendPort,
-    ) input,
+    (SendPort, RootIsolateToken, ClientCertificate?, String, SendPort, bool)
+        input,
   ) async {
     BackgroundIsolateBinaryMessenger.ensureInitialized(input.$2);
     ReceivePort requestPort = ReceivePort();
@@ -156,20 +129,35 @@ class JellyfinApiHelper {
     GetIt.instance.registerSingleton(isar);
     GetIt.instance.registerSingleton(FinampUserHelper(deviceId: input.$4));
     await GetIt.instance<FinampUserHelper>().setAuthHeader();
+    final benchmarkRelay = BenchmarkHttpMetricRelay();
     jellyfin_api.JellyfinApi backgroundApi = jellyfin_api.JellyfinApi.create(
       inForeground: false,
       verboseLogging: input.$6,
-      benchmarkSendPort:
-          PerformanceBenchmarkService.enabled ? input.$7 : null,
+      benchmarkRelay:
+          PerformanceBenchmarkService.enabled ? benchmarkRelay : null,
     );
     await for (var request in requestPort) {
-      var (func, outputPort) = request as (Future<dynamic> Function(jellyfin_api.JellyfinApi), SendPort);
+      var (func, outputPort, benchmarkPort) = request as (
+        Future<dynamic> Function(jellyfin_api.JellyfinApi),
+        SendPort,
+        SendPort?,
+      );
+      benchmarkRelay.sendPort = benchmarkPort;
       try {
         var output = await func(backgroundApi);
         outputPort.send(output);
       } catch (e, stack) {
-        _jellyfinApiHelperLogger.severe("Error processing background request - $e", e, stack);
+        _jellyfinApiHelperLogger.severe(
+          "Error processing background request - $e",
+          e,
+          stack,
+        );
         outputPort.send(e);
+      } finally {
+        benchmarkRelay.send(
+          const <String, Object?>{"type": "operationDone"},
+        );
+        benchmarkRelay.sendPort = null;
       }
     }
   }
@@ -183,35 +171,77 @@ class JellyfinApiHelper {
     }
 
     final benchmark = PerformanceBenchmarkService.instance;
-    final benchmarkStopwatch = PerformanceBenchmarkService.enabled
-        ? (Stopwatch()..start())
-        : null;
-    benchmark.workerOperationStarted();
+    final benchmarkEnabled = PerformanceBenchmarkService.enabled;
+    final benchmarkStopwatch =
+        benchmarkEnabled ? (Stopwatch()..start()) : null;
+    if (benchmarkEnabled) {
+      benchmark.workerOperationStarted();
+    }
 
-    final port = ReceivePort();
+    final outputPort = ReceivePort();
+    final benchmarkPort = benchmarkEnabled ? ReceivePort() : null;
+    final benchmarkDone = Completer<void>();
+
+    if (benchmarkPort != null) {
+      benchmarkPort.listen((dynamic raw) {
+        if (raw is! Map<Object?, Object?>) return;
+        final type = raw["type"];
+        if (type == "start") {
+          benchmark.networkRequestStarted();
+        } else if (type == "complete") {
+          benchmark.networkRequestCompleted(
+            responseBytes: raw["responseBytes"] as int?,
+            durationMicros: raw["durationMicros"] as int?,
+            statusCode: raw["statusCode"] as int?,
+          );
+        } else if (type == "operationDone" &&
+            !benchmarkDone.isCompleted) {
+          benchmarkDone.complete();
+        }
+      });
+    } else {
+      benchmarkDone.complete();
+    }
+
+    var workerReported = false;
     try {
-      _workerIsolatePort!.send((func, port.sendPort));
-      final dynamic output = await port.first;
+      _workerIsolatePort!.send((
+        func,
+        outputPort.sendPort,
+        benchmarkPort?.sendPort,
+      ));
+
+      final dynamic output = await outputPort.first;
+      await benchmarkDone.future;
+
       benchmarkStopwatch?.stop();
-      benchmark.workerOperationCompleted(
-        durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
-        failed: output is! T,
-      );
+      if (benchmarkEnabled) {
+        benchmark.workerOperationCompleted(
+          durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
+          failed: output is! T,
+        );
+        workerReported = true;
+      }
+
       if (output is T) {
         return output;
       }
       throw output as Object;
     } catch (error) {
-      if (benchmarkStopwatch?.isRunning ?? false) {
-        benchmarkStopwatch!.stop();
+      if (benchmarkEnabled && !workerReported) {
+        if (benchmarkStopwatch?.isRunning ?? false) {
+          benchmarkStopwatch!.stop();
+        }
         benchmark.workerOperationCompleted(
-          durationMicros: benchmarkStopwatch.elapsedMicroseconds,
+          durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
           failed: true,
         );
+        workerReported = true;
       }
       rethrow;
     } finally {
-      port.close();
+      outputPort.close();
+      benchmarkPort?.close();
     }
   }
 
