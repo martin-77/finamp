@@ -30,6 +30,7 @@ def main():
     groups = defaultdict(list)
     startup_tasks = defaultdict(list)
     queue_restores = []
+    queue_restore_content = []
     startup_network = []
     phases = []
     diagnostics = []
@@ -63,6 +64,13 @@ def main():
                 queue_restores.append({
                     "storedTrackCount": values.get("storedTrackCount"),
                     "durationMs": values.get("durationMs"),
+                    "emittedAt": record.get("emittedAt"),
+                })
+            elif name == "queue-restore-content-resolved":
+                queue_restore_content.append({
+                    "storedTrackCount": values.get("storedTrackCount"),
+                    "loadedTrackCount": values.get("loadedTrackCount"),
+                    "droppedTrackCount": values.get("droppedTrackCount"),
                     "emittedAt": record.get("emittedAt"),
                 })
             elif name == "startup-network-summary":
@@ -169,6 +177,7 @@ def main():
         "startupTasks": startup_summary,
         "startupNetwork": startup_network,
         "queueRestores": queue_restores,
+        "queueRestoreContent": queue_restore_content,
         "groups": summary_groups,
         "milestones": diagnostics,
     }
@@ -226,16 +235,29 @@ def main():
         "",
         "## Queue restore",
         "",
-        "| Stored tracks | Duration ms |",
-        "|---:|---:|",
+        "| Stored tracks | Duration ms | Loaded tracks | Dropped tracks |",
+        "|---:|---:|---:|---:|",
     ])
-    if queue_restores:
-        for item in queue_restores:
+    if queue_restores or queue_restore_content:
+        row_count = max(len(queue_restores), len(queue_restore_content))
+        for index in range(row_count):
+            timing = queue_restores[index] if index < len(queue_restores) else {}
+            content = (
+                queue_restore_content[index]
+                if index < len(queue_restore_content)
+                else {}
+            )
+            stored = timing.get(
+                "storedTrackCount",
+                content.get("storedTrackCount", ""),
+            )
             lines.append(
-                f"| {item.get('storedTrackCount', '')} | {item.get('durationMs', '')} |"
+                f"| {stored} | {timing.get('durationMs', '')} | "
+                f"{content.get('loadedTrackCount', '')} | "
+                f"{content.get('droppedTrackCount', '')} |"
             )
     else:
-        lines.append("|  |  |")
+        lines.append("|  |  |  |  |")
 
     lines.extend([
         "",
