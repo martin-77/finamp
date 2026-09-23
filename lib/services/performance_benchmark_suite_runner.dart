@@ -2142,51 +2142,21 @@ class PerformanceBenchmarkSuiteRunner {
     String targetAlias,
   ) async {
     final recorder = PerformanceBenchmarkService.instance;
-    var lastComplete = -1;
-    var lastTotal = -1;
-
-    while (true) {
-      final progress =
-          downloads.getPerformanceBenchmarkCollectionProgress(stub);
-      final total = progress["totalTracks"] ?? 0;
-      final complete = progress["completeTracks"] ?? 0;
-      final active = progress["activeTracks"] ?? 0;
-      final failed = progress["failedTracks"] ?? 0;
-
-      if (complete != lastComplete || total != lastTotal) {
-        recorder.diagnostic(
-          "download-progress",
-          values: {
-            "targetAlias": targetAlias,
-            "expectedTracks": expectedTracks,
-            "totalTracks": total,
-            "completeTracks": complete,
-            "activeTracks": active,
-            "failedTracks": failed,
-          },
-        );
-        lastComplete = complete;
-        lastTotal = total;
-      }
-
-      if (failed > 0) {
-        throw StateError("Benchmark download contains failed tracks");
-      }
-      if (total == expectedTracks &&
-          complete == expectedTracks &&
-          active == 0) {
-        recorder.mark(
-          "download-all-tracks-complete",
-          values: {
-            "expectedTracks": expectedTracks,
-            "completeTracks": complete,
-          },
-        );
-        return;
-      }
-
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    }
+    final progress = await downloads.waitForPerformanceBenchmarkDownload(
+      stub: stub,
+      expectedTracks: expectedTracks,
+      timeout: const Duration(hours: 2),
+    );
+    recorder.diagnostic(
+      "download-progress-final",
+      values: {
+        "targetAlias": targetAlias,
+        "expectedTracks": expectedTracks,
+        "totalTracks": progress["totalTracks"] ?? 0,
+        "completeTracks": progress["completeTracks"] ?? 0,
+        "failedTracks": progress["failedTracks"] ?? 0,
+      },
+    );
   }
 
   Future<void> _runPlaybackBaselines() async {
