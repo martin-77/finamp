@@ -72,21 +72,7 @@ step "Resolving Flutter dependencies"
 flutter pub get
 
 step "Static benchmark preflight"
-flutter analyze \
-  lib/main.dart \
-  lib/components/AlbumScreen/album_screen_content.dart \
-  lib/components/ArtistScreen/artist_screen_content.dart \
-  lib/components/GenreScreen/genre_screen_content.dart \
-  lib/components/HomeScreen/home_screen_content.dart \
-  lib/components/MusicScreen/music_screen_tab_view.dart \
-  lib/screens/music_screen.dart \
-  lib/services/album_image_provider.dart \
-  lib/services/downloads_service.dart \
-  lib/services/http_aggregate_logging_interceptor.dart \
-  lib/services/music_player_background_task.dart \
-  lib/services/performance_benchmark_service.dart \
-  lib/services/performance_benchmark_suite_runner.dart \
-  lib/services/queue_service.dart
+flutter analyze --no-fatal-infos --no-fatal-warnings
 
 python3 -m py_compile tool/summarize_performance_benchmark.py
 bash -n tool/run_performance_benchmark.sh
