@@ -49,6 +49,7 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _armAsync() async {
     final recorder = PerformanceBenchmarkService.instance;
+    recorder.startHeartbeat();
     final stage = await recorder.getSuiteStage();
 
     recorder.diagnostic(
@@ -169,6 +170,7 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-complete",
         values: {"phase": "full-baseline"},
       );
+      recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } catch (error) {
       recorder.diagnostic(
@@ -178,6 +180,7 @@ class PerformanceBenchmarkSuiteRunner {
           "errorType": error.runtimeType.toString(),
         },
       );
+      recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } finally {
       _running = false;
@@ -280,6 +283,7 @@ class PerformanceBenchmarkSuiteRunner {
         "suite-error",
         values: {"errorType": error.runtimeType.toString()},
       );
+      recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } finally {
       _running = false;
