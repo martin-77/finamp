@@ -287,6 +287,7 @@ def main():
             results[str(run.get("result", "unknown"))] += 1
 
         numeric_metrics = defaultdict(list)
+        categorical_metrics = defaultdict(list)
         event_elapsed = defaultdict(list)
         playback_sources = defaultdict(int)
         for run in runs:
@@ -296,6 +297,8 @@ def main():
                     continue
                 if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                     numeric_metrics[metric_name].append(float(metric_value))
+                elif isinstance(metric_value, str) and metric_name.endswith("Bucket"):
+                    categorical_metrics[metric_name].append(metric_value)
 
             if str(run.get("scenario", "")).startswith("collection-page-"):
                 worker_us = run_metrics.get("workerDurationMicrosTotal")
@@ -342,6 +345,19 @@ def main():
             if values
         }
 
+        categorical_summary = {
+            metric_name: dict(
+                sorted(
+                    {
+                        value: values.count(value)
+                        for value in set(values)
+                    }.items()
+                )
+            )
+            for metric_name, values in sorted(categorical_metrics.items())
+            if values
+        }
+
         event_summary = {
             event_name: {
                 "medianMsFromRunStart": ms(statistics.median(values)),
@@ -365,6 +381,7 @@ def main():
             "maxMs": ms(max(durations)) if durations else None,
             "results": dict(results),
             "numericMetrics": metric_summary,
+            "categoricalMetrics": categorical_summary,
             "eventMilestones": event_summary,
             "playbackSources": dict(playback_sources),
         })
@@ -808,6 +825,117 @@ def main():
             )
     else:
         lines.append("| none |  |  |  |  |")
+
+    download_groups = [
+        item for item in summary_groups
+        if any(
+            name.startswith("downloadMetadataBatch")
+            or name.startswith("downloadUpdateChildren")
+            or name.startswith("downloadAlbumView")
+            or name.startswith("downloadSyncNodeMicros")
+            for name in item.get("numericMetrics", {})
+        )
+        or any(
+            name.startswith("downloadMetadataBatch")
+            or name.startswith("downloadMetadataCache")
+            or name.startswith("downloadChildCache")
+            or name.startswith("downloadAlbumView")
+            or name.startswith("downloadSyncNodeCount")
+            for name in item.get("categoricalMetrics", {})
+        )
+    ]
+
+    lines.extend([
+        "",
+        "## Download sync diagnostics",
+        "",
+        "Exact private graph/cardinality counts are not exported; count-like values are bucketed.",
+        "",
+        "| Scenario | Mode | Target | Metadata batches | Batch IDs total | Batch collect ms | Batch request ms | Metadata cache hit/miss | Child cache hit/miss | Album-view ms | Album IDs scanned | updateChildren req/info ms | Mixed field batches |",
+        "|---|---|---|---|---|---:|---:|---|---|---:|---|---|---|",
+    ])
+
+    def _bucket(item, name):
+        values = item.get("categoricalMetrics", {}).get(name, {})
+        if not values:
+            return ""
+        return ", ".join(
+            f"{value}:{count}" if count != 1 else value
+            for value, count in values.items()
+        )
+
+    def _metric_ms(item, name):
+        value = item.get("numericMetrics", {}).get(name, {}).get("median")
+        return "" if value is None else round(value / 1000.0, 3)
+
+    if download_groups:
+        for item in download_groups:
+            target = item["targetAlias"] or item["targetType"] or ""
+            req_ms = _metric_ms(item, "downloadUpdateChildrenMicros_required")
+            info_ms = _metric_ms(item, "downloadUpdateChildrenMicros_info")
+            metadata_hit_miss = (
+                f"{_bucket(item, 'downloadMetadataCacheHitBucket')}/"
+                f"{_bucket(item, 'downloadMetadataCacheMissBucket')}"
+            ).strip("/")
+            child_hit_miss = (
+                f"{_bucket(item, 'downloadChildCacheHitBucket')}/"
+                f"{_bucket(item, 'downloadChildCacheMissBucket')}"
+            ).strip("/")
+            update_ms = f"{req_ms}/{info_ms}".strip("/")
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | "
+                f"{_bucket(item, 'downloadMetadataBatchCountBucket')} | "
+                f"{_bucket(item, 'downloadMetadataBatchIdsTotalBucket')} | "
+                f"{_metric_ms(item, 'downloadMetadataBatchCollectMicros')} | "
+                f"{_metric_ms(item, 'downloadMetadataBatchRequestMicros')} | "
+                f"{metadata_hit_miss} | {child_hit_miss} | "
+                f"{_metric_ms(item, 'downloadAlbumViewLookupMicros')} | "
+                f"{_bucket(item, 'downloadAlbumViewIdsScannedBucket')} | "
+                f"{update_ms} | "
+                f"{_bucket(item, 'downloadMetadataBatchMixedFieldsBucket')} |"
+            )
+    else:
+        lines.append("| none |  |  |  |  |  |  |  |  |  |  |  |  |")
+
+    node_rows = []
+    for item in download_groups:
+        metrics = item.get("numericMetrics", {})
+        categorical = item.get("categoricalMetrics", {})
+        for name, timing in metrics.items():
+            if not name.startswith("downloadSyncNodeMicros_"):
+                continue
+            suffix = name.removeprefix("downloadSyncNodeMicros_")
+            if suffix.startswith("Max_"):
+                continue
+            max_metric = metrics.get(
+                f"downloadSyncNodeMicrosMax_{suffix}", {}
+            ).get("median")
+            node_rows.append((
+                item,
+                suffix,
+                timing.get("median"),
+                max_metric,
+                _bucket(item, f"downloadSyncNodeCount_{suffix}Bucket"),
+            ))
+
+    lines.extend([
+        "",
+        "### Download sync node timing",
+        "",
+        "| Scenario | Mode | Target | Node / role | Total ms med | Max node ms med | Count bucket |",
+        "|---|---|---|---|---:|---:|---|",
+    ])
+    if node_rows:
+        for item, suffix, total_us, max_us, count_bucket in node_rows:
+            target = item["targetAlias"] or item["targetType"] or ""
+            total_ms = "" if total_us is None else round(total_us / 1000.0, 3)
+            max_ms = "" if max_us is None else round(max_us / 1000.0, 3)
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | "
+                f"{suffix} | {total_ms} | {max_ms} | {count_bucket} |"
+            )
+    else:
+        lines.append("| none |  |  |  |  |  |  |")
 
     cache_groups = []
     for item in summary_groups:
