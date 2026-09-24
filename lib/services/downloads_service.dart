@@ -197,6 +197,8 @@ class DownloadsService {
     // of failed depending on the exception.
     FileDownloader().updates.listen((event) {
       if (event is TaskStatusUpdate) {
+        bool retryNativeTask = false;
+        int? retryNativeTaskId;
         _isar.writeTxnSync(() {
           DownloadItem? listener = _isar.downloadItems.getSync(int.parse(event.task.taskId));
           if (listener != null) {
@@ -281,9 +283,13 @@ class DownloadsService {
                     GlobalSnackbar.message((scaffold) => AppLocalizations.of(scaffold)!.filesystemFull);
                   }
                 } else if (event.exception is TaskConnectionException) {
-                  // Retry items with connection errors
+                  // Retry items with connection errors. The native task is
+                  // terminal at this point, so explicitly wake the Isar queue
+                  // after committing the retryable state.
                   newState = DownloadItemState.enqueued;
                   incrementConnectionErrors(weight: 2);
+                  retryNativeTask = true;
+                  retryNativeTaskId = listener.isarId;
                 } else if (event.exception != null) {
                   _downloadsLogger.warning("Exception ${event.exception} when downloading ${listener.name}");
                 } else {
@@ -306,6 +312,9 @@ class DownloadsService {
             _downloadsLogger.severe("Could not determine item for id ${event.task.taskId}, event:${event.toString()}");
           }
         });
+        if (retryNativeTask && retryNativeTaskId != null) {
+          downloadTaskQueue.retryNativeTask(retryNativeTaskId!);
+        }
       }
     });
 
