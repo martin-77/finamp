@@ -1171,29 +1171,49 @@ class PerformanceBenchmarkService {
     while (overall.elapsed < timeout) {
       final remaining = timeout - overall.elapsed;
       if (_networkRequestsInFlight != 0 || _imageLoadsInFlight != 0) {
-        await _uiActivityController.stream
-            .firstWhere(
-              (_) =>
-                  _networkRequestsInFlight == 0 &&
-                  _imageLoadsInFlight == 0,
-            )
-            .timeout(remaining);
+        final becameIdle = Completer<void>();
+        late final StreamSubscription<int> subscription;
+        subscription = _uiActivityController.stream.listen((_) {
+          if (_networkRequestsInFlight == 0 &&
+              _imageLoadsInFlight == 0 &&
+              !becameIdle.isCompleted) {
+            becameIdle.complete();
+          }
+        });
+        if (_networkRequestsInFlight == 0 &&
+            _imageLoadsInFlight == 0 &&
+            !becameIdle.isCompleted) {
+          becameIdle.complete();
+        }
+        try {
+          await becameIdle.future.timeout(remaining);
+        } finally {
+          await subscription.cancel();
+        }
         continue;
       }
 
-      final generationAtIdle = _uiActivityGeneration;
       final settled = Completer<bool>();
       late final StreamSubscription<int> subscription;
-      final timer = Timer(quietPeriod, () {
-        if (!settled.isCompleted) settled.complete(true);
-      });
       subscription = _uiActivityController.stream.listen((_) {
         if (!settled.isCompleted) settled.complete(false);
       });
+      final generationAtIdle = _uiActivityGeneration;
+      if (_networkRequestsInFlight != 0 || _imageLoadsInFlight != 0) {
+        await subscription.cancel();
+        continue;
+      }
 
-      final stayedIdle = await settled.future.timeout(remaining);
-      timer.cancel();
-      await subscription.cancel();
+      final timer = Timer(quietPeriod, () {
+        if (!settled.isCompleted) settled.complete(true);
+      });
+      bool stayedIdle;
+      try {
+        stayedIdle = await settled.future.timeout(remaining);
+      } finally {
+        timer.cancel();
+        await subscription.cancel();
+      }
 
       if (stayedIdle &&
           _networkRequestsInFlight == 0 &&
