@@ -814,6 +814,55 @@ class DownloadsSyncService {
     }
   }
 
+  /// Prefetch album child lists for info-only album nodes that are already
+  /// claimed in the current sync batch.
+  ///
+  /// The sync queue intentionally performs the actual node processing serially
+  /// within each batch. Album child discovery is overwhelmingly network-bound,
+  /// though, and waiting for every album request before starting the next one
+  /// makes playlist sync latency scale almost linearly with the number of albums.
+  ///
+  /// Keep database/link processing serial and overlap only two album child
+  /// requests at a time. This is deliberately conservative for low-end devices
+  /// and preserves the normal per-album Jellyfin request/response semantics.
+  Future<void> _prefetchInfoAlbumChildren(
+    List<IsarTaskData<dynamic>> wrappedSyncs,
+  ) async {
+    final albums = <DownloadStub>[];
+    for (final wrappedSync in wrappedSyncs) {
+      final sync = wrappedSync.data as SyncNode;
+      if (sync.required) {
+        continue;
+      }
+      final item = _isar.downloadItems.getSync(sync.stubIsarId);
+      if (item?.type == DownloadItemType.collection &&
+          item?.baseItemType == BaseItemDtoType.album &&
+          item != null &&
+          !_childCache.containsKey(item.id)) {
+        albums.add(item);
+      }
+    }
+
+    const parallelRequests = 2;
+    for (final chunk in albums.slices(parallelRequests)) {
+      await Future.wait(
+        chunk.map((album) async {
+          try {
+            await _getCollectionChildren(album);
+          } catch (e) {
+            // The normal sync path owns retries/error accounting. A failed
+            // speculative prefetch must therefore degrade to the existing
+            // per-node behavior rather than failing the whole claimed batch.
+            _syncLogger.fine(
+              "Album child prefetch failed for ${album.name}; "
+              "falling back to normal sync: $e",
+            );
+          }
+        }),
+      );
+    }
+  }
+
   /// Execute all queued _syncDownload.  Will call itself until there are max concurrent
   /// download workers running at once.  Will retry items that throw errors up to
   /// 5 times before skipping and alerting the user.
@@ -850,6 +899,9 @@ class DownloadsSyncService {
         _activeSyncs.addAll(wrappedSyncs.map((e) => e.id));
         // Once we've claimed our item, try to launch another worker in case we have <5.
         unawaited(_advanceQueue());
+
+        await _prefetchInfoAlbumChildren(wrappedSyncs);
+
         List<IsarTaskData<dynamic>> failedSyncs = [];
         for (var wrappedSync in wrappedSyncs) {
           SyncNode sync = wrappedSync.data as SyncNode;
