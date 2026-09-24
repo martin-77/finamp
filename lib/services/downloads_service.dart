@@ -315,6 +315,9 @@ class DownloadsService {
         if (retryNativeTask && retryNativeTaskId != null) {
           downloadTaskQueue.retryNativeTask(retryNativeTaskId!);
         }
+        // A successful native transfer may have just cleared the connection
+        // backoff while another failed task is waiting for a retry pass.
+        downloadTaskQueue.resumePendingRetryPass();
       }
     });
 
