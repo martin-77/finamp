@@ -259,11 +259,45 @@ class PerformanceBenchmarkSuiteRunner {
     );
   }
 
+  Future<Box<FinampSettings>> _benchmarkSettingsBox() async {
+    if (!Hive.isBoxOpen("FinampSettings")) {
+      PerformanceBenchmarkService.instance.diagnostic(
+        "benchmark-settings-box-reopen",
+      );
+      await Hive.openBox<FinampSettings>("FinampSettings");
+    }
+    return Hive.box<FinampSettings>("FinampSettings");
+  }
+
+  Future<bool> _benchmarkOfflineState() async {
+    final box = await _benchmarkSettingsBox();
+    final settings = box.get("FinampSettings");
+    if (settings == null) {
+      throw StateError("Benchmark FinampSettings entry is unavailable");
+    }
+    return settings.isOffline;
+  }
+
+  Future<void> _setBenchmarkOfflineState(bool offline) async {
+    final box = await _benchmarkSettingsBox();
+    final settings = box.get("FinampSettings");
+    if (settings == null) {
+      throw StateError("Benchmark FinampSettings entry is unavailable");
+    }
+    settings.isOffline = offline;
+    await box.put("FinampSettings", settings);
+    await box.flush();
+    PerformanceBenchmarkService.instance.diagnostic(
+      "benchmark-offline-state-persisted",
+      values: {"offline": offline},
+    );
+  }
+
   Future<void> _ensureSuiteOnlineBaseline() async {
     final recorder = PerformanceBenchmarkService.instance;
     var originalOffline = await recorder.getOriginalOfflineState();
     if (originalOffline == null) {
-      originalOffline = FinampSettingsHelper.finampSettings.isOffline;
+      originalOffline = await _benchmarkOfflineState();
       await recorder.saveOriginalOfflineState(originalOffline);
       recorder.diagnostic(
         "suite-original-offline-state-saved",
@@ -271,9 +305,8 @@ class PerformanceBenchmarkSuiteRunner {
       );
     }
 
-    if (FinampSettingsHelper.finampSettings.isOffline) {
-      FinampSetters.setIsOffline(false);
-      await Hive.box("FinampSettings").flush();
+    if (await _benchmarkOfflineState()) {
+      await _setBenchmarkOfflineState(false);
       await recorder.waitForNetworkQuiescence(
         quietPeriod: const Duration(milliseconds: 750),
         timeout: const Duration(minutes: 5),
@@ -292,9 +325,8 @@ class PerformanceBenchmarkSuiteRunner {
     final originalOffline = await recorder.getOriginalOfflineState();
     if (originalOffline == null) return;
 
-    if (FinampSettingsHelper.finampSettings.isOffline != originalOffline) {
-      FinampSetters.setIsOffline(originalOffline);
-      await Hive.box("FinampSettings").flush();
+    if (await _benchmarkOfflineState() != originalOffline) {
+      await _setBenchmarkOfflineState(originalOffline);
     }
     recorder.diagnostic(
       "suite-original-offline-state-restored",
@@ -1033,14 +1065,12 @@ class PerformanceBenchmarkSuiteRunner {
       values: {"targetAlias": alias},
     );
 
-    final previousOffline =
-        FinampSettingsHelper.finampSettings.isOffline;
+    final previousOffline = await _benchmarkOfflineState();
     try {
       // Cleanup must be online so queued deletes can finish. This is a
       // temporary operational state only; restore the exact prior value below.
       if (previousOffline) {
-        FinampSetters.setIsOffline(false);
-        await Hive.box("FinampSettings").flush();
+        await _setBenchmarkOfflineState(false);
         await recorder.waitForNetworkQuiescence(
           quietPeriod: const Duration(milliseconds: 750),
           timeout: const Duration(minutes: 5),
@@ -1115,11 +1145,9 @@ class PerformanceBenchmarkSuiteRunner {
         values: {"targetAlias": alias},
       );
     } finally {
-      final currentOffline =
-          FinampSettingsHelper.finampSettings.isOffline;
+      final currentOffline = await _benchmarkOfflineState();
       if (currentOffline != previousOffline) {
-        FinampSetters.setIsOffline(previousOffline);
-        await Hive.box("FinampSettings").flush();
+        await _setBenchmarkOfflineState(previousOffline);
         recorder.diagnostic(
           "download-cleanup-recovery-offline-restored",
           values: {"offline": previousOffline},
@@ -2261,11 +2289,10 @@ class PerformanceBenchmarkSuiteRunner {
     final privateOfflineSearchQuery =
         (onlineTracks?.isNotEmpty ?? false) ? onlineTracks!.first.name : null;
 
-    final previousOffline = FinampSettingsHelper.finampSettings.isOffline;
+    final previousOffline = await _benchmarkOfflineState();
 
     if (targetAlias == "bench-1000") {
-      FinampSetters.setIsOffline(true);
-      await Hive.box("FinampSettings").flush();
+      await _setBenchmarkOfflineState(true);
       await recorder.setSuiteStage("offline-bench1000-running");
       recorder.diagnostic(
         "offline-mode-forced",
@@ -2286,7 +2313,7 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     try {
-      FinampSetters.setIsOffline(true);
+      await _setBenchmarkOfflineState(true);
       recorder.diagnostic(
         "offline-mode-forced",
         values: {"targetAlias": targetAlias, "processRestart": false},
@@ -2300,7 +2327,7 @@ class PerformanceBenchmarkSuiteRunner {
         coldProcess: false,
       );
     } finally {
-      FinampSetters.setIsOffline(previousOffline);
+      await _setBenchmarkOfflineState(previousOffline);
       recorder.diagnostic(
         "offline-mode-restored",
         values: {
@@ -2685,8 +2712,7 @@ class PerformanceBenchmarkSuiteRunner {
       // restart. Do not invoke generic pending-download cleanup until all
       // offline cold-process scenarios have completed.
       if (stage == "offline-bench1000-running") {
-        FinampSetters.setIsOffline(true);
-        await Hive.box("FinampSettings").flush();
+        await _setBenchmarkOfflineState(true);
 
         await WidgetsBinding.instance.endOfFrame;
         await _waitForStartupReady(
@@ -2739,8 +2765,7 @@ class PerformanceBenchmarkSuiteRunner {
       }
 
       if (stage == "offline-bench1000-cleanup") {
-        FinampSetters.setIsOffline(false);
-        await Hive.box("FinampSettings").flush();
+        await _setBenchmarkOfflineState(false);
         recorder.diagnostic(
           "offline-mode-restored",
           values: {
