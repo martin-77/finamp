@@ -800,6 +800,7 @@ class DownloadsSyncService {
       _activeSyncs.clear();
       _metadataCache = {};
       _childCache = {};
+      _albumViewIndex = null;
       _callbacksComplete = Completer();
       _missingItemExceptions = 0;
       unawaited(_advanceQueue());
@@ -1392,6 +1393,11 @@ class DownloadsSyncService {
   Map<BaseItemId, Future<DownloadStub?>> _metadataCache = {};
   Map<String, Future<List<String>>> _childCache = {};
 
+  // Lazily built once per sync. Multiple playlist tracks often resolve albums
+  // against the same small set of Jellyfin views; rebuilding/scanning those
+  // album lists for every lookup is pure repeated work.
+  Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
+
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
   Future<List<DownloadStub>> _getCollectionChildren(DownloadStub parent) async {
@@ -1607,32 +1613,49 @@ class DownloadsSyncService {
     }
   }
 
-  /// Gets the View/Library ID for the given album ID by fetching album children
-  /// of all know views.  Used by [_syncDownload] to assign libraries to items
-  /// in playlists or finampCollections.
+  /// Gets the View/Library ID for the given album ID.
+  ///
+  /// The view album lists are stable for the duration of one download sync.
+  /// Build one index lazily and share it between concurrent callers instead of
+  /// repeatedly scanning the same cached view children for every track/album.
   Future<BaseItemId?> _getAlbumViewID(BaseItemId albumId) async {
     final benchmarkStopwatch =
         PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     int viewsExamined = 0;
     int albumIdsScanned = 0;
     try {
-      final userHelper = GetIt.instance<FinampUserHelper>();
-      for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
-        viewsExamined++;
-        var children = await _getCollectionChildren(
-          DownloadStub.fromItem(type: DownloadItemType.collection, item: view),
-        );
-        // Iterable.nonNulls does not seem to work here, I don't know why.
-        var childIds = children
-            .map<BaseItemId?>((e) => e.baseItem?.id)
-            .where((id) => id != null)
-            .toList();
-        albumIdsScanned += childIds.length;
-        if (childIds.contains(albumId)) {
-          return view.id;
-        }
+      var indexFuture = _albumViewIndex;
+      if (indexFuture == null) {
+        indexFuture = Future.sync(() async {
+          final index = <BaseItemId, BaseItemId>{};
+          final userHelper = GetIt.instance<FinampUserHelper>();
+          for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
+            viewsExamined++;
+            final children = await _getCollectionChildren(
+              DownloadStub.fromItem(
+                type: DownloadItemType.collection,
+                item: view,
+              ),
+            );
+            for (final child in children) {
+              final childId = child.baseItem?.id;
+              if (childId != null) {
+                albumIdsScanned++;
+                // Preserve the previous first-matching-view behavior.
+                index.putIfAbsent(childId, () => view.id);
+              }
+            }
+          }
+          return index;
+        });
+        _albumViewIndex = indexFuture;
       }
-      return null;
+      final index = await indexFuture;
+      return index[albumId];
+    } catch (_) {
+      // Do not retain a failed build; a later lookup should be able to retry.
+      _albumViewIndex = null;
+      rethrow;
     } finally {
       if (benchmarkStopwatch != null) {
         benchmarkStopwatch.stop();
