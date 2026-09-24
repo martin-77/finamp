@@ -290,6 +290,205 @@ Do not call this a primary cause until measured.
 
 ---
 
+## P0 - Network target transitions: playback and downloads
+
+This is part of the download/playback investigation because server URLs are
+materialized into long-lived player/download objects. It must be tested as a
+state-transition problem, not as a simple API connectivity probe.
+
+### N1 - API requests follow the current LAN/public target dynamically
+
+**Status: CONFIRMED**
+
+`FinampUser.baseURL` selects `localAddress` only when both `isLocal` and
+`preferLocalNetwork` are true; otherwise it returns `publicAddress`.
+
+Normal Jellyfin API requests are rewritten by `JellyfinInterceptor` using the
+current user's `baseURL` at request time. Therefore a LAN -> public switch does
+not inherently leave ordinary future API requests pinned to the old LAN host.
+
+`network_manager.changeTargetUrl()` probes the local endpoint when
+`preferLocalNetwork` is enabled and persists the new `isLocal` state. The
+FinampUser Isar watcher invalidates `finampCurrentUserProvider`, so consumers
+can observe the new baseURL.
+
+### N2 - Player AudioSource URLs are snapshots and require queue rebuilding
+
+**Status: CONFIRMED + INTENTIONAL DESIGN**
+
+Server-backed player items are converted to `AudioSource.uri` using a URI built
+from `currentUser.baseURL` at AudioSource creation time. An already-created
+AudioSource therefore retains its old LAN/public URI after `FinampUser.baseURL`
+changes.
+
+This is known by the original network-switch design, not an accidental omission:
+
+- commit `00eec0f...` introduced local/public switching with the explicit
+  purpose “Prefer Local Address ... And Prompt to Reload Queue”;
+- it added `QueueService.reloadQueue()`, `autoReloadQueue`, network/transcoding
+  source-change handling and user prompts;
+- current `DataSourceService` still implements that design by listening directly
+  to `finampCurrentUserProvider.select(user?.baseURL)`;
+- on local/public/offline transitions it rebuilds the queue when
+  `autoReloadQueue=true`; otherwise it prompts if the queue contains
+  undownloaded/server-backed tracks;
+- the setting text still explicitly says it reloads when the source changes,
+  including a server address switch, and prompts when automatic reload is
+  disabled.
+
+Thus stale AudioSource URLs themselves are expected by the architecture; queue
+reload is the intended repair mechanism.
+
+**Important UX/reliability issue to verify:** `autoReloadQueue` defaults to
+false. A real Wi-Fi -> cellular handoff can make the current LAN URL unreachable
+before the user sees/acts on the four-second snackbar prompt. The prompt is UI
+state, while playback can continue in the background. If playback stalls before
+reload, the design is functionally fragile even though the reload mechanism
+exists.
+
+Also note that `FinampUser.update()` starts `saveUser()` without awaiting it.
+The Isar watcher eventually invalidates the provider, but transition ordering is
+not explicitly serialized with `changeTargetUrl()` completion. Measure this
+before calling it a race bug.
+
+**Benchmark extension:**
+
+Create a targeted network-source-transition playback scenario with neutral
+local/public labels only:
+
+- start direct-play server playback while target=local;
+- record current and next AudioSource target at creation;
+- force target local -> public through the same production state path;
+- record time until FinampUser provider reports public;
+- record DataSourceService source-change observation;
+- test `autoReloadQueue=false`: prompt emitted, current playback continuity,
+  buffer exhaustion/stall, next-track behavior;
+- test `autoReloadQueue=true`: reload start/end, position preservation,
+  playing-state preservation, current/next target after reload;
+- repeat public -> local;
+- repeat with a queue containing downloaded + server-only tracks;
+- repeat direct play and transcoding;
+- do not export actual URLs, hosts, IDs or media names.
+
+A separate physical Wi-Fi -> cellular run is still required because changing
+`isLocal` in-process proves source-switch logic but not OS/background behavior.
+
+### N3 - Download tasks snapshot an absolute URL at enqueue time
+
+**Status: CONFIRMED**
+
+`IsarTaskQueue._advanceQueue()` builds an absolute URL from the current
+`baseURL` and passes it to a `background_downloader.DownloadTask`. Pending Isar
+items that have not yet been submitted will therefore use whichever target is
+active when they are submitted. A task already handed to
+`background_downloader` retains the URL it was created with.
+
+Finamp uses `retries: 3`. Connection failures are converted back to
+`DownloadItemState.enqueued`, but the status-update path does not call
+`restartDownloads()`. Explicit restart paths currently include leaving offline
+mode, returning from background, startup and other focus/UI paths. Therefore we
+must not assume that a final stale-URL failure is immediately recreated with the
+new public URL.
+
+The dependency version in the current lockfile is
+`background_downloader 9.5.6`. That dependency already supports
+`TaskOptions.onTaskStart`, whose documented purpose is to update a queued
+task's URL/headers immediately before execution, including tasks that may have
+waited a long time. Finamp currently does not use this facility.
+
+This makes dynamic task-start URL resolution a promising design-compatible
+option, but do not implement it until retry/resume semantics are measured:
+partial downloads can be resumed, and changing host mid-resume may interact with
+ETag/range behavior.
+
+**Benchmark extension:**
+
+Targeted network-transition download scenarios, separate from sync-graph
+performance:
+
+1. **pending-before-native-enqueue**
+   - create Finamp enqueued state on local;
+   - switch to public before native task submission;
+   - verify submitted target=public.
+
+2. **native-enqueued / waiting for Wi-Fi**
+   - enqueue on local with Wi-Fi requirement;
+   - remove Wi-Fi/switch target to public;
+   - vary `requireWifiForDownloads=true/false`;
+   - verify whether task starts, remains held, or uses stale local target.
+
+3. **actively downloading**
+   - begin a sufficiently large local transfer;
+   - switch local -> public;
+   - record native status sequence, retry count, bytes/progress before switch,
+     completion/failure, and whether any recreated task uses public.
+
+4. **failed stale task**
+   - let old-local task exhaust retries;
+   - verify Isar state and whether it is automatically resubmitted without app
+     lifecycle/UI intervention;
+   - then trigger the existing restart path and verify regenerated target.
+
+5. repeat public -> local.
+
+Export only target class (`local`/`public`), task state and timings; never the
+URL/host.
+
+### N4 - Mobile-data policy is deliberately delegated to background_downloader
+
+**Status: CONFIRMED + INTENTIONAL TRADEOFF**
+
+`DefaultSettings.requireWifiForDownloads = true`. Mobile users can disable the
+setting.
+
+Finamp applies it through:
+
+`FileDownloader().requireWiFi(RequireWiFi.forAllTasks / forNoTasks)`
+
+and updates the downloader when the setting changes. The network manager also
+shows a pause notification when Wi-Fi is required but unavailable.
+
+This is a sound separation of concerns: the native/background transfer layer can
+enforce the network requirement while Dart is suspended. Do not replace it with
+a foreground-only Connectivity check.
+
+For the dependency semantics, Wi-Fi-required tasks are explicitly restricted
+from cellular on iOS and to an unmetered network on Android.
+
+**Benchmark/behavior matrix:**
+
+- Wi-Fi required=true, local -> cellular/public: download should not consume
+  cellular; task should remain held/paused according to downloader semantics.
+- Wi-Fi required=false, local -> cellular/public: transfer should be able to
+  continue/recover using the public endpoint.
+- AutoOffline `network`: cellular intentionally changes Finamp to offline mode,
+  so no online download continuation is expected.
+- AutoOffline default `disconnected`: cellular remains online, so public
+  playback/download continuation is expected.
+
+These policy cases must be kept separate from stale-URL failures.
+
+### N5 - Download list is a state view, not the task scheduler
+
+**Status: CONFIRMED**
+
+The active-downloads screen combines Isar streams for `syncFailed`, `failed`,
+`downloading` and `enqueued`. It does not own or rewrite download URLs.
+
+Actual scheduling/recovery is split between:
+
+- persistent DownloadItem state in Isar;
+- `IsarTaskQueue`;
+- native `background_downloader` tasks;
+- status callbacks mapping native state back to Isar;
+- explicit `restartDownloads()` entry points.
+
+When testing a LAN/mobile transition, inspect both Isar state and native task
+state. A UI row saying `enqueued` does not prove a fresh public-URL task was
+submitted.
+
+---
+
 ## P0 - Queue / player construction
 
 ### Q1 - Current benchmark combines AudioSource creation and native player install
