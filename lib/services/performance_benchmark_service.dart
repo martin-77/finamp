@@ -302,6 +302,67 @@ class PerformanceBenchmarkService {
 
   PerformanceBenchmarkService._();
 
+  static const Set<String> _privateDownloadCardinalityMetricPrefixes = {
+    "downloadSyncNodeCount_",
+    "downloadUpdateChildrenCount_",
+    "downloadUpdateChildrenInserted_",
+    "downloadUpdateChildrenLinkedExisting_",
+    "downloadUpdateChildrenUnlinked_",
+  };
+
+  static const Set<String> _privateDownloadCardinalityMetrics = {
+    "downloadMetadataCacheHit",
+    "downloadMetadataCacheMiss",
+    "downloadChildCacheHit",
+    "downloadChildCacheMiss",
+    "downloadAlbumViewLookupCount",
+    "downloadAlbumViewViewsExamined",
+    "downloadAlbumViewIdsScanned",
+    "downloadMetadataBatchCount",
+    "downloadMetadataBatchIdsTotal",
+    "downloadMetadataBatchIdsMax",
+    "downloadMetadataBatchMixedFields",
+  };
+
+  static String _cardinalityBucket(num value) {
+    final count = value.toInt();
+    if (count <= 0) return "0";
+    if (count < 10) return "1-9";
+    if (count < 50) return "10-49";
+    if (count < 100) return "50-99";
+    if (count < 500) return "100-499";
+    if (count < 1000) return "500-999";
+    if (count < 5000) return "1000-4999";
+    if (count < 10000) return "5000-9999";
+    return "10000+";
+  }
+
+  static Map<String, dynamic> _publicRunJsonMap(Map<String, dynamic> runJson) {
+    final output = Map<String, dynamic>.from(runJson);
+    final metrics = Map<String, dynamic>.from(
+      (output["metrics"] as Map?)?.cast<String, dynamic>() ?? const {},
+    );
+
+    final keys = metrics.keys.toList();
+    for (final key in keys) {
+      final isPrivateCardinality =
+          _privateDownloadCardinalityMetrics.contains(key) ||
+          _privateDownloadCardinalityMetricPrefixes.any(key.startsWith);
+      if (!isPrivateCardinality) continue;
+
+      final value = metrics.remove(key);
+      if (value is num) {
+        metrics["${key}Bucket"] = _cardinalityBucket(value);
+      }
+    }
+
+    output["metrics"] = metrics;
+    return output;
+  }
+
+  static Map<String, dynamic> _publicRunJson(PerformanceBenchmarkRun run) =>
+      _publicRunJsonMap(run.toJson());
+
   Box<String>? _box;
   File? _hostStreamFile;
   final Stopwatch _processStopwatch = Stopwatch();
@@ -1725,7 +1786,7 @@ class PerformanceBenchmarkService {
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
-    _emitHostRecord("run-end", {"run": run.toJson()});
+    _emitHostRecord("run-end", {"run": _publicRunJson(run)});
   }
 
   Future<void> saveOriginalOfflineState(bool value) async {
@@ -1838,7 +1899,7 @@ class PerformanceBenchmarkService {
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
-    _emitHostRecord("run-end", {"run": run.toJson()});
+    _emitHostRecord("run-end", {"run": _publicRunJson(run)});
     return run;
   }
 
@@ -1861,7 +1922,7 @@ class PerformanceBenchmarkService {
     final box = await _getBox();
     await box.put("$_runKeyPrefix${run.id}", jsonEncode(run.toJson()));
     await box.delete(_activeRunKey);
-    _emitHostRecord("run-end", {"run": run.toJson()});
+    _emitHostRecord("run-end", {"run": _publicRunJson(run)});
   }
 
   Future<List<Map<String, dynamic>>> getRuns() async {
@@ -1899,7 +1960,9 @@ class PerformanceBenchmarkService {
   }
 
   Future<Uint8List> exportBytes() async {
-    final runs = await getRuns();
+    final runs = (await getRuns())
+        .map(_publicRunJsonMap)
+        .toList(growable: false);
     final export = {
       "schemaVersion": 2,
       "generatedAt": DateTime.now().toUtc().toIso8601String(),
