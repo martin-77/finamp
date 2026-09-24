@@ -314,6 +314,22 @@ class JellyfinApiHelper {
     return response.items;
   }
 
+  Future<List<BaseItemDto>> getTracksForAlbumIds({
+    required List<BaseItemId> albumIds,
+    required String fields,
+  }) async {
+    if (albumIds.isEmpty) {
+      return <BaseItemDto>[];
+    }
+    return await getItems(
+          albumIds: albumIds,
+          includeItemTypes: "Audio",
+          sortBy: "ParentIndexNumber,IndexNumber,SortName",
+          fields: fields,
+        ) ??
+        <BaseItemDto>[];
+  }
+
   Future<QueryResult_BaseItemDto> getItemsWithTotalRecordCount({
     BaseItemDto? parentItem,
     BaseItemId? libraryFilter,
