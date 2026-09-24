@@ -405,11 +405,11 @@ class PerformanceBenchmarkSuiteRunner {
       startIndex += items.length;
     }
 
-    await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
-      stableFor: const Duration(seconds: 5),
-      timeout: const Duration(minutes: 30),
-    );
-
+    // Do not wait for global download-system idle here. A previous
+    // interrupted benchmark can have stale all-playlists-metadata work queued,
+    // and the fresh preconditioning process intentionally suppresses normal
+    // queue restart. Waiting globally before deleting that metadata creates a
+    // deadlock: the stale task cannot drain and its cleanup has not run yet.
     recorder.diagnostic(
       "suite-preconditioning-artifact-cleanup-complete",
       values: {
@@ -448,19 +448,31 @@ class PerformanceBenchmarkSuiteRunner {
         ),
       );
 
-      recorder.diagnostic("suite-preconditioning-metadata-cleanup-start");
+      recorder.diagnostic(
+        "suite-preconditioning-metadata-cleanup-start",
+        values: downloads.getPerformanceBenchmarkQueueState(),
+      );
       // Deleting a missing target is harmless; deleting an old or partial
       // target makes the next process exercise the real first-run workload.
+      // This cleanup must happen before waiting for global idle because stale
+      // metadata work may itself be the reason the global system is not idle.
       await downloads.deleteDownload(stub: metadataStub);
       await downloads.waitForPerformanceBenchmarkCleanup(
         stub: metadataStub,
         timeout: const Duration(minutes: 30),
       );
+      recorder.diagnostic(
+        "suite-preconditioning-global-download-idle-wait-start",
+        values: downloads.getPerformanceBenchmarkQueueState(),
+      );
       await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
         stableFor: const Duration(seconds: 5),
         timeout: const Duration(minutes: 30),
       );
-      recorder.diagnostic("suite-preconditioning-metadata-cleanup-complete");
+      recorder.diagnostic(
+        "suite-preconditioning-metadata-cleanup-complete",
+        values: downloads.getPerformanceBenchmarkQueueState(),
+      );
 
       await _settleUi(
         schedulerCooldown: Duration.zero,
