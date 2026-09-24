@@ -986,6 +986,7 @@ class DownloadsSyncService {
         PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     final benchmarkNodeRole = asRequired ? "required" : "info";
     final benchmarkNodeType = parent.type.name;
+    final benchmarkNodeSubtype = parent.baseItemType.name;
 
     _syncLogger.finer("Syncing ${parent.baseItemType.name} ${parent.name} with required:$asRequired viewId:$viewId");
 
@@ -1264,6 +1265,23 @@ class DownloadsSyncService {
       );
       benchmark.maxMetricBuffered(
         "downloadSyncNodeMicrosMax_${benchmarkNodeType}_$benchmarkNodeRole",
+        benchmarkNodeStopwatch.elapsedMicroseconds,
+      );
+
+      // Keep the aggregate node metrics above for historical comparisons, and
+      // also split them by BaseItemDtoType so broad buckets such as
+      // collection_info can be attributed without exposing item identities.
+      final subtypeMetricSuffix =
+          "${benchmarkNodeType}_${benchmarkNodeSubtype}_$benchmarkNodeRole";
+      benchmark.incrementMetricBuffered(
+        "downloadSyncNodeCount_$subtypeMetricSuffix",
+      );
+      benchmark.incrementMetricBuffered(
+        "downloadSyncNodeMicros_$subtypeMetricSuffix",
+        benchmarkNodeStopwatch.elapsedMicroseconds,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadSyncNodeMicrosMax_$subtypeMetricSuffix",
         benchmarkNodeStopwatch.elapsedMicroseconds,
       );
     }
