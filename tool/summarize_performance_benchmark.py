@@ -937,6 +937,44 @@ def main():
     else:
         lines.append("| none |  |  |  |  |  |  |")
 
+    album_phase_rows = []
+    for item in download_groups:
+        metrics = item.get("numericMetrics", {})
+        for name, timing in metrics.items():
+            if not name.startswith("downloadAlbumInfoPhaseMicros_"):
+                continue
+            suffix = name.removeprefix("downloadAlbumInfoPhaseMicros_")
+            if suffix.startswith("Max_"):
+                continue
+            max_metric = metrics.get(
+                f"downloadAlbumInfoPhaseMicrosMax_{suffix}", {}
+            ).get("median")
+            album_phase_rows.append((
+                item,
+                suffix,
+                timing.get("median"),
+                max_metric,
+            ))
+
+    lines.extend([
+        "",
+        "### Album info phase timing",
+        "",
+        "| Scenario | Mode | Target | Phase | Total ms med | Max phase ms med |",
+        "|---|---|---|---|---:|---:|",
+    ])
+    if album_phase_rows:
+        for item, suffix, total_us, max_us in album_phase_rows:
+            target = item["targetAlias"] or item["targetType"] or ""
+            total_ms = "" if total_us is None else round(total_us / 1000.0, 3)
+            max_ms = "" if max_us is None else round(max_us / 1000.0, 3)
+            lines.append(
+                f"| {item['scenario']} | {item['mode']} | {target} | "
+                f"{suffix} | {total_ms} | {max_ms} |"
+            )
+    else:
+        lines.append("| none |  |  |  |  |  |")
+
     cache_groups = []
     for item in summary_groups:
         metrics = item["numericMetrics"]
