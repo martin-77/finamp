@@ -1315,34 +1315,22 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _waitForUiQuiescence({
-    Duration quietPeriod = const Duration(milliseconds: 750),
+    Duration quietPeriod = const Duration(milliseconds: 200),
     Duration timeout = const Duration(minutes: 15),
   }) async {
-    final recorder = PerformanceBenchmarkService.instance;
-
-    // First drain API work that belongs to the screen/provider transition.
-    await recorder.waitForNetworkQuiescence(
-      quietPeriod: quietPeriod,
-      timeout: timeout,
-    );
-
-    // Then wait for image fetch/decode/raster work triggered by the rendered
-    // content. Images can finish after the provider has already become ready.
-    await recorder.waitForImageQuiescence(
-      quietPeriod: quietPeriod,
-      timeout: timeout,
-    );
-
-    // A final network pass catches follow-up provider work scheduled while the
-    // first frame/images were settling.
-    await recorder.waitForNetworkQuiescence(
+    // UI commands already complete only after their semantic provider state is
+    // ready and a rendered frame has been observed. This barrier measures the
+    // separate background tail: network/worker and image activity must all be
+    // idle at the same time and remain generation-stable for one short guard
+    // window. It avoids the old serial network/image/network 3 x 750 ms floor.
+    await PerformanceBenchmarkService.instance.waitForUiActivityQuiescence(
       quietPeriod: quietPeriod,
       timeout: timeout,
     );
   }
 
   Future<void> _settleUi({
-    Duration quietPeriod = const Duration(milliseconds: 750),
+    Duration quietPeriod = const Duration(milliseconds: 200),
     Duration schedulerCooldown = const Duration(seconds: 1),
   }) async {
     await _waitForUiQuiescence(
