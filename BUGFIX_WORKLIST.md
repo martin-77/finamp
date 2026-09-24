@@ -173,9 +173,12 @@ Known mechanisms include:
 - all-playlists metadata expansion;
 - repeated local graph/Isar work.
 
-Do not increase global concurrency first. Instrument D1–D5 from
-`performance-analysis-todo.md`, then remove unnecessary work while preserving
-the maintainers' low-end-device and correctness constraints.
+Do not increase global concurrency first. D1–D5 instrumentation is now present on
+this branch: sync node type/role timings, metadata/child cache hit-miss aggregates,
+metadata batch collect/request timing and batch-size buckets, album→view lookup
+cost, and `_updateChildren()` timing/mutation buckets. The next step is a targeted
+bench100 run and summary review before changing production behavior. Preserve the
+maintainers' low-end-device and correctness constraints.
 
 ---
 
