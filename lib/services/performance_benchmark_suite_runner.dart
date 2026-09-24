@@ -104,6 +104,20 @@ class PerformanceBenchmarkSuiteRunner {
         .setPerformanceBenchmarkOverride(true);
     final stage = await recorder.getSuiteStage();
 
+    if (PerformanceBenchmarkService.targetedDownloadBench100) {
+      recorder.diagnostic(
+        "suite-targeted-mode",
+        values: {"target": "bench-100", "scope": "download-diagnostics"},
+      );
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runTargetedBench100DownloadDiagnostics());
+      });
+      if (GetIt.instance<FinampUserHelper>().currentUser == null) {
+        recorder.diagnostic("suite-waiting-for-login");
+      }
+      return;
+    }
+
     recorder.diagnostic(
       "suite-armed",
       values: {
@@ -1228,12 +1242,14 @@ class PerformanceBenchmarkSuiteRunner {
     }
   }
 
-  Future<bool> _discoverAndValidateTargets() async {
+  Future<bool> _discoverAndValidateTargets({
+    Map<String, int>? targets,
+  }) async {
     final api = GetIt.instance<JellyfinApiHelper>();
     final recorder = PerformanceBenchmarkService.instance;
     var allValid = true;
 
-    for (final targetEntry in _benchmarkTargets.entries) {
+    for (final targetEntry in (targets ?? _benchmarkTargets).entries) {
       final alias = targetEntry.key;
       final expectedCount = targetEntry.value;
 
@@ -1994,6 +2010,71 @@ class PerformanceBenchmarkSuiteRunner {
     );
   }
 
+  Future<void> _runTargetedBench100DownloadDiagnostics() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await _ensureSuiteOnlineBaseline();
+      await _recoverPendingDownloadCleanup();
+
+      // The normal startup download queue is suppressed while a benchmark run
+      // has no suite stage. This keeps unrelated persisted/metadata work out of
+      // the targeted measurement instead of waiting for or mixing it into the
+      // bench-100 sync graph.
+      await recorder.waitForStartupScreenReady(
+        timeout: const Duration(minutes: 15),
+      );
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(seconds: 2),
+        timeout: const Duration(minutes: 10),
+      );
+
+      final targetReady = await _discoverAndValidateTargets(
+        targets: const <String, int>{"bench-100": 100},
+      );
+      if (!targetReady) {
+        recorder.diagnostic(
+          "suite-blocked",
+          values: {"reason": "bench100-target-validation"},
+        );
+        return;
+      }
+
+      final completed = await _runDownloadLifecycle(
+        "bench-100",
+        100,
+        diagnosticsOnly: true,
+      );
+      if (!completed) {
+        throw StateError("Targeted bench100 download did not complete");
+      }
+
+      recorder.diagnostic(
+        "targeted-bench100-download-complete",
+        values: {"targetAlias": "bench-100"},
+      );
+    } catch (error) {
+      await _bestEffortTerminalCleanupAndRestore();
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "targeted-bench100-download",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+    } finally {
+      await _restoreSuiteOriginalOfflineState();
+      GetIt.instance<KeepScreenOnHelper>()
+          .setPerformanceBenchmarkOverride(false);
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+      _running = false;
+    }
+  }
+
   Future<String> _runDownloadAndOfflineBaselines(
     String? currentStage,
   ) async {
@@ -2046,8 +2127,9 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<bool> _runDownloadLifecycle(
     String targetAlias,
-    int expectedTracks,
-  ) async {
+    int expectedTracks, {
+    bool diagnosticsOnly = false,
+  }) async {
     final recorder = PerformanceBenchmarkService.instance;
     final downloads = GetIt.instance<DownloadsService>();
     final container = GetIt.instance<ProviderContainer>();
@@ -2218,6 +2300,15 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.finishRun();
     } catch (_) {
       rethrow;
+    }
+
+    if (diagnosticsOnly) {
+      await _cleanupDownloadedBenchmarkTarget(
+        targetAlias: targetAlias,
+        stub: stub,
+        downloads: downloads,
+      );
+      return true;
     }
 
     await recorder.startRun(
