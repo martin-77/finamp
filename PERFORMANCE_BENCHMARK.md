@@ -167,6 +167,7 @@ and ids are never exported.
 
 13. **One-time playlist metadata/image sync**
     - the real automatic workload is included once in the fresh startup process
+    - separately records metadata planning duration and the later queue/transfer settling tail
     - after that first process its benchmark-owned metadata state is cleaned before controlled cold/warm comparisons
     - the same workload is measured again in isolation after normal and post-restart cache comparisons
     - reproduces Finamp's automatic first-run playlist metadata workload
@@ -193,14 +194,14 @@ sub-suites emit phase-complete markers but must not emit suite-complete.
 | native iOS launch timing | automated | monotonic native launch -> Dart main/runApp/first frame/usable screen/fully-ready correlation; no wall-clock dependency |
 | persistent-cache startup repeats | automated | three additional process launches on the same installed app/container, aggregated as one startup class with median/p90 |
 | persistent-cache restart | automated | same installed build/container, explicit stage checkpoints and post-restart API/UI/detail cache matrix |
-| API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown |
+| API page-size reference | automated | three rotated rounds; 25/100/100-warm/500; Performing Artists and Album Artists separately; Worker vs HTTP breakdown; Tracks additionally compare default fields with a minimal SortName field set |
 | Home + main tabs | automated | rotated refreshed/warm rounds with first-rendered + quiescent timing |
 | deep paging | automated | repeated real UI next-page actions |
-| Search | automated | three locally configured private queries + broad query + search paging |
+| Search | automated | three locally configured private artist queries; album/track queries are deterministically derived on-device from each matched artist + broad query + search paging |
 | Artist → Album → Track | automated | deterministic private chain per named artist, cumulative drill-down and playback |
-| alphabet fast-scroller | automated | real `# → A → G → M → Z` path for Tracks/Artists/Albums, refreshed and warm-loaded |
+| alphabet fast-scroller | automated | real `# → A → G → M → Z` path for Tracks/Artists/Albums, refreshed and warm-loaded; breaks latency into local scan, page wait and scroll/render work |
 | details | automated | album, artist, genre and 10/100/1000/10000 playlist details |
-| queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position; local/server target and transcoding source category |
+| queue/playback | automated | track/album/artist/genre/playlists through player-playing, useful buffer and first position; queue replacement is split into MediaItem construction, AudioSource installation and order application; large queues also measure RSS recovery after clear |
 | large queue restore | automated | normal autoload observed; explicit 1000-track restore if startup autoload did not run |
 | downloads | automated | 10/100/1000 original-file downloads, real bytes, throughput and cleanup |
 | filesystem reference | automated | sequential local reads of actual benchmark files, reporting only count/bytes/duration/throughput |
@@ -298,7 +299,14 @@ privacy rules are otherwise identical to the full run.
 ## Private search configuration
 
 Search strings are deliberately not committed to the branch and are not
-written to JSONL or summaries. Supply them only in the local shell environment:
+written to JSONL or summaries. The three supplied strings are **artist names**.
+For each uniquely matched artist, the harness deterministically selects one
+album and one track on-device and uses their real names for the album and track
+search benchmarks. Those derived names never leave the device; exported records
+contain only neutral aliases such as `query-1-artists`, `query-1-albums` and
+`query-1-tracks` plus query length.
+
+Supply the artist strings only in the local shell environment:
 
 ```bash
 export FINAMP_BENCH_SEARCH_QUERY_1='<private query 1>'
@@ -352,9 +360,13 @@ For Home, Artists, Albums, Tracks, Playlists and Genres where applicable:
 
 ### Search
 
+- artist query uses the configured private artist name
+- album query uses a deterministic real album name derived from that artist
+- track query uses a deterministic real track name derived from that album
 - query changed -> request/index lookup start
 - lookup -> result data ready
 - result data ready -> first rendered frame
+- first rendered content -> unified background quiescence
 - total search latency
 - result count
 - request count / bytes
@@ -497,6 +509,15 @@ Performance changes should be evaluated both by user-visible latency and by
 amount of work performed. A faster first frame that leaves the same expensive
 work running in the background is useful but must be described separately from
 a structural reduction in work.
+
+For UI, search, paging and detail runs the semantic command completes only after
+its data state is ready and the first rendered frame has been observed. That
+user-visible milestone is kept separate from `ui-fully-quiescent`. The latter
+uses one generation-based activity barrier across network/worker and image
+activity with a short 200 ms stability guard. It does **not** serially add
+network/image/network quiet periods, so the benchmark no longer has the old
+~2.25 s artificial minimum. Timeouts remain safety limits only; they are not
+used as successful completion criteria.
 
 
 ## Crash, hang and cleanup recovery
