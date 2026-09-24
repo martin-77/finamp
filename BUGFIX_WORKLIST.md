@@ -160,7 +160,7 @@ introduced to keep queue/index/shuffle edits correct.
 
 ### B7 — Download sync graph performs excessive serialized work
 
-**Status: CONFIRMED PERFORMANCE DEFECT; CAUSE DECOMPOSITION OPEN**
+**Status: INSTRUMENTED — TARGETED BENCH100 RUN PENDING**
 
 The download graph is the largest measured cost: bench100 is minutes and
 bench1000 is tens of minutes before/around transfer completion.
@@ -219,10 +219,10 @@ appears.
 1. **B1: download queue self-recovery** — implementation complete on this branch;
    verify with local Flutter quality gates and a focused failure/retry run before
    marking DONE.
-2. **B7: download sync instrumentation D1–D5** — because we are already in the
-   download subsystem and it is the largest performance hotspot.
-3. Apply the first measured download-sync optimization and run the targeted
-   bench100 diagnostic.
+2. **B7: download sync instrumentation D1–D5** — implemented with privacy-safe
+   export bucketing and summary coverage; run the targeted bench100 diagnostic.
+3. Apply the first measured download-sync optimization, then rerun the same
+   bench100 diagnostic for A/B comparison.
 4. **B6: queue 10k phase split**, then optimize the proven subphase.
 5. **B4/B5: fast-scroller**, refreshed and warm paths independently.
 6. Revisit **B3/B8** only with evidence from the preceding work.
