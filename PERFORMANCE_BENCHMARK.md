@@ -244,6 +244,26 @@ search strings only to exercise the build; they are never run against Jellyfin.
 
 Only after this gate passes should the physical-device smoke run be started.
 
+## Targeted bench-100 download diagnostics
+
+For D1-D5 download root-cause work, use the isolated bench-100 mode instead of
+rerunning the full matrix:
+
+```bash
+FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY=true \
+  bash tool/bootstrap_performance_benchmark_macos.sh [ios-device-id]
+```
+
+This mode validates only the `bench-100` target, suppresses unrelated normal
+startup download-queue work for the fresh benchmark process, runs only the
+online `download-lifecycle` measurement, immediately cleans up the owned
+download, writes the normal privacy-filtered summary, and exits on
+`targeted-bench100-download-complete`.
+
+Private search-query environment variables are not required in this mode.
+Use the same mode and device for the before/after run of a single production
+optimization.
+
 ## Benchmark app isolation
 
 The suite deliberately clears benchmark queue state, benchmark downloads and
