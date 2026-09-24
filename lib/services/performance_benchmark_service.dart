@@ -705,7 +705,10 @@ class PerformanceBenchmarkService {
     final id = recovered["id"] as String;
     await box.put("$_runKeyPrefix$id", jsonEncode(recovered));
     await box.delete(_activeRunKey);
-    _emitHostRecord("run-recovered", {"run": recovered});
+    _emitHostRecord(
+      "run-recovered",
+      {"run": _publicRunJsonMap(recovered)},
+    );
     _logger.warning(
       "BENCH RUN $id recovered as unexpected-exit "
       "lastStep=${recovered["lastStep"]}",
