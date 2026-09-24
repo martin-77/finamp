@@ -408,11 +408,39 @@ Future<void> _setupDownloadsHelper() async {
             );
             benchmark.markStartupPlaylistMetadataWorkRan();
             try {
+              final planning = Stopwatch()..start();
+              benchmark.diagnostic(
+                "startup-playlist-metadata-plan-start",
+                values: {"processElapsedMs": benchmark.processElapsedMs},
+              );
               await downloadsService.addDefaultPlaylistInfoDownload();
+              planning.stop();
+              benchmark.diagnostic(
+                "startup-playlist-metadata-plan-complete",
+                values: {
+                  "durationMs":
+                      planning.elapsedMicroseconds / 1000.0,
+                  "processElapsedMs": benchmark.processElapsedMs,
+                },
+              );
+
+              final settle = Stopwatch()..start();
+              benchmark.diagnostic(
+                "startup-playlist-metadata-settle-start",
+                values: {"processElapsedMs": benchmark.processElapsedMs},
+              );
               await downloadsService
                   .waitForPerformanceBenchmarkDownloadSystemIdle(
                 stableFor: const Duration(seconds: 5),
                 timeout: const Duration(hours: 3),
+              );
+              settle.stop();
+              benchmark.diagnostic(
+                "startup-playlist-metadata-settle-complete",
+                values: {
+                  "durationMs": settle.elapsedMicroseconds / 1000.0,
+                  "processElapsedMs": benchmark.processElapsedMs,
+                },
               );
               benchmark.reportStartupPlaylistMetadataWorkResult(
                 success: true,
