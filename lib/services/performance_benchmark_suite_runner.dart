@@ -3858,6 +3858,52 @@ class PerformanceBenchmarkSuiteRunner {
         }
       }
 
+      if (!_smoke) {
+        final fieldVariants = round.isEven
+            ? const <(String, String?)>[
+                ("default-fields", null),
+                ("minimal-fields", "SortName"),
+              ]
+            : const <(String, String?)>[
+                ("minimal-fields", "SortName"),
+                ("default-fields", null),
+              ];
+
+        for (final (mode, fields) in fieldVariants) {
+          await recorder.startRun(
+            scenario: "collection-page-tracks-field-reference",
+            variant: PerformanceBenchmarkService.variant,
+            mode: mode,
+            targetType: "Audio",
+          );
+          try {
+            recorder.metric("round", round + 1);
+            recorder.metric("requestedPageSize", 100);
+            recorder.metric("usesDefaultFields", fields == null);
+            final result = await recorder.runStep(
+              name: "request",
+              timeout: const Duration(minutes: 10),
+              operation: () => api.getItemsWithTotalRecordCount(
+                includeItemTypes: "Audio",
+                recursive: true,
+                startIndex: 0,
+                limit: 100,
+                fields: fields,
+              ),
+            );
+            recorder.metric("pageSize", result.items?.length ?? 0);
+            await recorder.finishRun();
+          } catch (_) {
+            // runStep already finalized the failed/timeout run.
+          }
+
+          await recorder.waitForNetworkQuiescence(
+            quietPeriod: const Duration(milliseconds: 200),
+            timeout: const Duration(minutes: 10),
+          );
+        }
+      }
+
       recorder.diagnostic(
         "api-reference-round-complete",
         values: {"round": round + 1},
