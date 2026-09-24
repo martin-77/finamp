@@ -814,6 +814,80 @@ class DownloadsSyncService {
     }
   }
 
+  Future<void> _prefillInfoAlbumChildren(
+    List<IsarTaskData<dynamic>> wrappedSyncs,
+  ) async {
+    final albums = <DownloadStub>[];
+
+    for (final wrappedSync in wrappedSyncs) {
+      final sync = wrappedSync.data as SyncNode;
+      if (sync.required) {
+        continue;
+      }
+
+      final item = _isar.downloadItems.getSync(sync.stubIsarId);
+      if (item == null ||
+          item.type != DownloadItemType.collection ||
+          item.baseItemType != BaseItemDtoType.album ||
+          _childCache.containsKey(item.id)) {
+        continue;
+      }
+      albums.add(item);
+    }
+
+    if (albums.length < 2) {
+      return;
+    }
+
+    final albumIds = albums.map((album) => album.baseItem!.id).toList();
+    final fields =
+        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+
+    try {
+      final childItems = await _jellyfinApiData.getTracksForAlbumIds(
+        albumIds: albumIds,
+        fields: fields,
+      );
+      _downloadsService.resetConnectionErrors();
+
+      final childrenByAlbum = <BaseItemId, List<DownloadStub>>{};
+      for (final childItem in childItems) {
+        final albumId = childItem.albumId;
+        if (albumId == null) {
+          continue;
+        }
+
+        childrenByAlbum
+            .putIfAbsent(albumId, () => <DownloadStub>[])
+            .add(
+              DownloadStub.fromItem(
+                type: DownloadItemType.track,
+                item: childItem,
+              ),
+            );
+      }
+
+      for (final album in albums) {
+        final albumId = album.baseItem!.id;
+        final children = childrenByAlbum[albumId];
+        if (children == null || children.isEmpty) {
+          continue;
+        }
+
+        _childCache[album.id] = Future.value(
+          children.map((child) => child.id).toList(),
+        );
+        for (final child in children) {
+          _metadataCache[child.baseItem!.id] = Future.value(child);
+        }
+      }
+    } catch (e) {
+      _syncLogger.fine(
+        "Album child batch fetch failed; using normal per-album requests: $e",
+      );
+    }
+  }
+
   /// Execute all queued _syncDownload.  Will call itself until there are max concurrent
   /// download workers running at once.  Will retry items that throw errors up to
   /// 5 times before skipping and alerting the user.
@@ -850,6 +924,9 @@ class DownloadsSyncService {
         _activeSyncs.addAll(wrappedSyncs.map((e) => e.id));
         // Once we've claimed our item, try to launch another worker in case we have <5.
         unawaited(_advanceQueue());
+
+        await _prefillInfoAlbumChildren(wrappedSyncs);
+
         List<IsarTaskData<dynamic>> failedSyncs = [];
         for (var wrappedSync in wrappedSyncs) {
           SyncNode sync = wrappedSync.data as SyncNode;
