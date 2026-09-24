@@ -3101,6 +3101,53 @@ class PerformanceBenchmarkSuiteRunner {
       await _settleUi(
         schedulerCooldown: const Duration(seconds: 2),
       );
+
+      if (type == "playlist" &&
+          (alias == "bench-1000" || alias == "bench-10000")) {
+        await _runQueueMemoryRecoveryBaseline(alias);
+      }
+    }
+  }
+
+  Future<void> _runQueueMemoryRecoveryBaseline(String targetAlias) async {
+    final recorder = PerformanceBenchmarkService.instance;
+    final queueService = GetIt.instance<QueueService>();
+
+    await recorder.startRun(
+      scenario: "queue-memory-recovery",
+      variant: PerformanceBenchmarkService.variant,
+      mode: "clear-after-warm-playback",
+      targetAlias: targetAlias,
+      targetType: "queue",
+    );
+    try {
+      final rssBefore = ProcessInfo.currentRss;
+      recorder.metric("rssBeforeQueueClearBytes", rssBefore);
+      recorder.metric(
+        "queueLengthBeforeClear",
+        queueService.getQueue().trackCount,
+      );
+
+      await recorder.runStep(
+        name: "clear-queue",
+        timeout: const Duration(minutes: 10),
+        operation: queueService.stopAndClearQueue,
+      );
+      await recorder.runStep(
+        name: "wait-ui-quiescent",
+        timeout: const Duration(minutes: 16),
+        operation: _waitForUiQuiescence,
+      );
+
+      final rssAfter = ProcessInfo.currentRss;
+      recorder.metric("rssAfterQueueClearBytes", rssAfter);
+      recorder.metric(
+        "rssRecoveredAfterQueueClearBytes",
+        rssBefore - rssAfter,
+      );
+      await recorder.finishRun();
+    } catch (_) {
+      // runStep persists failures/timeouts.
     }
   }
 
