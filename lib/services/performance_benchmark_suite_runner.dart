@@ -2970,10 +2970,10 @@ class PerformanceBenchmarkSuiteRunner {
         "player-first-position-advance",
         timeout: const Duration(minutes: 3),
       );
-      unawaited(readyFuture.catchError((_) {}));
-      unawaited(playingFuture.catchError((_) {}));
-      unawaited(usefulBufferFuture.catchError((_) {}));
-      unawaited(firstPositionFuture.catchError((_) {}));
+      unawaited(readyFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(playingFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(usefulBufferFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(firstPositionFuture.then<void>((_) {}, onError: (_) {}));
 
       await recorder.runStep(
         name: "track-start",
@@ -3262,10 +3262,10 @@ class PerformanceBenchmarkSuiteRunner {
         "player-first-position-advance",
         timeout: playerStateTimeout,
       );
-      unawaited(readyFuture.catchError((_) {}));
-      unawaited(playingFuture.catchError((_) {}));
-      unawaited(usefulBufferFuture.catchError((_) {}));
-      unawaited(firstPositionFuture.catchError((_) {}));
+      unawaited(readyFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(playingFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(usefulBufferFuture.then<void>((_) {}, onError: (_) {}));
+      unawaited(firstPositionFuture.then<void>((_) {}, onError: (_) {}));
 
       await recorder.runStep(
         name: "queue-and-player-start",
