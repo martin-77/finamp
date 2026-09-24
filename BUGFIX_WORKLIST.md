@@ -17,7 +17,15 @@ Status values:
 
 ### B1 — Download queue can strand tasks after native enqueue/connection failure
 
-**Status: IMPLEMENTED — LOCAL BUILD / BEHAVIOR VERIFICATION PENDING**
+**Status: IMPLEMENTED + RACE-REVIEWED — LOCAL BUILD / BEHAVIOR VERIFICATION PENDING**
+
+The retry path was additionally hardened after review: pending retries now wake
+when a successful native transfer clears the connection-error backoff, and an
+already-fetched queue batch re-checks download/offline gating before submitting
+its next native task. The concrete `background_downloader 9.2.3` status/progress
+delivery path was checked for duplicate/stale ownership callbacks; Finamp's
+status-only `DownloadTask` configuration does not expose the suspected late
+progress callback to the Dart `TaskQueue`.
 
 Files:
 
@@ -160,7 +168,13 @@ introduced to keep queue/index/shuffle edits correct.
 
 ### B7 — Download sync graph performs excessive serialized work
 
-**Status: INSTRUMENTED — TARGETED BENCH100 RUN PENDING**
+**Status: INSTRUMENTED + ISOLATED RUNNER READY — TARGETED BENCH100 RUN PENDING**
+
+The harness now has `FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY=true`, which validates
+only the fixed bench-100 target, suppresses unrelated startup download-queue work
+for the fresh process, runs only the online download lifecycle, cleans it up,
+emits the normal privacy-filtered summary, and exits. Use the same mode/device
+for the A/B run after exactly one measured production optimization.
 
 The download graph is the largest measured cost: bench100 is minutes and
 bench1000 is tens of minutes before/around transfer completion.
