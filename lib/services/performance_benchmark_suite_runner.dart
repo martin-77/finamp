@@ -1972,20 +1972,25 @@ class PerformanceBenchmarkSuiteRunner {
         FinampSettingsHelper.finampSettings.downloadWorkers,
       );
       recorder.metric("downloadUsesOriginalCodec", true);
+      // Arm these before planning because transfers can begin while the sync
+      // graph is still being expanded. Large collections can legitimately spend
+      // far longer than a few minutes in planning, so the event futures must not
+      // expire independently while that work is still in progress.
+      const downloadLifecycleEventTimeout = Duration(hours: 3);
       final firstTransfer = recorder.waitForEvent(
         "download-first-transfer-start",
-        timeout: const Duration(minutes: 5),
+        timeout: downloadLifecycleEventTimeout,
       );
       final firstTrack = recorder.waitForEvent(
         "download-first-track-complete",
-        timeout: const Duration(minutes: 10),
+        timeout: downloadLifecycleEventTimeout,
       );
-      unawaited(firstTransfer.catchError((_) {}));
-      unawaited(firstTrack.catchError((_) {}));
+      unawaited(firstTransfer.then<void>((_) {}, onError: (_) {}));
+      unawaited(firstTrack.then<void>((_) {}, onError: (_) {}));
 
       await recorder.runStep(
         name: "download-plan-and-enqueue",
-        timeout: const Duration(minutes: 10),
+        timeout: const Duration(hours: 2),
         operation: () => downloads.addDownload(
           stub: stub,
           transcodeProfile: profile,
@@ -1994,12 +1999,12 @@ class PerformanceBenchmarkSuiteRunner {
 
       await recorder.runStep(
         name: "wait-first-transfer",
-        timeout: const Duration(minutes: 5),
+        timeout: downloadLifecycleEventTimeout,
         operation: () => firstTransfer,
       );
       await recorder.runStep(
         name: "wait-first-track-complete",
-        timeout: const Duration(minutes: 10),
+        timeout: downloadLifecycleEventTimeout,
         operation: () => firstTrack,
       );
       await recorder.runStep(
