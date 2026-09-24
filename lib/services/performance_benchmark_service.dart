@@ -360,6 +360,9 @@ class PerformanceBenchmarkService {
   int _imageLoadGeneration = 0;
   final StreamController<int> _imageLoadController =
       StreamController<int>.broadcast();
+  int _uiActivityGeneration = 0;
+  final StreamController<int> _uiActivityController =
+      StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
@@ -944,8 +947,14 @@ class PerformanceBenchmarkService {
     }
   }
 
+  void _uiActivityChanged() {
+    _uiActivityGeneration++;
+    _uiActivityController.add(_uiActivityGeneration);
+  }
+
   void imageLoadStarted() {
     if (!enabled) return;
+    _uiActivityChanged();
     _imageLoadsInFlight++;
     if (_startupFrameCollectionOpen) {
       _startupImageLoadStarted++;
@@ -955,6 +964,7 @@ class PerformanceBenchmarkService {
     }
     _imageLoadGeneration++;
     _imageLoadController.add(_imageLoadsInFlight);
+    _uiActivityChanged();
     incrementMetricBuffered("imageLoadStarted");
     maxMetricBuffered("imageMaxConcurrentLoads", _imageLoadsInFlight);
   }
@@ -1021,6 +1031,7 @@ class PerformanceBenchmarkService {
     _networkRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
+    _uiActivityChanged();
     incrementMetricBuffered("workerOperationCount");
     maxMetricBuffered(
       "networkMaxConcurrentIncludingWorker",
@@ -1056,6 +1067,7 @@ class PerformanceBenchmarkService {
     }
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
+    _uiActivityChanged();
   }
 
   void networkRequestStarted() {
@@ -1065,6 +1077,7 @@ class PerformanceBenchmarkService {
     _httpRequestsInFlight++;
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
+    _uiActivityChanged();
     incrementMetricBuffered("httpRequestCount");
     maxMetricBuffered("httpMaxConcurrentRequests", _httpRequestsInFlight);
 
@@ -1136,6 +1149,76 @@ class PerformanceBenchmarkService {
     }
     _networkGeneration++;
     _networkRequestController.add(_networkRequestsInFlight);
+    _uiActivityChanged();
+  }
+
+  Future<void> waitForUiActivityQuiescence({
+    Duration quietPeriod = const Duration(milliseconds: 200),
+    Duration timeout = const Duration(minutes: 15),
+  }) async {
+    if (!enabled) return;
+
+    final overall = Stopwatch()..start();
+    diagnostic(
+      "ui-quiescence-wait-start",
+      values: {
+        "networkInFlight": _networkRequestsInFlight,
+        "imageLoadsInFlight": _imageLoadsInFlight,
+        "quietPeriodMs": quietPeriod.inMilliseconds,
+      },
+    );
+
+    while (overall.elapsed < timeout) {
+      final remaining = timeout - overall.elapsed;
+      if (_networkRequestsInFlight != 0 || _imageLoadsInFlight != 0) {
+        await _uiActivityController.stream
+            .firstWhere(
+              (_) =>
+                  _networkRequestsInFlight == 0 &&
+                  _imageLoadsInFlight == 0,
+            )
+            .timeout(remaining);
+        continue;
+      }
+
+      final generationAtIdle = _uiActivityGeneration;
+      final settled = Completer<bool>();
+      late final StreamSubscription<int> subscription;
+      final timer = Timer(quietPeriod, () {
+        if (!settled.isCompleted) settled.complete(true);
+      });
+      subscription = _uiActivityController.stream.listen((_) {
+        if (!settled.isCompleted) settled.complete(false);
+      });
+
+      final stayedIdle = await settled.future.timeout(remaining);
+      timer.cancel();
+      await subscription.cancel();
+
+      if (stayedIdle &&
+          _networkRequestsInFlight == 0 &&
+          _imageLoadsInFlight == 0 &&
+          _uiActivityGeneration == generationAtIdle) {
+        overall.stop();
+        mark(
+          "ui-fully-quiescent",
+          values: {
+            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
+            "quietPeriodMs": quietPeriod.inMilliseconds,
+          },
+        );
+        metric(
+          "uiQuiescenceWaitMicros",
+          overall.elapsedMicroseconds,
+        );
+        return;
+      }
+    }
+
+    throw TimeoutException(
+      "UI activity did not become quiescent",
+      timeout,
+    );
   }
 
   Future<void> waitForNetworkQuiescence({
