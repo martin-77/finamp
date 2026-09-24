@@ -55,6 +55,36 @@ def main():
             },
         },
         {
+            "type": "run-end",
+            "run": {
+                "scenario": "download-lifecycle-bench100",
+                "mode": "fresh",
+                "targetType": "playlist",
+                "targetAlias": "bench100",
+                "durationMicros": 12_000_000,
+                "result": "success",
+                "metrics": {
+                    "downloadMetadataBatchCountBucket": "10-49",
+                    "downloadMetadataBatchIdsTotalBucket": "100-499",
+                    "downloadMetadataBatchCollectMicros": 2_500_000,
+                    "downloadMetadataBatchRequestMicros": 6_000_000,
+                    "downloadMetadataCacheHitBucket": "100-499",
+                    "downloadMetadataCacheMissBucket": "50-99",
+                    "downloadChildCacheHitBucket": "10-49",
+                    "downloadChildCacheMissBucket": "1-9",
+                    "downloadAlbumViewLookupMicros": 300_000,
+                    "downloadAlbumViewIdsScannedBucket": "1000-4999",
+                    "downloadUpdateChildrenMicros_required": 400_000,
+                    "downloadUpdateChildrenMicros_info": 200_000,
+                    "downloadMetadataBatchMixedFieldsBucket": "0",
+                    "downloadSyncNodeCount_track_requiredBucket": "50-99",
+                    "downloadSyncNodeMicros_track_required": 5_000_000,
+                    "downloadSyncNodeMicrosMax_track_required": 250_000,
+                },
+                "events": [],
+            },
+        },
+        {
             "type": "diagnostic",
             "name": "runtime-environment",
             "emittedAt": "2026-09-23T11:59:58Z",
@@ -229,6 +259,18 @@ def main():
         assert group["playbackSources"] == {"server/public": 1}
         assert summary["source"] == "input.jsonl"
 
+        download_group = next(
+            item
+            for item in summary["groups"]
+            if item["scenario"] == "download-lifecycle-bench100"
+        )
+        assert download_group["categoricalMetrics"][
+            "downloadMetadataBatchCountBucket"
+        ] == {"10-49": 1}
+        assert download_group["numericMetrics"][
+            "downloadMetadataBatchRequestMicros"
+        ]["median"] == 6_000_000
+
         environments = summary["runtimeEnvironments"]
         assert len(environments) == 1
         assert environments[0]["operatingSystem"] == "ios"
@@ -262,6 +304,10 @@ def main():
         assert "persistent-cache-startup" in markdown
         assert "Native -> Dart main" in markdown
         assert "deadbeef1234" in markdown
+        assert "## Download sync diagnostics" in markdown
+        assert "download-lifecycle-bench100" in markdown
+        assert "10-49" in markdown
+        assert "track_required" in markdown
 
     print("performance benchmark summary self-test passed")
 
