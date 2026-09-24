@@ -857,6 +857,9 @@ class PerformanceBenchmarkSuiteRunner {
 
     final recorder = PerformanceBenchmarkService.instance;
     try {
+      if (await _recoverCompletedBench1000BeforeOfflineRestart()) {
+        return;
+      }
       await _recoverPendingDownloadCleanup();
 
       // Keep benchmark work out of the authentication transition itself,
@@ -1032,6 +1035,75 @@ class PerformanceBenchmarkSuiteRunner {
     } finally {
       _running = false;
     }
+  }
+
+  Future<bool> _recoverCompletedBench1000BeforeOfflineRestart() async {
+    if (_smoke) return false;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    final stage = await recorder.getSuiteStage();
+    if (stage != "main-download-bench100-done") return false;
+
+    final requirement = await recorder.getDownloadCleanupRequirement();
+    if (requirement == null ||
+        requirement["targetAlias"] != "bench-1000") {
+      return false;
+    }
+
+    final target = await recorder.getTarget("bench-1000");
+    if (target == null) return false;
+
+    final container = GetIt.instance<ProviderContainer>();
+    final item = await container.read(
+      itemByIdProvider(BaseItemId(target.itemId)).future,
+    );
+    if (item == null) return false;
+
+    final downloads = GetIt.instance<DownloadsService>();
+    final stub = DownloadStub.fromItem(
+      type: DownloadItemType.collection,
+      item: item,
+    );
+    final progress =
+        downloads.getPerformanceBenchmarkCollectionProgress(stub);
+    final completeTracks = progress["completeTracks"] ?? 0;
+    final totalTracks = progress["totalTracks"] ?? 0;
+    final failedTracks = progress["failedTracks"] ?? 0;
+    final activeTracks = progress["activeTracks"] ?? 0;
+    if (totalTracks != 1000 ||
+        completeTracks != 1000 ||
+        failedTracks != 0 ||
+        activeTracks != 0 ||
+        !downloads.getStatus(stub, 1000).isDownloaded) {
+      return false;
+    }
+
+    recorder.diagnostic(
+      "bench1000-offline-transition-recovery-start",
+      values: {
+        "completeTracks": completeTracks,
+        "failedTracks": failedTracks,
+      },
+    );
+    await _setBenchmarkOfflineState(true);
+    await recorder.setSuiteStage("offline-bench1000-running");
+    recorder.diagnostic(
+      "offline-mode-forced",
+      values: {
+        "targetAlias": "bench-1000",
+        "processRestart": true,
+        "recoveredAfterInterruptedTransition": true,
+      },
+    );
+    recorder.diagnostic(
+      "host-restart-requested",
+      values: {
+        "reason": "recover-offline-bench1000-transition",
+        "nextStage": "offline-bench1000-running",
+      },
+    );
+    await recorder.flushHostStream();
+    return true;
   }
 
   Future<void> _recoverPendingDownloadCleanup({
