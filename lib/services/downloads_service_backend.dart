@@ -817,11 +817,14 @@ class DownloadsSyncService {
   /// Prefetch album child lists for info-only album nodes that are already
   /// claimed in the current sync batch.
   ///
-  /// The Jellyfin worker isolate serializes individual requests, so starting
-  /// multiple per-album futures does not reduce HTTP wall time. Instead, use the
-  /// API's AlbumIds filter to fetch the tracks for the already-claimed albums in
-  /// one bounded request. The sync queue itself remains serial and every album
-  /// still receives its own ordered child list in [_childCache].
+  /// The sync queue intentionally performs the actual node processing serially
+  /// within each batch. Album child discovery is overwhelmingly network-bound,
+  /// though, and waiting for every album request before starting the next one
+  /// makes playlist sync latency scale almost linearly with the number of albums.
+  ///
+  /// Keep database/link processing serial and overlap only two album child
+  /// requests at a time. This is deliberately conservative for low-end devices
+  /// and preserves the normal per-album Jellyfin request/response semantics.
   Future<void> _prefetchInfoAlbumChildren(
     List<IsarTaskData<dynamic>> wrappedSyncs,
   ) async {
@@ -832,79 +835,30 @@ class DownloadsSyncService {
         continue;
       }
       final item = _isar.downloadItems.getSync(sync.stubIsarId);
-      if (item != null &&
-          item.type == DownloadItemType.collection &&
-          item.baseItemType == BaseItemDtoType.album &&
+      if (item?.type == DownloadItemType.collection &&
+          item?.baseItemType == BaseItemDtoType.album &&
+          item != null &&
           !_childCache.containsKey(item.id)) {
         albums.add(item);
       }
     }
-    if (albums.isEmpty) {
-      return;
-    }
 
-    final albumIds = albums
-        .map((album) => album.baseItem?.id)
-        .nonNulls
-        .toList();
-    if (albumIds.isEmpty) {
-      return;
-    }
-
-    final fields =
-        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
-    const sortOrder = "ParentIndexNumber,IndexNumber,SortName";
-
-    try {
-      final childItems =
-          await _jellyfinApiData.getItems(
-            albumIds: albumIds,
-            includeItemTypes: BaseItemDtoType.track.jellyfinName,
-            sortBy: sortOrder,
-            fields: fields,
-          ) ??
-          [];
-      _downloadsService.resetConnectionErrors();
-
-      final byAlbum = <BaseItemId, List<DownloadStub>>{};
-      for (final child in childItems) {
-        final albumId = child.albumId;
-        if (albumId == null) {
-          continue;
-        }
-        byAlbum
-            .putIfAbsent(albumId, () => <DownloadStub>[])
-            .add(
-              DownloadStub.fromItem(
-                type: DownloadItemType.track,
-                item: child,
-              ),
+    const parallelRequests = 2;
+    for (final chunk in albums.slices(parallelRequests)) {
+      await Future.wait(
+        chunk.map((album) async {
+          try {
+            await _getCollectionChildren(album);
+          } catch (e) {
+            // The normal sync path owns retries/error accounting. A failed
+            // speculative prefetch must therefore degrade to the existing
+            // per-node behavior rather than failing the whole claimed batch.
+            _syncLogger.fine(
+              "Album child prefetch failed for ${album.name}; "
+              "falling back to normal sync: $e",
             );
-      }
-
-      for (final album in albums) {
-        final albumId = album.baseItem?.id;
-        if (albumId == null) {
-          continue;
-        }
-        final children = byAlbum[albumId];
-        if (children == null || children.isEmpty) {
-          // Do not cache an incomplete/missing result. The normal per-album path
-          // will fetch this album and retain the existing retry/error semantics.
-          continue;
-        }
-        _childCache[album.id] = Future.value(
-          children.map((child) => child.id).toList(),
-        );
-        for (final child in children) {
-          _metadataCache[BaseItemId(child.id)] = Future.value(child);
-        }
-      }
-    } catch (e) {
-      // This is an optimization only. Leave caches empty on failure so each
-      // album falls back to the existing request/retry path.
-      _syncLogger.fine(
-        "Batched album child prefetch failed; falling back to normal sync: $e",
+          }
+        }),
       );
     }
   }
