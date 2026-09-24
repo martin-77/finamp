@@ -81,6 +81,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
   StreamSubscription<PerformanceBenchmarkPageCommand>? _benchmarkPageSubscription;
   PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
+  Stopwatch? _benchmarkAlphabetPageWait;
   PerformanceBenchmarkPageCommand? _activeBenchmarkPage;
   int _benchmarkPageInitialCount = 0;
   bool _benchmarkPageFrameScheduled = false;
@@ -496,6 +497,19 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   Future<void> scrollToLetter(String letter) async {
     if (letter.isEmpty) return;
 
+    final benchmark = PerformanceBenchmarkService.instance;
+    final pageWait = _benchmarkAlphabetPageWait;
+    if (pageWait != null) {
+      pageWait.stop();
+      benchmark.incrementMetric(
+        "alphabetPageWaitMicros",
+        pageWait.elapsedMicroseconds,
+      );
+      benchmark.mark("alphabet-jump-page-ready");
+      _benchmarkAlphabetPageWait = null;
+    }
+
+    final localScan = Stopwatch()..start();
     letterToSearch = letter;
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
@@ -539,12 +553,25 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       int itemCodePoint = sortName.codeUnitAt(0);
       final comparisonResult = itemCodePoint - codePointToScrollTo;
       if (comparisonResult == 0) {
+        localScan.stop();
+        benchmark.incrementMetric(
+          "alphabetLocalScanMicros",
+          localScan.elapsedMicroseconds,
+        );
+        benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
+        final targetScroll = Stopwatch()..start();
         await controller.scrollToIndex(
           i,
           duration: _getAnimationDurationForOffsetToIndex(i),
           preferPosition: AutoScrollPosition.begin,
         );
+        targetScroll.stop();
+        benchmark.incrementMetric(
+          "alphabetTargetScrollMicros",
+          targetScroll.elapsedMicroseconds,
+        );
+        benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
         _completeBenchmarkJump();
@@ -552,19 +579,38 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
         // scroll to the previous item instead
+        localScan.stop();
+        benchmark.incrementMetric(
+          "alphabetLocalScanMicros",
+          localScan.elapsedMicroseconds,
+        );
+        benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
+        final targetScroll = Stopwatch()..start();
         await controller.scrollToIndex(
           (i - 1).clamp(0, itemList.length - 1),
           // duration: scrollDuration,
           duration: _getAnimationDurationForOffsetToIndex(i),
           preferPosition: AutoScrollPosition.middle,
         );
+        targetScroll.stop();
+        benchmark.incrementMetric(
+          "alphabetTargetScrollMicros",
+          targetScroll.elapsedMicroseconds,
+        );
+        benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
         _completeBenchmarkJump();
         return;
       }
     }
+
+    localScan.stop();
+    benchmark.incrementMetric(
+      "alphabetLocalScanMicros",
+      localScan.elapsedMicroseconds,
+    );
 
     timer?.cancel();
     if (!state.hasNextPage) {
@@ -581,13 +627,15 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         });
       }
 
-      PerformanceBenchmarkService.instance.incrementMetric("alphabetJumpPagesLoaded");
-      PerformanceBenchmarkService.instance.mark(
+      benchmark.incrementMetric("alphabetJumpPagesLoaded");
+      benchmark.mark(
         "alphabet-jump-page-requested",
         values: {"loadedItems": itemList.length},
       );
+      _benchmarkAlphabetPageWait = Stopwatch()..start();
       ref.read(pageControl.notifier).newPage();
     }
+    final pageEdgeScroll = Stopwatch()..start();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
     } else {
@@ -597,6 +645,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         curve: Curves.ease,
       );
     }
+    pageEdgeScroll.stop();
+    benchmark.incrementMetric(
+      "alphabetPageEdgeScrollMicros",
+      pageEdgeScroll.elapsedMicroseconds,
+    );
   }
 
   Duration _getAnimationDurationForOffsetToIndex(int index) {
@@ -639,6 +692,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       StateError("Music screen disposed during benchmark alphabet jump"),
       StackTrace.current,
     );
+    _benchmarkAlphabetPageWait?.stop();
+    _benchmarkAlphabetPageWait = null;
     //_pagingController.dispose();
     timer?.cancel();
     super.dispose();
