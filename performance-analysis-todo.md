@@ -15,6 +15,63 @@ The separate maintainer TODO/FIXME register is
 touch a measured hotspot are cross-referenced here rather than silently folded
 into benchmark findings.
 
+## Review principles: maintainer intent and device class
+
+Performance findings must be interpreted against Finamp's supported device
+range, not only against the benchmark phone. The current physical reference
+device is an iPhone 15 Pro Max, which is substantially faster than many devices
+that Finamp must remain usable on.
+
+Before proposing a production change or PR, answer all of the following:
+
+1. **What problem was the current design solving?** Check source comments,
+   settings copy, issue/commit history and adjacent invariants before calling a
+   choice inefficient.
+2. **Could the current limit be protecting weaker devices?** Consider CPU,
+   memory pressure, UI responsiveness, storage latency, thermal throttling and
+   server/network latency separately.
+3. **Does the benchmark result generalize?** A result from the iPhone 15 Pro Max
+   proves that the measured path is slow on that device/configuration; it does
+   not prove that raising concurrency or eager work is safe as a global default.
+4. **Can the existing tradeoff be preserved while reducing wasted work?** Prefer
+   removing redundant waits, duplicate graph traversal, unnecessary requests or
+   avoidable O(n²) work before increasing concurrency.
+5. **If changing a default, what evidence supports it across device classes?**
+   A default change should ideally be backed by at least one modern high-end
+   device and one materially slower device/emulator/profile, with UI jank,
+   memory and correctness measured alongside throughput.
+6. **If we disagree with a maintainer choice, document the tradeoff explicitly.**
+   A PR should state the original rationale, the measured downside, the proposed
+   alternative, and evidence that the original invariant remains protected.
+
+Evidence already showing this mindset in the project:
+
+- download worker count defaults to 1, while the UI explicitly warns that more
+  workers may speed metadata syncing/deletion but can introduce lag;
+- transfer concurrency is separately limited and the project history includes
+  iOS-specific queue limiting because platform behavior could otherwise cause
+  failures/overload;
+- the AudioSource-backed single queue was introduced to fix correctness/index
+  synchronization issues, not because it was the simplest implementation;
+- the fast scroller evolved through multiple correctness/UX fixes before later
+  performance work.
+
+These examples are evidence of deliberate tradeoff-oriented engineering. Treat
+performance regressions as design constraints to understand first, not as proof
+that the maintainers made arbitrary choices.
+
+### Device-class validation backlog
+
+- [ ] Keep iPhone 15 Pro Max as the high-end reference device.
+- [ ] Add at least one slower-device reference before recommending higher global
+      worker/concurrency defaults.
+- [ ] Record CPU/frame jank, RSS/MaxRSS and thermal/background effects for
+      concurrency experiments, not just wall-clock completion.
+- [ ] Prefer algorithmic reductions in total work over simply moving more work
+      into parallel execution.
+- [ ] For any proposed default change, compare throughput and interaction
+      responsiveness across device classes.
+
 ## Baseline
 
 Completed full benchmark: `finamp-benchmark-20260924T122053Z`.
