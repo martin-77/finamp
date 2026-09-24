@@ -263,6 +263,10 @@ def main():
                 "network-quiescent",
                 "startup-fully-ready",
                 "startup-baseline-complete",
+                "startup-playlist-metadata-plan-start",
+                "startup-playlist-metadata-plan-complete",
+                "startup-playlist-metadata-settle-start",
+                "startup-playlist-metadata-settle-complete",
                 "host-restart-requested",
             }:
                 diagnostics.append({
