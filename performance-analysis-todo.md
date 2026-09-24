@@ -59,11 +59,15 @@ This means a default full-speed sync has one active ten-row batch, but the ten
 nodes inside that batch are still processed serially. The batch size is task
 claiming, not intra-batch parallelism.
 
-**Maintainer rationale visible in code:** synchronous claiming and
+**Maintainer rationale visible in code and UI:** synchronous claiming and
 `_activeSyncs` are explicitly used to prevent multiple workers from claiming
 the same item. Persisted Isar task rows also make interrupted syncs resumable.
-The concurrency restriction therefore protects graph correctness/recovery; it
-is not safe to replace it with unconstrained `Future.wait`.
+The user-facing setting description explicitly says that more workers can speed
+metadata syncing/deletion when server latency is high, but can introduce UI lag.
+The default of one worker is therefore a deliberate responsiveness/safety
+tradeoff, not an accidental constant. It is still appropriate to measure whether
+the current default is excessively conservative on modern devices; it is not
+safe to replace task claiming with unconstrained `Future.wait`.
 
 **Benchmark extension required before changing production code:**
 
@@ -109,6 +113,28 @@ Also verify a correctness issue: the single shared batch future uses the
 `fields` argument of the caller that creates the batch. Calls joining the same
 batch with a different fields set currently share that first request. Establish
 whether different field sets can overlap in production before changing it.
+
+### D2a - Missing explicit `MediaStreams` field is not a regression
+
+**Status: RULED OUT**
+
+An initial read suggested a mismatch because `_needsMetadataUpdate()` checks
+`baseItem.mediaStreams` while current download field lists explicitly request
+`MediaSources` but not `MediaStreams`.
+
+History resolves this:
+
+- 2024 lyrics/download work explicitly requested both `MediaSources` and
+  `MediaStreams`.
+- commit `6ac6baab...` intentionally removed the standalone
+  `BaseItemDto.mediaStreams` storage/JSON field and replaced it with a getter
+  backed by `mediaSources.firstOrNull?.mediaStreams`;
+- the same commit intentionally removed explicit `MediaStreams` from download
+  field strings while retaining `MediaSources`.
+
+Therefore the current field list is internally consistent with the current
+model. Do not add `MediaStreams` back as a performance fix without a separate
+functional reason.
 
 ### D3 - `allPlaylistsMetadata` deliberately expands playlist membership
 
