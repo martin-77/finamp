@@ -1427,17 +1427,25 @@ class PerformanceBenchmarkSuiteRunner {
         throw StateError("Benchmark search query $alias is not configured");
       }
     }
-    final queries = configuredQueries;
+
     const tabs = <String>["artists", "albums", "tracks"];
 
-    for (final queryEntry in queries) {
-      final (queryAlias, query, deriveTargetChain) = queryEntry;
+    for (final (queryAlias, artistQuery, deriveTargetChain)
+        in configuredQueries) {
+      // The user-provided private query names an artist. Album and track search
+      // must use real album/track names rather than reusing the artist name.
+      // Those derived strings remain device-local and are never exported.
+      final tabQueries = <String, String>{
+        "artists": artistQuery,
+        if (!deriveTargetChain) ...{
+          "albums": artistQuery,
+          "tracks": artistQuery,
+        },
+      };
 
-      // Resolve a deterministic private artist -> album -> track chain once
-      // for later detail/playback scenarios. Only aliases are exported.
       final artistResult = await api.getItemsWithTotalRecordCount(
         includeItemTypes: "MusicArtist",
-        searchTerm: query,
+        searchTerm: artistQuery,
         recursive: true,
         limit: 25,
       );
@@ -1445,7 +1453,7 @@ class PerformanceBenchmarkSuiteRunner {
           .where(
             (item) =>
                 item.name?.trim().toLowerCase() ==
-                query.trim().toLowerCase(),
+                artistQuery.trim().toLowerCase(),
           )
           .toList();
 
@@ -1457,7 +1465,13 @@ class PerformanceBenchmarkSuiteRunner {
         },
       );
 
-      if (deriveTargetChain && artistMatches.length == 1) {
+      if (deriveTargetChain) {
+        if (artistMatches.length != 1) {
+          throw StateError(
+            "Benchmark private artist query did not resolve uniquely",
+          );
+        }
+
         final artist = artistMatches.single;
         await recorder.saveTarget(
           alias: "$queryAlias-artist",
@@ -1473,32 +1487,73 @@ class PerformanceBenchmarkSuiteRunner {
           sortBy: "SortName",
           sortOrder: "Ascending",
         );
-        if (albums != null && albums.isNotEmpty) {
-          final album = albums.first;
-          await recorder.saveTarget(
-            alias: "$queryAlias-album",
-            itemType: "MusicAlbum",
-            itemId: album.id.raw,
+        if (albums == null || albums.isEmpty) {
+          throw StateError(
+            "Benchmark artist has no album available for derived search",
           );
-
-          final tracks = await api.getItems(
-            parentItem: album,
-            includeItemTypes: "Audio",
-            recursive: true,
-            sortBy: "ParentIndexNumber,IndexNumber,SortName",
-            sortOrder: "Ascending",
-          );
-          if (tracks != null && tracks.isNotEmpty) {
-            await recorder.saveTarget(
-              alias: "$queryAlias-track",
-              itemType: "Audio",
-              itemId: tracks.first.id.raw,
-            );
-          }
         }
+
+        final album = albums.first;
+        final albumQuery = album.name?.trim();
+        if (albumQuery == null || albumQuery.isEmpty) {
+          throw StateError(
+            "Benchmark derived album has no searchable name",
+          );
+        }
+        tabQueries["albums"] = albumQuery;
+        await recorder.saveTarget(
+          alias: "$queryAlias-album",
+          itemType: "MusicAlbum",
+          itemId: album.id.raw,
+        );
+
+        final tracks = await api.getItems(
+          parentItem: album,
+          includeItemTypes: "Audio",
+          recursive: true,
+          sortBy: "ParentIndexNumber,IndexNumber,SortName",
+          sortOrder: "Ascending",
+        );
+        if (tracks == null || tracks.isEmpty) {
+          throw StateError(
+            "Benchmark derived album has no track available for search",
+          );
+        }
+
+        final track = tracks.first;
+        final trackQuery = track.name?.trim();
+        if (trackQuery == null || trackQuery.isEmpty) {
+          throw StateError(
+            "Benchmark derived track has no searchable name",
+          );
+        }
+        tabQueries["tracks"] = trackQuery;
+        await recorder.saveTarget(
+          alias: "$queryAlias-track",
+          itemType: "Audio",
+          itemId: track.id.raw,
+        );
+
+        recorder.diagnostic(
+          "search-derived-query-chain-ready",
+          values: {
+            "queryAlias": queryAlias,
+            "artistQueryLength": artistQuery.length,
+            "albumQueryLength": albumQuery.length,
+            "trackQueryLength": trackQuery.length,
+          },
+        );
       }
 
       for (final tab in tabs) {
+        final query = tabQueries[tab];
+        if (query == null || query.isEmpty) {
+          throw StateError(
+            "Benchmark search query for $queryAlias/$tab is unavailable",
+          );
+        }
+        final resultAlias =
+            deriveTargetChain ? "$queryAlias-$tab" : queryAlias;
         String? resolvedSearchTab;
 
         // Return to the unfiltered list first. This is outside the measured run
@@ -1515,7 +1570,7 @@ class PerformanceBenchmarkSuiteRunner {
           scenario: "ui-search-$tab",
           variant: PerformanceBenchmarkService.variant,
           mode: "query-first",
-          targetAlias: queryAlias,
+          targetAlias: resultAlias,
           targetType: tab,
         );
         try {
@@ -1525,7 +1580,7 @@ class PerformanceBenchmarkSuiteRunner {
             timeout: const Duration(minutes: 10),
             operation: () => recorder.requestSearch(
               contentType: tab,
-              queryAlias: queryAlias,
+              queryAlias: resultAlias,
               query: query,
               timeout: const Duration(minutes: 9, seconds: 30),
             ),
@@ -1548,7 +1603,7 @@ class PerformanceBenchmarkSuiteRunner {
           scenario: "ui-search-$tab",
           variant: PerformanceBenchmarkService.variant,
           mode: "query-warm",
-          targetAlias: queryAlias,
+          targetAlias: resultAlias,
           targetType: tab,
         );
         try {
@@ -1558,7 +1613,7 @@ class PerformanceBenchmarkSuiteRunner {
             timeout: const Duration(minutes: 5),
             operation: () => recorder.requestSearch(
               contentType: tab,
-              queryAlias: queryAlias,
+              queryAlias: resultAlias,
               query: query,
               timeout: const Duration(minutes: 4, seconds: 30),
             ),
