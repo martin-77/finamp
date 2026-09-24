@@ -1370,7 +1370,11 @@ class DownloadsSyncService {
       }
       _metadataCache[id] = itemFetch.future;
       item = await _jellyfinApiData
-          .getItemByIdBatched(id, "${_jellyfinApiData.defaultFields},sortName,MediaSources,People")
+          .getItemByIdBatched(
+            id,
+            "${_jellyfinApiData.defaultFields},sortName,MediaSources,People",
+            Duration.zero,
+          )
           .then((value) => value == null ? null : DownloadStub.fromItem(item: value, type: type));
       _downloadsService.resetConnectionErrors();
       itemFetch.complete(item);
