@@ -158,12 +158,19 @@ step "Selected device: $DEVICE_ID"
 mkdir -p "$OUT_DIR"
 
 step "Starting Finamp benchmark in PROFILE mode"
-case "${FINAMP_BENCH_SMOKE:-false}" in
+case "${FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY:-false}" in
   1|true|TRUE|True|yes|YES|Yes|on|ON|On)
-    printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
+    printf 'Targeted bench-100 download diagnostics enabled.\n'
     ;;
   *)
-    printf 'Full benchmark matrix enabled.\n'
+    case "${FINAMP_BENCH_SMOKE:-false}" in
+      1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+        printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
+        ;;
+      *)
+        printf 'Full benchmark matrix enabled.\n'
+        ;;
+    esac
     ;;
 esac
 printf 'Results will be written continuously under %s/\n' "$OUT_DIR"
