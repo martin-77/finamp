@@ -604,13 +604,34 @@ class DownloadsService {
       _isar.writeTxnSync(() {
         syncBuffer.addAll(required ? [stub.isarId] : [], required ? [] : [stub.isarId], viewId);
       });
+
+      final syncGraph = Stopwatch()..start();
       await syncBuffer.executeSyncs();
+      syncGraph.stop();
+      benchmark.metric(
+        "downloadSyncGraphMicros",
+        syncGraph.elapsedMicroseconds,
+      );
       benchmark.mark("download-sync-graph-complete");
+
       _downloadsLogger.info("Moving to deletes for ${stub.name}.");
+      final deletePhase = Stopwatch()..start();
       await deleteBuffer.executeDeletes();
+      deletePhase.stop();
+      benchmark.metric(
+        "downloadDeletePhaseMicros",
+        deletePhase.elapsedMicroseconds,
+      );
       benchmark.mark("download-delete-phase-complete");
+
       _downloadsLogger.info("Triggering enqueues for ${stub.name}.");
+      final enqueuePhase = Stopwatch()..start();
       unawaited(downloadTaskQueue.executeDownloads());
+      enqueuePhase.stop();
+      benchmark.metric(
+        "downloadTransferEnqueueMicros",
+        enqueuePhase.elapsedMicroseconds,
+      );
       benchmark.mark("download-transfer-enqueued");
 
       _downloadsLogger.info("Sync of ${stub.name} complete.");
