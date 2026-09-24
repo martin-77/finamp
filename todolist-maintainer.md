@@ -25,6 +25,28 @@ correct relational modeling, reliable add/remove behavior, recovery and offline
 support. This context matters when optimizing graph traversal: the dependency
 graph is not accidental bookkeeping that can simply be removed.
 
+## Network/source switching
+
+### Design context without TODO marker
+
+The local/public network feature was introduced in commit `00eec0f...` with an
+explicit queue-reload design. Existing server AudioSources intentionally embed
+the base URL present when they are created; `DataSourceService` detects
+baseURL/offline/transcoding changes and either reloads the queue or prompts the
+user according to `autoReloadQueue`.
+
+The current default is `autoReloadQueue=false`, so automatic continuity is not
+the default behavior. This should be evaluated as a UX/background-handoff
+tradeoff rather than treated as an accidental missing listener.
+
+Downloads use a separate architecture: absolute URLs are handed to
+`background_downloader`, while Wi-Fi policy is delegated to that native
+downloader. No existing maintainer TODO was found in the reviewed network code
+for rewriting already-submitted download URLs on a local/public switch. Track
+this as a benchmark/root-cause item in
+[`performance-analysis-todo.md`](performance-analysis-todo.md), not as an
+upstream TODO.
+
 ## Queue / playback
 
 | Location | Existing maintainer note | Relevance |
