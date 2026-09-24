@@ -330,6 +330,27 @@ class IsarTaskQueue implements TaskQueue {
     }
   }
 
+  void _markNativeEnqueueFailed(DownloadItem task, [Object? error]) {
+    _activeDownloads.remove(task.isarId);
+    _isar.writeTxnSync(() {
+      final canonItem = _isar.downloadItems.getSync(task.isarId);
+      if (canonItem != null && !canonItem.state.isFinal) {
+        _downloadsService.updateItemState(
+          canonItem,
+          DownloadItemState.failed,
+        );
+      }
+    });
+    _enqueueLog.severe(
+      error == null
+          ? "Task ${task.name} failed to enqueue with background_downloader; "
+              "released it from the active queue and marked it failed."
+          : "Error submitting task ${task.name} to background_downloader: $error. "
+              "Released it from the active queue and marked it failed.",
+      error,
+    );
+  }
+
   /// Advance the queue if possible and ready, no-op if not.
   /// Will loop until all downloads have been enqueued.  Will enqueue
   /// finampSettings.maxConcurrentDownloads at once.
@@ -391,35 +412,24 @@ class IsarTaskQueue implements TaskQueue {
                 filename: path_helper.basename(task.path!),
               );
               return Future.sync(() async {
-                //bool success = await FileDownloader().resume(downloadTask);
-                //if (!success) {
-                bool success = await FileDownloader().enqueue(downloadTask);
-                //}
-                if (!success) {
-                  // The native downloader rejected the task before taking
-                  // ownership. Do not leave the Isar id in _activeDownloads,
-                  // otherwise every later queue pass excludes it forever.
-                  _activeDownloads.remove(task.isarId);
-                  _isar.writeTxnSync(() {
-                    final canonItem = _isar.downloadItems.getSync(task.isarId);
-                    if (canonItem != null && !canonItem.state.isFinal) {
-                      _downloadsService.updateItemState(
-                        canonItem,
-                        DownloadItemState.failed,
-                      );
-                    }
-                  });
-                  _enqueueLog.severe(
-                    "Task ${task.name} failed to enqueue with background_downloader; "
-                    "released it from the active queue and marked it failed.",
-                  );
+                try {
+                  //bool success = await FileDownloader().resume(downloadTask);
+                  //if (!success) {
+                  bool success = await FileDownloader().enqueue(downloadTask);
+                  //}
+                  if (!success) {
+                    // The native downloader rejected the task before taking
+                    // ownership. Never leave the Isar id in _activeDownloads.
+                    _markNativeEnqueueFailed(task);
+                  }
+                } catch (e) {
+                  _markNativeEnqueueFailed(task, e);
                 }
               });
             } catch (e) {
-              _enqueueLog.severe("Error creating download task for ${task.name}: $e.", e);
-              _isar.writeTxnSync(() {
-                _downloadsService.updateItemState(task, DownloadItemState.failed);
-              });
+              // URL/task construction can fail before background_downloader
+              // takes ownership. Keep the active/native ownership model in sync.
+              _markNativeEnqueueFailed(task, e);
             }
             // Set priority high to prevent stalling
           }, Priority.animation + 50);
