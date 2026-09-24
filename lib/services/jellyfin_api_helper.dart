@@ -919,21 +919,80 @@ class JellyfinApiHelper {
 
   Future<Map<BaseItemId, BaseItemDto>>? _getItemByIdBatchedFuture;
   final Set<BaseItemId> _getItemByIdBatchedRequests = {};
+  String? _getItemByIdBatchedFields;
 
   /// Gets an item from a user's library, batching with other request coming in around the same time.
   Future<BaseItemDto?> getItemByIdBatched(BaseItemId itemId, [String? fields]) async {
     assert(_verifyCallable());
     fields ??=
         defaultFields; // explicitly set the default fields, if we pass `null` to [JellyfinAPI.getItems] it will **not** apply the default fields, since the argument *is* provided.
+
+    final benchmark = PerformanceBenchmarkService.instance;
+    final existingBatch = _getItemByIdBatchedFuture != null;
+    if (existingBatch && _getItemByIdBatchedFields != fields) {
+      benchmark.incrementMetricBuffered("downloadMetadataBatchMixedFields");
+    }
+
     _getItemByIdBatchedRequests.add(itemId);
-    _getItemByIdBatchedFuture ??= Future.delayed(const Duration(milliseconds: 250), () async {
-      _getItemByIdBatchedFuture = null;
-      var ids = _getItemByIdBatchedRequests.toList();
-      _getItemByIdBatchedRequests.clear();
-      var items = await getItems(itemIds: ids, fields: fields) ?? [];
-      return Map.fromIterable(items, key: (e) => (e as BaseItemDto).id);
-    });
-    return _getItemByIdBatchedFuture!.then((value) => value[itemId]);
+    if (_getItemByIdBatchedFuture == null) {
+      _getItemByIdBatchedFields = fields;
+      final collectStopwatch =
+          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+
+      _getItemByIdBatchedFuture = Future.delayed(
+        const Duration(milliseconds: 250),
+        () async {
+          collectStopwatch?.stop();
+          final batchFields = _getItemByIdBatchedFields ?? fields;
+          _getItemByIdBatchedFields = null;
+          _getItemByIdBatchedFuture = null;
+
+          var ids = _getItemByIdBatchedRequests.toList();
+          _getItemByIdBatchedRequests.clear();
+
+          if (collectStopwatch != null) {
+            benchmark.incrementMetricBuffered("downloadMetadataBatchCount");
+            benchmark.incrementMetricBuffered(
+              "downloadMetadataBatchIdsTotal",
+              ids.length,
+            );
+            benchmark.maxMetricBuffered(
+              "downloadMetadataBatchIdsMax",
+              ids.length,
+            );
+            benchmark.incrementMetricBuffered(
+              "downloadMetadataBatchCollectMicros",
+              collectStopwatch.elapsedMicroseconds,
+            );
+          }
+
+          final requestStopwatch =
+              PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+          try {
+            var items = await getItems(itemIds: ids, fields: batchFields) ?? [];
+            return Map.fromIterable(
+              items,
+              key: (e) => (e as BaseItemDto).id,
+            );
+          } finally {
+            if (requestStopwatch != null) {
+              requestStopwatch.stop();
+              benchmark.incrementMetricBuffered(
+                "downloadMetadataBatchRequestMicros",
+                requestStopwatch.elapsedMicroseconds,
+              );
+              benchmark.maxMetricBuffered(
+                "downloadMetadataBatchRequestMicrosMax",
+                requestStopwatch.elapsedMicroseconds,
+              );
+            }
+          }
+        },
+      );
+    }
+
+    final batchFuture = _getItemByIdBatchedFuture!;
+    return batchFuture.then((value) => value[itemId]);
   }
 
   /// Gets a Playlist
