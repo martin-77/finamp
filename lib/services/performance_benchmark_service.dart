@@ -964,7 +964,6 @@ class PerformanceBenchmarkService {
     }
     _imageLoadGeneration++;
     _imageLoadController.add(_imageLoadsInFlight);
-    _uiActivityChanged();
     incrementMetricBuffered("imageLoadStarted");
     maxMetricBuffered("imageMaxConcurrentLoads", _imageLoadsInFlight);
   }
@@ -986,6 +985,7 @@ class PerformanceBenchmarkService {
     }
     _imageLoadGeneration++;
     _imageLoadController.add(_imageLoadsInFlight);
+    _uiActivityChanged();
     incrementMetricBuffered(
       failed ? "imageLoadFailed" : "imageLoadCompleted",
     );
