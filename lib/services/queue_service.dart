@@ -1048,6 +1048,10 @@ class QueueService {
       _currentTrack = null;
       playlistRemovalsCache.clear();
 
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.mark("queue-media-items-build-start");
+      final mediaItemBuild = Stopwatch()..start();
+
       List<FinampQueueItem> newItems = [];
       List<int> newLinearOrder = [];
       List<int> newShuffledOrder;
@@ -1075,6 +1079,16 @@ class QueueService {
           _queueServiceLogger.severe(e, e, trace);
         }
       }
+      mediaItemBuild.stop();
+      benchmark.metric(
+        "queueMediaItemsBuildMicros",
+        mediaItemBuild.elapsedMicroseconds,
+      );
+      benchmark.metric("queueMediaItemsBuilt", newItems.length);
+      benchmark.mark(
+        "queue-media-items-build-end",
+        values: {"queueLength": newItems.length},
+      );
 
       if (Platform.isIOS || Platform.isMacOS) {
         // Both iOS and macOS will start playing the first queue index if we don't stop first.
@@ -1091,6 +1105,8 @@ class QueueService {
         // block _buildQueueFromNativePlayerQueue until both new sequence
         // and intial index have been applied.
         _activeInitialIndex = initialIndex;
+        benchmark.mark("queue-audio-sources-install-start");
+        final audioSourceInstall = Stopwatch()..start();
         await _audioHandler.setQueueItems(
           newItems,
           initialIndex: initialIndex,
@@ -1098,6 +1114,12 @@ class QueueService {
           shuffleOrder: _shuffleOrder,
           initialPosition: initialSeekPosition ?? Duration.zero,
         );
+        audioSourceInstall.stop();
+        benchmark.metric(
+          "queueAudioSourcesInstallMicros",
+          audioSourceInstall.elapsedMicroseconds,
+        );
+        benchmark.mark("queue-audio-sources-install-end");
       } finally {
         _activeInitialIndex = null;
       }
@@ -1126,7 +1148,15 @@ class QueueService {
 
       // set playback order to trigger shuffle if necessary (fixes indices being wrong when starting with shuffle enabled)
       // this will run _queueFromConcatenatingAudioSource();
+      benchmark.mark("queue-order-apply-start");
+      final orderApply = Stopwatch()..start();
       await setPlaybackOrder(order, shuffleOrder: shuffleOrder);
+      orderApply.stop();
+      benchmark.metric(
+        "queueOrderApplyMicros",
+        orderApply.elapsedMicroseconds,
+      );
+      benchmark.mark("queue-order-apply-end");
 
       if (beginPlaying) {
         // don't await this, because it will not return until playback is finished
