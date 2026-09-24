@@ -314,11 +314,11 @@ def main():
                     event_elapsed[event_name].append(elapsed)
                 if event_name == "playback-source-selected":
                     values = event.get("values") or {}
-                    source = str(values.get("source", "unknown"))
+                    playback_source = str(values.get("source", "unknown"))
                     server_target = values.get("serverTarget")
                     transcoded = bool(values.get("transcoded", False))
                     offline = bool(values.get("offline", False))
-                    label = source
+                    label = playback_source
                     if server_target is not None:
                         label += f"/{server_target}"
                     if transcoded:
