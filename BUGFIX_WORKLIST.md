@@ -17,7 +17,7 @@ Status values:
 
 ### B1 — Download queue can strand tasks after native enqueue/connection failure
 
-**Status: CONFIRMED — FIRST FIX**
+**Status: IMPLEMENTED — LOCAL BUILD / BEHAVIOR VERIFICATION PENDING**
 
 Files:
 
@@ -216,8 +216,9 @@ appears.
 
 ## Execution order
 
-1. **B1: download queue self-recovery** — implement focused regression tests and
-   fix both native-enqueue failure and retryable connection-failure resubmission.
+1. **B1: download queue self-recovery** — implementation complete on this branch;
+   verify with local Flutter quality gates and a focused failure/retry run before
+   marking DONE.
 2. **B7: download sync instrumentation D1–D5** — because we are already in the
    download subsystem and it is the largest performance hotspot.
 3. Apply the first measured download-sync optimization and run the targeted
