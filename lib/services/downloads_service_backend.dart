@@ -1398,74 +1398,6 @@ class DownloadsSyncService {
   // album lists for every lookup is pure repeated work.
   Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
 
-  /// Prefetch full track lists for albums referenced by playlist tracks.
-  ///
-  /// Info-linked albums intentionally retain their child track lists for offline
-  /// browsing. Fetching each album separately makes playlist downloads perform
-  /// one request per referenced album. Jellyfin already supports filtering one
-  /// items request by multiple albumIds, so populate the same child/metadata
-  /// caches in bulk while keeping the existing per-album request as a fallback
-  /// for any album absent from the bulk response.
-  Future<void> _prefetchPlaylistAlbumChildren(
-    List<BaseItemDto> playlistTracks,
-    String fields,
-    String sortOrder,
-  ) async {
-    final albumIds = playlistTracks
-        .map((track) => track.albumId)
-        .nonNulls
-        .where((id) => !_childCache.containsKey(id.raw))
-        .toSet()
-        .toList();
-    if (albumIds.isEmpty) {
-      return;
-    }
-
-    List<BaseItemDto> albumTracks;
-    try {
-      albumTracks =
-          await _jellyfinApiData.getItems(
-            albumIds: albumIds,
-            includeItemTypes: BaseItemDtoType.track.jellyfinName,
-            sortBy: sortOrder,
-            fields: fields,
-          ) ??
-          [];
-      _downloadsService.resetConnectionErrors();
-    } catch (e) {
-      _syncLogger.fine(
-        "Bulk playlist album metadata prefetch failed; falling back to per-album requests: $e",
-      );
-      return;
-    }
-
-    final tracksByAlbum = <BaseItemId, List<BaseItemDto>>{};
-    for (final track in albumTracks) {
-      final albumId = track.albumId;
-      if (albumId == null) {
-        continue;
-      }
-      tracksByAlbum.putIfAbsent(albumId, () => []).add(track);
-    }
-
-    for (final entry in tracksByAlbum.entries) {
-      final stubs = entry.value
-          .map(
-            (track) => DownloadStub.fromItem(
-              type: DownloadItemType.track,
-              item: track,
-            ),
-          )
-          .toList();
-      _childCache[entry.key.raw] = Future.value(
-        stubs.map((stub) => stub.id).toList(),
-      );
-      for (final stub in stubs) {
-        _metadataCache[BaseItemId(stub.id)] = Future.value(stub);
-      }
-    }
-  }
-
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
   Future<List<DownloadStub>> _getCollectionChildren(DownloadStub parent) async {
@@ -1519,15 +1451,6 @@ class DownloadsSyncService {
           [];
       _downloadsService.resetConnectionErrors();
       var childStubs = childItems.map((e) => DownloadStub.fromItem(type: childType, item: e)).toList();
-
-      if (parent.baseItemType == BaseItemDtoType.playlist) {
-        await _prefetchPlaylistAlbumChildren(
-          childItems,
-          fields!,
-          sortOrder!,
-        );
-      }
-
       // If we are a library, we need to get orphan tracks to download in addition to
       // tracks which are contained in albums.
       if (parent.baseItemType == BaseItemDtoType.library) {
