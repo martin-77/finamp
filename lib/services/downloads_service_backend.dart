@@ -303,16 +303,28 @@ class IsarTaskQueue implements TaskQueue {
       _enqueueLog.info("All downloads enqueued.");
     } finally {
       _callbacksComplete = null;
-      if (_retryPassRequested &&
-          _downloadsService.allowDownloads &&
-          !FinampSettingsHelper.finampSettings.isOffline) {
-        _retryPassRequested = false;
-        unawaited(executeDownloads());
-      }
+      resumePendingRetryPass();
     }
   }
 
   bool get isRunning => _callbacksComplete != null;
+
+  /// Start a previously requested retry pass once queue gating allows it.
+  ///
+  /// A connection failure can request a retry while downloads are temporarily
+  /// paused by the consecutive-error backoff. A later successful native task
+  /// resets that backoff, so its status callback must be able to wake the
+  /// pending pass without resetting the error counter itself.
+  void resumePendingRetryPass() {
+    if (!_retryPassRequested ||
+        isRunning ||
+        !_downloadsService.allowDownloads ||
+        FinampSettingsHelper.finampSettings.isOffline) {
+      return;
+    }
+    _retryPassRequested = false;
+    unawaited(executeDownloads());
+  }
 
   /// Release a terminal native task and request another enqueue pass.
   ///
@@ -323,12 +335,7 @@ class IsarTaskQueue implements TaskQueue {
   void retryNativeTask(int taskId) {
     _activeDownloads.remove(taskId);
     _retryPassRequested = true;
-    if (!isRunning &&
-        _downloadsService.allowDownloads &&
-        !FinampSettingsHelper.finampSettings.isOffline) {
-      _retryPassRequested = false;
-      unawaited(executeDownloads());
-    }
+    resumePendingRetryPass();
   }
 
   void _markNativeEnqueueFailed(DownloadItem task, [Object? error]) {
@@ -376,9 +383,18 @@ class IsarTaskQueue implements TaskQueue {
             });
             continue;
           }
-          while (_activeDownloads.length >= FinampSettingsHelper.finampSettings.maxConcurrentDownloads ||
-              _finampUserHelper.currentUser == null) {
+          while ((_activeDownloads.length >= FinampSettingsHelper.finampSettings.maxConcurrentDownloads ||
+                  _finampUserHelper.currentUser == null) &&
+              _downloadsService.allowDownloads &&
+              !FinampSettingsHelper.finampSettings.isOffline) {
             await Future.delayed(const Duration(milliseconds: 500));
+          }
+          // The connection-error backoff can trip while this already-fetched
+          // batch is waiting for a native slot. Respect it before submitting
+          // the next task instead of leaking the rest of the batch through.
+          if (!_downloadsService.allowDownloads ||
+              FinampSettingsHelper.finampSettings.isOffline) {
+            return;
           }
           await SchedulerBinding.instance.scheduleTask(() {
             _activeDownloads.add(task.isarId);
