@@ -817,22 +817,51 @@ class DownloadsSyncService {
   Future<void> _prefillInfoAlbumChildren(
     List<IsarTaskData<dynamic>> wrappedSyncs,
   ) async {
+    const albumBatchSize = 10;
     final albums = <DownloadStub>[];
+    final selectedAlbumIds = <String>{};
 
-    for (final wrappedSync in wrappedSyncs) {
+    void addAlbumFromSync(IsarTaskData<dynamic> wrappedSync) {
+      if (albums.length >= albumBatchSize) {
+        return;
+      }
       final sync = wrappedSync.data as SyncNode;
       if (sync.required) {
-        continue;
+        return;
       }
 
       final item = _isar.downloadItems.getSync(sync.stubIsarId);
       if (item == null ||
           item.type != DownloadItemType.collection ||
           item.baseItemType != BaseItemDtoType.album ||
-          _childCache.containsKey(item.id)) {
-        continue;
+          _childCache.containsKey(item.id) ||
+          !selectedAlbumIds.add(item.id)) {
+        return;
       }
       albums.add(item);
+    }
+
+    // Prefer albums already claimed by this worker.
+    for (final wrappedSync in wrappedSyncs) {
+      addAlbumFromSync(wrappedSync);
+    }
+
+    // The sync queue is intentionally mixed: required tracks, images, artists,
+    // genres and info albums share the same age-sorted task stream. Looking
+    // ahead here lets album child requests be batched without changing task
+    // ownership, priority or processing order.
+    if (albums.length < albumBatchSize) {
+      final queuedSyncs = _isar.isarTaskDatas
+          .where()
+          .typeEqualTo(type)
+          .sortByAge()
+          .findAllSync();
+      for (final queuedSync in queuedSyncs) {
+        addAlbumFromSync(queuedSync);
+        if (albums.length >= albumBatchSize) {
+          break;
+        }
+      }
     }
 
     final benchmark =
@@ -855,6 +884,19 @@ class DownloadsSyncService {
         );
       }
       return;
+    }
+
+    // Reserve the normal child-cache entries before awaiting the network. A
+    // second sync worker that reaches one of these albums will wait on the same
+    // future instead of issuing a duplicate per-album request.
+    final reservations = <String, Completer<List<String>>>{};
+    for (final album in albums) {
+      final completer = Completer<List<String>>();
+      unawaited(
+        completer.future.then((_) => null, onError: (_) => null),
+      );
+      reservations[album.id] = completer;
+      _childCache[album.id] = completer.future;
     }
 
     benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
@@ -898,33 +940,59 @@ class DownloadsSyncService {
 
       var coveredAlbums = 0;
       for (final album in albums) {
+        final reservation = reservations[album.id]!;
         final albumId = album.baseItem!.id;
         final children = childrenByAlbum[albumId];
+
         if (children == null || children.isEmpty) {
           benchmark?.incrementMetricBuffered(
             "downloadAlbumBatchMissingAlbums",
           );
+
+          // Preserve the old per-album semantics for empty/missing results so a
+          // missing server item can still surface as a 404 rather than being
+          // silently cached as an empty album.
+          if (identical(_childCache[album.id], reservation.future)) {
+            _childCache.remove(album.id);
+          }
+          try {
+            final fallbackChildren = await _getCollectionChildren(album);
+            reservation.complete(
+              fallbackChildren.map((child) => child.id).toList(),
+            );
+          } catch (e, stack) {
+            reservation.completeError(e, stack);
+          }
           continue;
         }
 
         coveredAlbums++;
-        _childCache[album.id] = Future.value(
-          children.map((child) => child.id).toList(),
-        );
         for (final child in children) {
           _metadataCache[child.baseItem!.id] = Future.value(child);
         }
+        reservation.complete(
+          children.map((child) => child.id).toList(),
+        );
       }
       benchmark?.incrementMetricBuffered(
         "downloadAlbumBatchCoveredAlbums",
         coveredAlbums,
       );
-    } catch (e) {
+    } catch (e, stack) {
       benchmark?.incrementMetricBuffered(
         "downloadAlbumBatchRequestFailures",
       );
+      for (final album in albums) {
+        final reservation = reservations[album.id]!;
+        if (identical(_childCache[album.id], reservation.future)) {
+          _childCache.remove(album.id);
+        }
+        if (!reservation.isCompleted) {
+          reservation.completeError(e, stack);
+        }
+      }
       _syncLogger.fine(
-        "Album child batch fetch failed; using normal per-album requests: $e",
+        "Album child batch fetch failed; using normal per-album requests on retry: $e",
       );
     }
   }
