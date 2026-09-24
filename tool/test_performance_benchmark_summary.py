@@ -41,6 +41,16 @@ def main():
                         "elapsedMicros": 750_000,
                         "values": {},
                     },
+                    {
+                        "name": "playback-source-selected",
+                        "elapsedMicros": 800_000,
+                        "values": {
+                            "source": "server",
+                            "serverTarget": "public",
+                            "transcoded": False,
+                            "offline": False,
+                        },
+                    },
                 ],
             },
         },
@@ -216,6 +226,8 @@ def main():
         event_milestones = group["eventMilestones"]
         assert "alphabet-jump-page-requested" not in event_milestones
         assert "safe-milestone" in event_milestones
+        assert group["playbackSources"] == {"server/public": 1}
+        assert summary["source"] == "input.jsonl"
 
         environments = summary["runtimeEnvironments"]
         assert len(environments) == 1
