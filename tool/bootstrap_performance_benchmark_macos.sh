@@ -77,6 +77,8 @@ if ! dart format --output=none --set-exit-if-changed \
   lib/services/performance_benchmark_suite_runner.dart \
   lib/services/queue_service.dart \
   lib/services/downloads_service.dart \
+  lib/services/downloads_service_backend.dart \
+  lib/services/jellyfin_api_helper.dart \
   lib/services/music_player_background_task.dart \
   lib/services/album_image_provider.dart \
   lib/services/http_aggregate_logging_interceptor.dart \
