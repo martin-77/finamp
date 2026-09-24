@@ -835,9 +835,33 @@ class DownloadsSyncService {
       albums.add(item);
     }
 
+    final benchmark =
+        PerformanceBenchmarkService.enabled
+            ? PerformanceBenchmarkService.instance
+            : null;
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchCandidateAlbums",
+      albums.length,
+    );
+    benchmark?.maxMetricBuffered(
+      "downloadAlbumBatchCandidateAlbumsMax",
+      albums.length,
+    );
+
     if (albums.length < 2) {
+      if (albums.length == 1) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchSingleAlbumFallbacks",
+        );
+      }
       return;
     }
+
+    benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchRequestedAlbums",
+      albums.length,
+    );
 
     final albumIds = albums.map((album) => album.baseItem!.id).toList();
     final fields =
@@ -849,6 +873,11 @@ class DownloadsSyncService {
         fields: fields,
       );
       _downloadsService.resetConnectionErrors();
+
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchReturnedTracks",
+        childItems.length,
+      );
 
       final childrenByAlbum = <BaseItemId, List<DownloadStub>>{};
       for (final childItem in childItems) {
@@ -867,13 +896,18 @@ class DownloadsSyncService {
             );
       }
 
+      var coveredAlbums = 0;
       for (final album in albums) {
         final albumId = album.baseItem!.id;
         final children = childrenByAlbum[albumId];
         if (children == null || children.isEmpty) {
+          benchmark?.incrementMetricBuffered(
+            "downloadAlbumBatchMissingAlbums",
+          );
           continue;
         }
 
+        coveredAlbums++;
         _childCache[album.id] = Future.value(
           children.map((child) => child.id).toList(),
         );
@@ -881,7 +915,14 @@ class DownloadsSyncService {
           _metadataCache[child.baseItem!.id] = Future.value(child);
         }
       }
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchCoveredAlbums",
+        coveredAlbums,
+      );
     } catch (e) {
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchRequestFailures",
+      );
       _syncLogger.fine(
         "Album child batch fetch failed; using normal per-album requests: $e",
       );
