@@ -1421,15 +1421,23 @@ class DownloadsSyncService {
       return;
     }
 
-    final albumTracks =
-        await _jellyfinApiData.getItems(
-          albumIds: albumIds,
-          includeItemTypes: BaseItemDtoType.track.jellyfinName,
-          sortBy: sortOrder,
-          fields: fields,
-        ) ??
-        [];
-    _downloadsService.resetConnectionErrors();
+    List<BaseItemDto> albumTracks;
+    try {
+      albumTracks =
+          await _jellyfinApiData.getItems(
+            albumIds: albumIds,
+            includeItemTypes: BaseItemDtoType.track.jellyfinName,
+            sortBy: sortOrder,
+            fields: fields,
+          ) ??
+          [];
+      _downloadsService.resetConnectionErrors();
+    } catch (e) {
+      _syncLogger.fine(
+        "Bulk playlist album metadata prefetch failed; falling back to per-album requests: $e",
+      );
+      return;
+    }
 
     final tracksByAlbum = <BaseItemId, List<BaseItemDto>>{};
     for (final track in albumTracks) {
