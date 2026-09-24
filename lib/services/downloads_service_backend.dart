@@ -987,6 +987,28 @@ class DownloadsSyncService {
     final benchmarkNodeRole = asRequired ? "required" : "info";
     final benchmarkNodeType = parent.type.name;
     final benchmarkNodeSubtype = parent.baseItemType.name;
+    final benchmarkAlbumInfo =
+        PerformanceBenchmarkService.enabled &&
+        parent.type == DownloadItemType.collection &&
+        parent.baseItemType == BaseItemDtoType.album &&
+        !asRequired;
+
+    void recordAlbumInfoPhase(String phase, Stopwatch? stopwatch) {
+      if (!benchmarkAlbumInfo || stopwatch == null) {
+        return;
+      }
+      stopwatch.stop();
+      final elapsed = stopwatch.elapsedMicroseconds;
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.incrementMetricBuffered(
+        "downloadAlbumInfoPhaseMicros_$phase",
+        elapsed,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadAlbumInfoPhaseMicrosMax_$phase",
+        elapsed,
+      );
+    }
 
     _syncLogger.finer("Syncing ${parent.baseItemType.name} ${parent.name} with required:$asRequired viewId:$viewId");
 
@@ -996,6 +1018,8 @@ class DownloadsSyncService {
     // newBaseItem must be calculated before children are determined so that the latest
     // metadata can be used, especially imageId and blurhash.
     BaseItemDto? newBaseItem;
+    final benchmarkAlbumMetadataStopwatch =
+        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
     //If we aren't quicksyncing, fetch the latest BaseItemDto to copy into Isar.
     if (parent.type.requiresItem) {
       bool expectNewItem = false;
@@ -1025,6 +1049,7 @@ class DownloadsSyncService {
         }
       }
     }
+    recordAlbumInfoPhase("metadata", benchmarkAlbumMetadataStopwatch);
     // We return the same BaseItemDto for all requests, so null out playlistItemId
     // as it will not usually be accurate.  Modifying without copying should be
     // fine as this item was generated within the download service, so this value
@@ -1050,15 +1075,21 @@ class DownloadsSyncService {
             requiredChildren.addAll(orderedChildItems);
           }
           if (parent.baseItemType == BaseItemDtoType.album || parent.baseItemType == BaseItemDtoType.playlist) {
+            final benchmarkChildrenStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             orderedChildItems ??= await _getCollectionChildren(parent);
+            recordAlbumInfoPhase("children", benchmarkChildrenStopwatch);
             infoChildren.addAll(orderedChildItems);
           }
           if (parent.baseItemType == BaseItemDtoType.album && viewId == null) {
+            final benchmarkViewStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             isarParent ??= _isar.downloadItems.getSync(parent.isarId);
             if (isarParent?.viewId == null) {
               // If we are an album and have no viewId, attempt to fetch from server
               viewId = await _getAlbumViewID(BaseItemId(parent.id));
             }
+            recordAlbumInfoPhase("view", benchmarkViewStopwatch);
           }
         } catch (e) {
           _syncLogger.info("Error downloading children for ${item.name}: $e");
@@ -1069,6 +1100,8 @@ class DownloadsSyncService {
           infoChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
         if (parent.baseItemType == BaseItemDtoType.album) {
+          final benchmarkArtistsStopwatch =
+              benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
           // If we are an album, add the album artists as info children
           try {
             var collectionChildren = await Future.wait(
@@ -1077,6 +1110,7 @@ class DownloadsSyncService {
               ),
             );
             infoChildren.addAll(collectionChildren.nonNulls);
+            recordAlbumInfoPhase("artists", benchmarkArtistsStopwatch);
           } catch (e) {
             _syncLogger.info("Failed to download metadata for ${item.name}: $e");
             rethrow;
@@ -1152,6 +1186,8 @@ class DownloadsSyncService {
     //
     // Allow database work to be scheduled instead of immediately processing
     // once network requests come back.
+    final benchmarkAlbumDatabaseStopwatch =
+        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
     await SchedulerBinding.instance.scheduleTask(() async {
       DownloadItem? canonParent;
       _isar.writeTxnSync(() {
@@ -1252,6 +1288,7 @@ class DownloadsSyncService {
       }
       // Set priority high to prevent stalling, but lower than creating network requests
     }, Priority.animation);
+    recordAlbumInfoPhase("database", benchmarkAlbumDatabaseStopwatch);
 
     if (benchmarkNodeStopwatch != null) {
       benchmarkNodeStopwatch.stop();
