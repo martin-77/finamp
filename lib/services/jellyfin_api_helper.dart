@@ -921,8 +921,18 @@ class JellyfinApiHelper {
   final Set<BaseItemId> _getItemByIdBatchedRequests = {};
   String? _getItemByIdBatchedFields;
 
-  /// Gets an item from a user's library, batching with other request coming in around the same time.
-  Future<BaseItemDto?> getItemByIdBatched(BaseItemId itemId, [String? fields]) async {
+  /// Gets an item from a user's library, batching with other requests coming in around the same time.
+  ///
+  /// [collectDelay] controls how long the first caller waits for additional
+  /// callers to join the batch. Download graph syncs can use [Duration.zero]
+  /// because their concurrent metadata requests are already started together
+  /// (for example by Future.wait), avoiding a fixed delay for sequential sync
+  /// nodes while preserving the normal coalescing window for other callers.
+  Future<BaseItemDto?> getItemByIdBatched(
+    BaseItemId itemId, [
+    String? fields,
+    Duration collectDelay = const Duration(milliseconds: 250),
+  ]) async {
     assert(_verifyCallable());
     fields ??=
         defaultFields; // explicitly set the default fields, if we pass `null` to [JellyfinAPI.getItems] it will **not** apply the default fields, since the argument *is* provided.
@@ -940,7 +950,7 @@ class JellyfinApiHelper {
           PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
 
       _getItemByIdBatchedFuture = Future.delayed(
-        const Duration(milliseconds: 250),
+        collectDelay,
         () async {
           collectStopwatch?.stop();
           final batchFields = _getItemByIdBatchedFields ?? fields;
