@@ -532,20 +532,12 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
       return run;
     }
 
-    _player.playingStream.listen((playing) {
-      if (!playing) return;
-      final run = activePlaybackBenchmarkRun();
-      if (run == null || benchmarkPlayingRunId == run.id) return;
-
-      benchmarkPlayingRunId = run.id;
-      PerformanceBenchmarkService.instance.mark("player-playing");
-    });
-
-    _player.bufferedPositionStream.listen((bufferedPosition) {
+    void reportUsefulBufferIfReady() {
       if (!_player.playing) return;
       final run = activePlaybackBenchmarkRun();
       if (run == null || benchmarkUsefulBufferRunId == run.id) return;
 
+      final bufferedPosition = _player.bufferedPosition;
       final usefulBuffer = bufferedPosition - _player.position;
       if (usefulBuffer >= const Duration(seconds: 2)) {
         benchmarkUsefulBufferRunId = run.id;
@@ -557,6 +549,24 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
           },
         );
       }
+    }
+
+    _player.playingStream.listen((playing) {
+      if (!playing) return;
+      final run = activePlaybackBenchmarkRun();
+      if (run != null && benchmarkPlayingRunId != run.id) {
+        benchmarkPlayingRunId = run.id;
+        PerformanceBenchmarkService.instance.mark("player-playing");
+      }
+
+      // bufferedPosition can become useful before playing flips to true. In
+      // that case bufferedPositionStream may not emit again and the benchmark
+      // would wait forever despite a large existing buffer.
+      reportUsefulBufferIfReady();
+    });
+
+    _player.bufferedPositionStream.listen((_) {
+      reportUsefulBufferIfReady();
     });
 
     // trigger sleep timer early if we're almost at the end of the final track
