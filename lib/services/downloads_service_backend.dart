@@ -238,6 +238,11 @@ class IsarTaskQueue implements TaskQueue {
   /// Set of tasks that are believed to be actively running
   final _activeDownloads = <int>{}; // by TaskId
 
+  /// Set when a terminal native task failure makes an Isar download retryable
+  /// while an enqueue pass is already running. The current pass may already
+  /// have scanned past that task, so run one more pass after it completes.
+  bool _retryPassRequested = false;
+
   Completer<void>? _callbacksComplete;
 
   final _isar = GetIt.instance<Isar>();
@@ -297,10 +302,33 @@ class IsarTaskQueue implements TaskQueue {
       _enqueueLog.info("All downloads enqueued.");
     } finally {
       _callbacksComplete = null;
+      if (_retryPassRequested &&
+          _downloadsService.allowDownloads &&
+          !FinampSettingsHelper.finampSettings.isOffline) {
+        _retryPassRequested = false;
+        unawaited(executeDownloads());
+      }
     }
   }
 
   bool get isRunning => _callbacksComplete != null;
+
+  /// Release a terminal native task and request another enqueue pass.
+  ///
+  /// Connection failures are mapped back to [DownloadItemState.enqueued] by
+  /// [DownloadsService]. A native task can fail after the enqueue pass which
+  /// submitted it has already returned, so without an explicit wake-up the
+  /// Isar item can remain enqueued until an unrelated lifecycle event occurs.
+  void retryNativeTask(int taskId) {
+    _activeDownloads.remove(taskId);
+    _retryPassRequested = true;
+    if (!isRunning &&
+        _downloadsService.allowDownloads &&
+        !FinampSettingsHelper.finampSettings.isOffline) {
+      _retryPassRequested = false;
+      unawaited(executeDownloads());
+    }
+  }
 
   /// Advance the queue if possible and ready, no-op if not.
   /// Will loop until all downloads have been enqueued.  Will enqueue
@@ -368,9 +396,23 @@ class IsarTaskQueue implements TaskQueue {
                 bool success = await FileDownloader().enqueue(downloadTask);
                 //}
                 if (!success) {
-                  // We currently have no way to recover here.  The user must re-sync to clear
-                  // the stuck download.
-                  _enqueueLog.severe("Task ${task.name} failed to enqueue with background_downloader.");
+                  // The native downloader rejected the task before taking
+                  // ownership. Do not leave the Isar id in _activeDownloads,
+                  // otherwise every later queue pass excludes it forever.
+                  _activeDownloads.remove(task.isarId);
+                  _isar.writeTxnSync(() {
+                    final canonItem = _isar.downloadItems.getSync(task.isarId);
+                    if (canonItem != null && !canonItem.state.isFinal) {
+                      _downloadsService.updateItemState(
+                        canonItem,
+                        DownloadItemState.failed,
+                      );
+                    }
+                  });
+                  _enqueueLog.severe(
+                    "Task ${task.name} failed to enqueue with background_downloader; "
+                    "released it from the active queue and marked it failed.",
+                  );
                 }
               });
             } catch (e) {
