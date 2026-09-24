@@ -1,5 +1,11 @@
 # Full performance benchmark harness
 
+> Ongoing root-cause work and benchmark-extension tasks are tracked in
+> [`performance-analysis-todo.md`](performance-analysis-todo.md). Existing
+> upstream TODO/FIXME comments encountered during that work are kept separately
+> in [`todolist-maintainer.md`](todolist-maintainer.md).
+
+
 This branch is test-only. It must not change normal Finamp behaviour.
 
 ## Goals
