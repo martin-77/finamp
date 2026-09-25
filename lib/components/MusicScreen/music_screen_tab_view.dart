@@ -105,6 +105,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   int? _sparseAlbumTotalCount;
   final Map<int, FinampPlayableDto> _sparseAlbumItems = {};
   final Set<int> _sparseAlbumWindowStartsLoading = {};
+  bool _sparseUserScrollActive = false;
 
   bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
 
@@ -1373,7 +1374,19 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             ),
           )
         : _usingSparseAlbumGrid
-        ? GridView.builder(
+        ? NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollStartNotification) {
+                _sparseUserScrollActive = notification.dragDetails != null;
+              } else if (notification is ScrollUpdateNotification &&
+                  notification.dragDetails != null) {
+                _sparseUserScrollActive = true;
+              } else if (notification is ScrollEndNotification) {
+                _sparseUserScrollActive = false;
+              }
+              return false;
+            },
+            child: GridView.builder(
             controller: controller,
             physics: _DeferredLoadingAlwaysScrollableScrollPhysics(tabState: this),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1396,9 +1409,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 // trigger overlapping sparse-window fetches at the same time.
                 // Normal manual scrolling resumes indexed window loading as
                 // soon as the seek completes.
-                final userScrollInProgress = controller.hasClients &&
-                    controller.position.isScrollingNotifier.value;
-                if (!_alphabetSeekInProgress && userScrollInProgress) {
+                if (!_alphabetSeekInProgress &&
+                    _sparseUserScrollActive) {
                   _queueSparseAlbumWindowLoad(index);
                 }
                 return const SizedBox.shrink();
@@ -1422,7 +1434,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 },
               );
             },
-          )
+          ),
+        )
         : PagedGridView<int, FinampDisplayableOrPlayable>(
             // If we made it here, we must be in a non-track music screen, so pageControl should only return FinampPlayableItem
             state: ref.watch(pageControl),
