@@ -2168,6 +2168,44 @@ class PerformanceBenchmarkSuiteRunner {
         await _settleUi(schedulerCooldown: const Duration(milliseconds: 500));
       }
 
+      await recorder.startRun(
+        scenario: "alphabet-sparse-scroll-$requestedTab-M",
+        variant: PerformanceBenchmarkService.variant,
+        mode: "jump-then-scroll",
+        targetType: resolvedTab,
+      );
+      try {
+        recorder.metric("letter", "M");
+        recorder.metric("alphabetInputMode", "direct-command");
+        recorder.metric("sparseScrollViewportSteps", "8,8,8,-12,-12");
+        await recorder.runStep(
+          name: "alphabet-jump",
+          timeout: const Duration(minutes: 5),
+          operation: () => recorder.requestAlphabetJump(
+            contentType: resolvedTab,
+            letter: "M",
+            timeout: const Duration(minutes: 4, seconds: 30),
+          ),
+        );
+        await recorder.runStep(
+          name: "sparse-manual-scroll",
+          timeout: const Duration(minutes: 5),
+          operation: () => recorder.requestBenchmarkScroll(
+            contentType: resolvedTab,
+            viewportDeltas: const [8, 8, 8, -12, -12],
+            timeout: const Duration(minutes: 4, seconds: 30),
+          ),
+        );
+        await recorder.runStep(
+          name: "wait-ui-quiescent",
+          timeout: const Duration(minutes: 16),
+          operation: _waitForUiQuiescence,
+        );
+        await recorder.finishRun();
+      } catch (_) {
+        // runStep finalized the failed run.
+      }
+
       recorder.diagnostic(
         "targeted-alphabet-complete",
         values: {
