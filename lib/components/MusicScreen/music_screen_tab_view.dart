@@ -656,6 +656,15 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     Future<void> requestPage(int pageSize) async {
       benchmark.incrementMetric("alphabetJumpPagesLoaded");
       benchmark.mark(
+        "alphabet-normal-page-requested",
+        values: {
+          "loadedItems": itemList.length,
+          "pageSize": pageSize,
+          "seekAttemptedLetter": _alphabetSeekAttemptedLetter,
+          "usingSparseGrid": _usingSparseAlbumGrid,
+        },
+      );
+      benchmark.mark(
         "alphabet-jump-page-requested",
         values: {"loadedItems": itemList.length, "pageSize": pageSize},
       );
@@ -1180,6 +1189,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   }
 
   void _queueSparseAlbumWindowLoad(int index) {
+    if (_activeBenchmarkJump != null) {
+      PerformanceBenchmarkService.instance.mark(
+        "alphabet-sparse-window-load-queued",
+        values: {
+          "index": index,
+          "seekInProgress": _alphabetSeekInProgress,
+          "userScrollActive": _sparseUserScrollActive,
+        },
+      );
+    }
     final total = _sparseAlbumTotalCount;
     if (total == null || total <= 0) return;
 
