@@ -542,9 +542,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
     //TODO use binary search to improve performance for already loaded pages
     final itemList = state.items ?? [];
+    final pageNotifier = ref.read(pageControl.notifier);
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
     for (var i = 0; i < itemList.length; i++) {
+      if (pageNotifier.isVirtualPlaceholderIndex(i)) continue;
+
       String sortName;
       switch (itemList[i]) {
         case FinampPlayableDto(item: var baseItem):
@@ -645,24 +648,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       return;
     }
 
-    Future<void> requestPage(int pageSize) async {
-      benchmark.incrementMetric("alphabetJumpPagesLoaded");
-      benchmark.mark(
-        "alphabet-jump-page-requested",
-        values: {"loadedItems": itemList.length, "pageSize": pageSize},
-      );
-      _benchmarkAlphabetPageWait = Stopwatch()..start();
-      ref.read(pageControl.notifier).newPage(pageSize: pageSize);
-    }
-
-    if (_alphabetResolvedTargetIndex != null &&
-        _alphabetResolvedTargetIndex! >= itemList.length) {
-      final remaining =
-          _alphabetResolvedTargetIndex! - itemList.length + 1;
-      await requestPage(min(remaining, 5000));
-      return;
-    }
-
     if (!_alphabetSeekInProgress &&
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
@@ -670,9 +655,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       final seek = Stopwatch()..start();
       benchmark.mark("alphabet-jump-seek-start");
       try {
-        final targetIndex = await ref
-            .read(pageControl.notifier)
-            .resolveAlbumAlphabetTargetIndex(letter);
+        final targetIndex = await pageNotifier.beginVirtualAlbumAlphabetWindow(
+          letter,
+        );
         seek.stop();
         benchmark.incrementMetric(
           "alphabetSeekResolveMicros",
@@ -680,15 +665,23 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
         benchmark.mark(
           "alphabet-jump-seek-complete",
-          values: {"targetIndex": targetIndex},
+          values: {"targetIndex": targetIndex, "mode": "virtual-window"},
         );
 
         if (letterToSearch != letter) return;
 
         _alphabetResolvedTargetIndex = targetIndex;
-        if (targetIndex != null && targetIndex >= itemList.length) {
-          final remaining = targetIndex - itemList.length + 1;
-          await requestPage(min(remaining, 5000));
+        if (targetIndex != null) {
+          benchmark.incrementMetric("alphabetJumpPagesLoaded");
+          benchmark.mark(
+            "alphabet-jump-page-requested",
+            values: {
+              "loadedItems": itemList.length,
+              "mode": "virtual-window",
+              "windowSize": 240,
+            },
+          );
+          _benchmarkAlphabetPageWait = Stopwatch()..start();
           return;
         }
       } finally {
@@ -705,7 +698,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       });
     }
 
-    await requestPage(musicScreenPageSize);
+    benchmark.incrementMetric("alphabetJumpPagesLoaded");
+    benchmark.mark(
+      "alphabet-jump-page-requested",
+      values: {"loadedItems": itemList.length, "pageSize": musicScreenPageSize},
+    );
+    _benchmarkAlphabetPageWait = Stopwatch()..start();
+    pageNotifier.newPage();
     final pageEdgeScroll = Stopwatch()..start();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
@@ -1121,6 +1120,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             physics: _DeferredLoadingAlwaysScrollableScrollPhysics(tabState: this),
             builderDelegate: PagedChildBuilderDelegate<FinampDisplayableOrPlayable>(
               itemBuilder: (context, item, index) {
+                if (ref.read(pageControl.notifier).isVirtualPlaceholderIndex(index)) {
+                  return const SizedBox.shrink();
+                }
+
                 // We only allow grid mode for FinampDisplayable<FinampPlayableItem>
                 final baseItem = (item as FinampPlayableDto).item;
                 return CachedBuilder(
