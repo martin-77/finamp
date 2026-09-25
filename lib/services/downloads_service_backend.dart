@@ -1029,8 +1029,7 @@ class DownloadsSyncService {
     // genres and info albums share the same age-sorted task stream. Looking
     // ahead here lets album child requests be batched without changing task
     // ownership, priority or processing order.
-    if (albums.length < albumBatchSize) {
-      final Stopwatch? queueScanStopwatch =
+    if (albums.isNotEmpty && albums.length < albumBatchSize) { final Stopwatch? queueScanStopwatch =
           PerformanceBenchmarkService.enabled
               ? (Stopwatch()..start())
               : null;
