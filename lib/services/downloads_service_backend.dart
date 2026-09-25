@@ -1391,9 +1391,6 @@ class DownloadsSyncService {
         }
       }
 
-      // A queued/resumed info task for the same track can now safely no-op.
-      // Required processing is intentionally left untouched.
-      _infoCompleted.add(track.isarId);
     }
 
     return requiredImageIds;
@@ -1714,6 +1711,9 @@ class DownloadsSyncService {
         benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     Future<void> processDatabaseAndFiles() async {
       DownloadItem? canonParent;
+      Set<int> bulkCompletedInfoTrackIds = <int>{};
+      int? bulkTrackMicros;
+      int bulkTrackImageCount = 0;
       _isar.writeTxnSync(() {
         canonParent = _isar.downloadItems.getSync(parent.isarId);
         if (canonParent == null) {
@@ -1799,24 +1799,10 @@ class DownloadsSyncService {
             );
             if (bulkTrackStopwatch != null) {
               bulkTrackStopwatch.stop();
-              final benchmark = PerformanceBenchmarkService.instance;
-              benchmark.incrementMetricBuffered(
-                "downloadAlbumInfoPhaseMicros_bulk_tracks",
-                bulkTrackStopwatch.elapsedMicroseconds,
-              );
-              benchmark.maxMetricBuffered(
-                "downloadAlbumInfoPhaseMicrosMax_bulk_tracks",
-                bulkTrackStopwatch.elapsedMicroseconds,
-              );
-              benchmark.incrementMetricBuffered(
-                "downloadAlbumInfoBulkTrackCount",
-                bulkTrackIds.length,
-              );
-              benchmark.incrementMetricBuffered(
-                "downloadAlbumInfoBulkImageCount",
-                requiredImageIds.length,
-              );
+              bulkTrackMicros = bulkTrackStopwatch.elapsedMicroseconds;
             }
+            bulkCompletedInfoTrackIds = bulkTrackIds;
+            bulkTrackImageCount = requiredImageIds.length;
             requiredSyncIds.addAll(requiredImageIds);
             infoSyncIds.removeAll(bulkTrackIds);
           }
@@ -1850,6 +1836,31 @@ class DownloadsSyncService {
           }
         }
       });
+
+      // Only mark tracks complete after the Isar transaction committed. Isar
+      // rollback cannot undo these in-memory completion sets.
+      if (bulkCompletedInfoTrackIds.isNotEmpty) {
+        _infoCompleted.addAll(bulkCompletedInfoTrackIds);
+        if (bulkTrackMicros != null) {
+          final benchmark = PerformanceBenchmarkService.instance;
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoPhaseMicros_bulk_tracks",
+            bulkTrackMicros!,
+          );
+          benchmark.maxMetricBuffered(
+            "downloadAlbumInfoPhaseMicrosMax_bulk_tracks",
+            bulkTrackMicros!,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoBulkTrackCount",
+            bulkCompletedInfoTrackIds.length,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoBulkImageCount",
+            bulkTrackImageCount,
+          );
+        }
+      }
 
       //
       // Download item files if needed
