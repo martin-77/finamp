@@ -145,6 +145,102 @@ class PagedContent extends _$PagedContent {
     }
   }
 
+  Future<int?> resolveAlbumAlphabetTargetIndex(String letter) async {
+    if (letter.isEmpty ||
+        ref.read(finampSettingsProvider.isOffline)) {
+      return null;
+    }
+
+    final MusicScreenPlayable? musicRequest = switch (request) {
+      Genre<FinampPlayableDto>() => request.getMusicScreenRequest(),
+      MusicScreenPlayable<FinampPlayableDto>() => request,
+      _ => null,
+    };
+    if (musicRequest == null ||
+        musicRequest.tab != ContentType.albums ||
+        musicRequest.sortConfig.sortBy != SortBy.sortName ||
+        musicRequest.sortConfig.sortOrder != SortOrder.ascending ||
+        musicRequest.sortConfig.filters.any(
+          (filter) =>
+              filter.type == ItemFilterType.isFullyDownloaded ||
+              filter.type == ItemFilterType.artistFilter,
+        )) {
+      return null;
+    }
+
+    final BaseItemId? libraryId;
+    if (musicRequest.library == allLibraryPlaceholder) {
+      libraryId = null;
+    } else if (musicRequest.library == currentLibraryPlaceholder) {
+      libraryId = ref.read<BaseItemId?>(
+        FinampUserHelper.finampCurrentUserProvider.select(
+          (value) => value?.currentView?.id,
+        ),
+      );
+      if (libraryId == null) return null;
+    } else {
+      libraryId = musicRequest.library as BaseItemId;
+    }
+
+    BaseItemDto? library;
+    if (libraryId != null) {
+      library = await ref.read(itemByIdProvider(libraryId).future);
+      if (library == null) return null;
+    }
+
+    final genreFilter = musicRequest.sortConfig.filters.firstWhereOrNull(
+      (filter) => filter.type == ItemFilterType.genreFilter,
+    );
+    final searchFilter = musicRequest.sortConfig.filters.firstWhereOrNull(
+      (filter) => filter.type == ItemFilterType.searchTerm,
+    );
+
+    Future<QueryResult_BaseItemDto> query({
+      String? nameStartsWithOrGreater,
+    }) {
+      return GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
+        parentItem: library,
+        includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
+        sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
+        sortOrder: musicRequest.sortConfig.sortOrder.toString(),
+        searchTerm: searchFilter?.extraString.trim(),
+        filters: musicRequest.sortConfig.filters
+            .map(
+              (filter) => switch (filter.type) {
+                ItemFilterType.isFavorite => "IsFavorite",
+                ItemFilterType.isFullyDownloaded => null,
+                ItemFilterType.startsWithCharacter => null,
+                ItemFilterType.genreFilter => null,
+                ItemFilterType.artistFilter => null,
+                ItemFilterType.searchTerm => null,
+                ItemFilterType.isUnplayed => "IsUnplayed",
+              },
+            )
+            .nonNulls
+            .join(","),
+        limit: 1,
+        isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
+          musicRequest.tab,
+          musicRequest.sortConfig.filters,
+        ),
+        genreFilter: genreFilter?.extraBaseItem.id,
+        nameStartsWithOrGreater: nameStartsWithOrGreater,
+      );
+    }
+
+    if (letter == "#") return 0;
+
+    final results = await Future.wait([
+      query(),
+      query(nameStartsWithOrGreater: letter),
+    ]);
+    final total = results[0].totalRecordCount ?? 0;
+    final boundaryCount = results[1].totalRecordCount ?? 0;
+    if (total <= 0) return 0;
+
+    return (total - boundaryCount).clamp(0, total - 1).toInt();
+  }
+
   void fetchHomeScreenItems() {
     // The pagination tends to generate multiple requests at once, so block all but the initial one.  The exception is
     // while loading the first, undersized page, we allow a second request through immediately to potentially finish
