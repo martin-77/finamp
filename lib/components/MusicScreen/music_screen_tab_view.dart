@@ -81,6 +81,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   String? letterToSearch;
   String? _alphabetSeekAttemptedLetter;
   int? _alphabetResolvedTargetIndex;
+  int _alphabetSeekGeneration = 0;
   bool _alphabetSeekInProgress = false;
 
   Timer? timer;
@@ -111,6 +112,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       letterToSearch = letter;
       _alphabetSeekAttemptedLetter = null;
       _alphabetResolvedTargetIndex = null;
+      _alphabetSeekGeneration++;
     }
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
@@ -203,14 +205,19 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
       _alphabetSeekInProgress = true;
+      final seekGeneration = _alphabetSeekGeneration;
       try {
-        _alphabetResolvedTargetIndex = await ref
+        final targetIndex = await ref
             .read(pageControl.notifier)
             .resolveAlphabetTargetIndex(letter);
-        if (_alphabetResolvedTargetIndex != null &&
-            _alphabetResolvedTargetIndex! >= itemList.length) {
-          final missingItems =
-              _alphabetResolvedTargetIndex! - itemList.length + 1;
+        if (seekGeneration != _alphabetSeekGeneration ||
+            letterToSearch != letter) {
+          return;
+        }
+
+        _alphabetResolvedTargetIndex = targetIndex;
+        if (targetIndex != null && targetIndex >= itemList.length) {
+          final missingItems = targetIndex - itemList.length + 1;
           ref.read(pageControl.notifier).newPage(
             pageSize: min(missingItems, 5000),
           );
@@ -218,6 +225,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         }
       } finally {
         _alphabetSeekInProgress = false;
+        if (letterToSearch != null && letterToSearch != letter) {
+          scrollToLetter(letterToSearch!);
+        }
       }
     }
 
