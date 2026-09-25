@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:finamp/extensions/list.dart';
@@ -239,7 +240,7 @@ class PagedContent extends _$PagedContent {
       query(nameStartsWithOrGreater: letter),
     ]);
     final total = results[0].totalRecordCount ?? 0;
-    final boundaryCount = results[1].totalRecordCount ?? 0;
+    final boundaryCount = results[1].totalRecordCount;
     if (total <= 0) return (targetIndex: 0, totalCount: 0);
 
     return (
