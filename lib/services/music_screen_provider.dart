@@ -185,12 +185,6 @@ class PagedContent extends _$PagedContent {
       libraryId = musicRequest.library as BaseItemId;
     }
 
-    BaseItemDto? library;
-    if (libraryId != null) {
-      library = await ref.read(itemByIdProvider(libraryId).future);
-      if (library == null) return null;
-    }
-
     final genreFilter = musicRequest.sortConfig.filters.firstWhereOrNull(
       (filter) => filter.type == ItemFilterType.genreFilter,
     );
@@ -202,7 +196,7 @@ class PagedContent extends _$PagedContent {
       String? nameStartsWithOrGreater,
     }) {
       return GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
-        parentItem: library,
+        parentId: libraryId,
         includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
         sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
         sortOrder: musicRequest.sortConfig.sortOrder.toString(),
@@ -248,6 +242,67 @@ class PagedContent extends _$PagedContent {
       targetIndex: (total - boundaryCount).clamp(0, total - 1).toInt(),
       totalCount: total,
     );
+  }
+
+  Future<List<FinampPlayableDto>?> _loadAlbumAlphabetItemsDirect(
+    MusicScreenPlayable<FinampPlayableDto> musicRequest, {
+    required int startIndex,
+    required int limit,
+  }) async {
+    final BaseItemId? libraryId;
+    if (musicRequest.library == allLibraryPlaceholder) {
+      libraryId = null;
+    } else if (musicRequest.library == currentLibraryPlaceholder) {
+      libraryId = ref.read<BaseItemId?>(
+        FinampUserHelper.finampCurrentUserProvider.select(
+          (value) => value?.currentView?.id,
+        ),
+      );
+      if (libraryId == null) return null;
+    } else {
+      libraryId = musicRequest.library as BaseItemId;
+    }
+
+    final genreFilter = musicRequest.sortConfig.filters.firstWhereOrNull(
+      (filter) => filter.type == ItemFilterType.genreFilter,
+    );
+    final searchFilter = musicRequest.sortConfig.filters.firstWhereOrNull(
+      (filter) => filter.type == ItemFilterType.searchTerm,
+    );
+
+    final result =
+        await GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
+      parentId: libraryId,
+      includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
+      sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
+      sortOrder: musicRequest.sortConfig.sortOrder.toString(),
+      searchTerm: searchFilter?.extraString.trim(),
+      filters: musicRequest.sortConfig.filters
+          .map(
+            (filter) => switch (filter.type) {
+              ItemFilterType.isFavorite => "IsFavorite",
+              ItemFilterType.isFullyDownloaded => null,
+              ItemFilterType.startsWithCharacter => null,
+              ItemFilterType.genreFilter => null,
+              ItemFilterType.artistFilter => null,
+              ItemFilterType.searchTerm => null,
+              ItemFilterType.isUnplayed => "IsUnplayed",
+            },
+          )
+          .nonNulls
+          .join(","),
+      isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
+        musicRequest.tab,
+        musicRequest.sortConfig.filters,
+      ),
+      genreFilter: genreFilter?.extraBaseItem.id,
+      startIndex: startIndex,
+      limit: limit,
+    );
+
+    return (result.items ?? const <BaseItemDto>[])
+        .map(FinampPlayableDto.fromItem)
+        .toList(growable: false);
   }
 
   Future<int?> resolveAlbumAlphabetTargetIndex(String letter) async {
@@ -319,16 +374,12 @@ class PagedContent extends _$PagedContent {
       final limit = min(windowSize, target.totalCount - startIndex);
       if (limit <= 0) return null;
 
-      final page = await ref.read(
-        loadHomeSectionItemsProvider(
-          request: musicRequest,
-          startIndex: startIndex,
-          limit: limit,
-        ).future,
-      );
-      final items = (page ?? const <BaseItemDto>[])
-          .map(FinampPlayableDto.fromItem)
-          .toList(growable: false);
+      final items = await _loadAlbumAlphabetItemsDirect(
+            musicRequest,
+            startIndex: startIndex,
+            limit: limit,
+          ) ??
+          const <FinampPlayableDto>[];
       if (items.isEmpty) return null;
 
       final localBoundary = _findAlphabetBoundaryInAlbumWindow(items, letter);
@@ -427,16 +478,11 @@ class PagedContent extends _$PagedContent {
   }) async {
     final musicRequest = _albumAlphabetMusicRequest();
     if (musicRequest == null) return null;
-    final page = await ref.read(
-      loadHomeSectionItemsProvider(
-        request: musicRequest,
-        startIndex: startIndex,
-        limit: limit,
-      ).future,
+    return _loadAlbumAlphabetItemsDirect(
+      musicRequest,
+      startIndex: startIndex,
+      limit: limit,
     );
-    return page
-        ?.map(FinampPlayableDto.fromItem)
-        .toList(growable: false);
   }
 
   void fetchHomeScreenItems() {
