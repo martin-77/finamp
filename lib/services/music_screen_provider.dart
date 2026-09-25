@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:finamp/extensions/list.dart';
@@ -143,8 +144,10 @@ class PagedContent extends _$PagedContent {
     final actualItems = items
         .map<FinampDisplayableOrPlayable>((item) => FinampPlayableDto.fromItem(item))
         .toList(growable: false);
-    final prefixCount = start.clamp(0, total);
-    final actualCount = actualItems.length.clamp(0, total - prefixCount);
+    final prefixCount = start.clamp(0, total).toInt();
+    final actualCount = actualItems.length
+        .clamp(0, total - prefixCount)
+        .toInt();
     final suffixCount = max(0, total - prefixCount - actualCount);
 
     // The filler value is never rendered as content. The view checks the global
