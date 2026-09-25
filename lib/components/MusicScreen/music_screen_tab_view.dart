@@ -696,6 +696,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           "alphabet-jump-seek-complete",
           values: {
             "targetIndex": window?.targetIndex,
+            "estimatedTargetIndex": window?.estimatedTargetIndex,
+            "targetCorrectionDelta": window == null
+                ? null
+                : window.targetIndex - window.estimatedTargetIndex,
+            "windowStartIndex": window?.startIndex,
             "totalCount": window?.totalCount,
             "mode": "sparse-indexed-grid",
           },
