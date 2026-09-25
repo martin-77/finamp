@@ -108,6 +108,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   final Set<int> _sparseAlbumWindowStartsLoading = {};
   bool _sparseUserScrollActive = false;
   int _sparseUserScrollDirection = 0;
+  int _contentGeneration = 0;
+  int _sparseAlbumGeneration = 0;
 
   bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
 
@@ -226,6 +228,23 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
 
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant MusicScreenTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.displayable != widget.displayable) {
+      _contentGeneration++;
+      _sparseAlbumGeneration++;
+      _sparseAlbumTotalCount = null;
+      _sparseAlbumItems.clear();
+      _sparseAlbumWindowStartsLoading.clear();
+      _sparseUserScrollActive = false;
+      _sparseUserScrollDirection = 0;
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+    }
   }
 
   void _recordBenchmarkSortConfiguration() {
@@ -698,6 +717,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         !_useListModeForCurrentContent()) {
       _alphabetSeekAttemptedLetter = letter;
       _alphabetSeekInProgress = true;
+      final seekGeneration = _contentGeneration;
       final seek = Stopwatch()..start();
       final windowWait = Stopwatch()..start();
       benchmark.mark("alphabet-jump-seek-start");
@@ -733,11 +753,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           },
         );
 
-        if (letterToSearch != letter) return;
+        if (seekGeneration != _contentGeneration ||
+            letterToSearch != letter) {
+          return;
+        }
 
         if (window != null &&
             window.totalCount > 0 &&
             window.items.isNotEmpty) {
+          _sparseAlbumGeneration++;
+          _sparseAlbumWindowStartsLoading.clear();
           setState(() {
             _sparseAlbumTotalCount = window.totalCount;
             _sparseAlbumItems.clear();
@@ -782,7 +807,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       } finally {
         _alphabetSeekInProgress = false;
         final pendingLetter = letterToSearch;
-        if (mounted && pendingLetter != null && pendingLetter != letter) {
+        if (mounted &&
+            pendingLetter != null &&
+            (pendingLetter != letter ||
+                seekGeneration != _contentGeneration)) {
           unawaited(scrollToLetter(pendingLetter));
         }
       }
@@ -803,6 +831,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
       _alphabetSeekInProgress = true;
+      final seekGeneration = _contentGeneration;
       final seek = Stopwatch()..start();
       benchmark.mark("alphabet-jump-seek-start");
       try {
@@ -819,7 +848,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           values: {"targetIndex": targetIndex},
         );
 
-        if (letterToSearch != letter) return;
+        if (seekGeneration != _contentGeneration ||
+            letterToSearch != letter) {
+          return;
+        }
 
         _alphabetResolvedTargetIndex = targetIndex;
         if (targetIndex != null && targetIndex >= itemList.length) {
@@ -830,7 +862,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       } finally {
         _alphabetSeekInProgress = false;
         final pendingLetter = letterToSearch;
-        if (mounted && pendingLetter != null && pendingLetter != letter) {
+        if (mounted &&
+            pendingLetter != null &&
+            (pendingLetter != letter ||
+                seekGeneration != _contentGeneration)) {
           unawaited(scrollToLetter(pendingLetter));
         }
       }
@@ -1210,6 +1245,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void _refresh() {
     // TODO this has ref.watch, does it explode?
     if (!context.mounted) return;
+    _contentGeneration++;
+    _sparseAlbumGeneration++;
+    letterToSearch = null;
+    _alphabetSeekAttemptedLetter = null;
+    _alphabetResolvedTargetIndex = null;
     if (_usingSparseAlbumGrid) {
       setState(() {
         _sparseAlbumTotalCount = null;
@@ -1218,6 +1258,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _sparseUserScrollActive = false;
         _sparseUserScrollDirection = 0;
       });
+    } else {
+      _sparseAlbumWindowStartsLoading.clear();
+      _sparseUserScrollActive = false;
+      _sparseUserScrollDirection = 0;
     }
     ref.read(pageControl.notifier).refresh();
     // TODO test error cases?
@@ -1330,6 +1374,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final bucket = index ~/ step;
     final startIndex = max(0, bucket * step - 40);
     if (!_sparseAlbumWindowStartsLoading.add(startIndex)) return;
+    final generation = _sparseAlbumGeneration;
 
     unawaited(() async {
       try {
@@ -1337,7 +1382,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
               startIndex: startIndex,
               limit: _sparseAlbumWindowSize,
             );
-        if (!mounted || items == null || _sparseAlbumTotalCount != total) return;
+        if (!mounted ||
+            items == null ||
+            _sparseAlbumTotalCount != total ||
+            _sparseAlbumGeneration != generation) {
+          return;
+        }
         setState(() {
           for (var i = 0; i < items.length; i++) {
             final globalIndex = startIndex + i;
@@ -1358,7 +1408,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           );
         }
       } finally {
-        _sparseAlbumWindowStartsLoading.remove(startIndex);
+        if (_sparseAlbumGeneration == generation) {
+          _sparseAlbumWindowStartsLoading.remove(startIndex);
+        }
       }
     }());
   }
