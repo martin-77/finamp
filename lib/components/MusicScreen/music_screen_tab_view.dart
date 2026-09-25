@@ -1227,8 +1227,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         },
       );
 
-      _sparseUserScrollActive = true;
       for (var step = 0; step < command.viewportDeltas.length; step++) {
+        // Each benchmark segment represents a separate user drag. ScrollEnd
+        // from the previous animateTo clears the production drag flag, so
+        // re-arm it before the next synthetic segment.
+        _sparseUserScrollActive = true;
         final delta = command.viewportDeltas[step];
         final position = controller.position;
         final target = (position.pixels + delta * position.viewportDimension)
@@ -1288,7 +1291,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   }
 
   void _queueSparseAlbumWindowLoad(int index) {
-    if (_activeBenchmarkJump != null) {
+    final benchmarkRun = PerformanceBenchmarkService.instance.activeRun;
+    if (_activeBenchmarkJump != null ||
+        (benchmarkRun?.scenario.startsWith("alphabet-sparse-scroll-") ??
+            false)) {
       PerformanceBenchmarkService.instance.mark(
         "alphabet-sparse-window-load-queued",
         values: {
@@ -1320,6 +1326,18 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             _sparseAlbumItems[globalIndex] = items[i];
           }
         });
+        if (PerformanceBenchmarkService.instance.activeRun?.scenario
+                .startsWith("alphabet-sparse-scroll-") ??
+            false) {
+          PerformanceBenchmarkService.instance.mark(
+            "alphabet-sparse-window-load-complete",
+            values: {
+              "startIndex": startIndex,
+              "loadedItems": items.length,
+              "cachedItems": _sparseAlbumItems.length,
+            },
+          );
+        }
       } finally {
         _sparseAlbumWindowStartsLoading.remove(startIndex);
       }
