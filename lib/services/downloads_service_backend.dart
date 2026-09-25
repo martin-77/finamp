@@ -910,10 +910,24 @@ class DownloadsSyncService {
         "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
 
     try {
+      final albumBatchStopwatch =
+          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
       final childItems = await _jellyfinApiData.getTracksForAlbumIds(
         albumIds: albumIds,
         fields: fields,
       );
+      if (albumBatchStopwatch != null) {
+        albumBatchStopwatch.stop();
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.incrementMetricBuffered(
+          "downloadAlbumBatchRequestMicros",
+          albumBatchStopwatch.elapsedMicroseconds,
+        );
+        benchmark.maxMetricBuffered(
+          "downloadAlbumBatchRequestMicrosMax",
+          albumBatchStopwatch.elapsedMicroseconds,
+        );
+      }
       _downloadsService.resetConnectionErrors();
 
       benchmark?.incrementMetricBuffered(
@@ -1611,6 +1625,8 @@ class DownloadsSyncService {
         }
       }
       _metadataCache[id] = itemFetch.future;
+      final metadataRequestStopwatch =
+          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
       item = await _jellyfinApiData
           .getItemByIdBatched(
             id,
@@ -1618,6 +1634,30 @@ class DownloadsSyncService {
             Duration.zero,
           )
           .then((value) => value == null ? null : DownloadStub.fromItem(item: value, type: type));
+      if (metadataRequestStopwatch != null) {
+        metadataRequestStopwatch.stop();
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.incrementMetricBuffered(
+          "downloadBaseItemServerRequestCount",
+        );
+        benchmark.incrementMetricBuffered(
+          "downloadBaseItemServerRequestMicros",
+          metadataRequestStopwatch.elapsedMicroseconds,
+        );
+        benchmark.maxMetricBuffered(
+          "downloadBaseItemServerRequestMicrosMax",
+          metadataRequestStopwatch.elapsedMicroseconds,
+        );
+        if (forceServer) {
+          benchmark.incrementMetricBuffered(
+            "downloadBaseItemForcedServerRequestCount",
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadBaseItemForcedServerRequestMicros",
+            metadataRequestStopwatch.elapsedMicroseconds,
+          );
+        }
+      }
       _downloadsService.resetConnectionErrors();
       itemFetch.complete(item);
       return itemFetch.future;
@@ -1899,6 +1939,10 @@ class DownloadsSyncService {
           final userHelper = GetIt.instance<FinampUserHelper>();
           for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
             viewsExamined++;
+            final viewRequestStopwatch =
+                PerformanceBenchmarkService.enabled
+                    ? (Stopwatch()..start())
+                    : null;
             final matchingAlbums =
                 await _jellyfinApiData.getItemsInParentByIds(
                   parentItem: view,
@@ -1906,6 +1950,21 @@ class DownloadsSyncService {
                   includeItemTypes: BaseItemDtoType.album.jellyfinName!,
                   fields: _jellyfinApiData.defaultFields,
                 );
+            if (viewRequestStopwatch != null) {
+              viewRequestStopwatch.stop();
+              final benchmark = PerformanceBenchmarkService.instance;
+              benchmark.incrementMetricBuffered(
+                "downloadAlbumViewRequestMicros",
+                viewRequestStopwatch.elapsedMicroseconds,
+              );
+              benchmark.maxMetricBuffered(
+                "downloadAlbumViewRequestMicrosMax",
+                viewRequestStopwatch.elapsedMicroseconds,
+              );
+              benchmark.incrementMetricBuffered(
+                "downloadAlbumViewRequestCount",
+              );
+            }
             for (final album in matchingAlbums) {
               albumIdsScanned++;
               // Preserve the previous first-matching-view behavior.
