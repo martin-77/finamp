@@ -292,6 +292,7 @@ class JellyfinApiHelper {
 
     final response = await _fetchGetItemsResponse(
       parentItem: parentItem,
+      parentId: parentId,
       libraryFilter: libraryFilter,
       includeItemTypes: includeItemTypes,
       sortBy: sortBy,
@@ -403,6 +404,53 @@ class JellyfinApiHelper {
       limit: limit,
     );
     return response;
+  }
+
+  Future<({
+    QueryResult_BaseItemDto total,
+    QueryResult_BaseItemDto boundary,
+  })> getAlbumAlphabetCountPair({
+    BaseItemId? parentId,
+    required String? includeItemTypes,
+    required String? sortBy,
+    required String? sortOrder,
+    String? searchTerm,
+    String? filters,
+    BaseItemId? genreFilter,
+    bool? isFavorite,
+    required String boundaryLetter,
+  }) async {
+    final currentUserId = _finampUserHelper.currentUser!.id;
+    final fields = defaultFields;
+
+    return runInIsolate((api) async {
+      Future<QueryResult_BaseItemDto> query(String? boundary) async {
+        final response = await api.getItems(
+          userId: currentUserId,
+          parentId: parentId,
+          includeItemTypes: includeItemTypes,
+          recursive: true,
+          sortBy: sortBy,
+          sortOrder: sortOrder,
+          searchTerm: searchTerm,
+          filters: filters,
+          genreIds: genreFilter?.raw,
+          limit: 1,
+          fields: fields,
+          isFavorite: isFavorite,
+          nameStartsWithOrGreater: boundary,
+        );
+        return QueryResult_BaseItemDto.fromJson(
+          response as Map<String, dynamic>,
+        );
+      }
+
+      final results = await Future.wait([
+        query(null),
+        query(boundaryLetter),
+      ]);
+      return (total: results[0], boundary: results[1]);
+    });
   }
 
   Future<QueryResult_BaseItemDto> _fetchGetItemsResponse({
