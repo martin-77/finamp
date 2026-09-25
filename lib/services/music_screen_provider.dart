@@ -297,6 +297,24 @@ class PagedContent extends _$PagedContent {
     );
   }
 
+  Future<List<FinampPlayableDto>?> loadAlbumWindow({
+    required int startIndex,
+    int limit = 240,
+  }) async {
+    final musicRequest = _albumAlphabetMusicRequest();
+    if (musicRequest == null) return null;
+    final page = await ref.read(
+      loadHomeSectionItemsProvider(
+        request: musicRequest,
+        startIndex: startIndex,
+        limit: limit,
+      ).future,
+    );
+    return page
+        ?.map(FinampPlayableDto.fromItem)
+        .toList(growable: false);
+  }
+
   void fetchHomeScreenItems() {
     // The pagination tends to generate multiple requests at once, so block all but the initial one.  The exception is
     // while loading the first, undersized page, we allow a second request through immediately to potentially finish
