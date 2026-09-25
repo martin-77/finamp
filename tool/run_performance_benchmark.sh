@@ -40,8 +40,30 @@ case "$targeted_download_1000_define" in
   0|false|FALSE|False|no|NO|No|off|OFF|Off|"") targeted_download_1000_define="false" ;;
   *) echo "FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
 esac
+
+alphabet_only_define="${FINAMP_BENCH_ALPHABET_ONLY:-false}"
+case "$alphabet_only_define" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) alphabet_only_define="true" ;;
+  0|false|FALSE|False|no|NO|No|off|OFF|Off|"") alphabet_only_define="false" ;;
+  *) echo "FINAMP_BENCH_ALPHABET_ONLY must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
+esac
+
+alphabet_direct_offset_define="${FINAMP_BENCH_ALPHABET_DIRECT_OFFSET:-false}"
+case "$alphabet_direct_offset_define" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) alphabet_direct_offset_define="true" ;;
+  0|false|FALSE|False|no|NO|No|off|OFF|Off|"") alphabet_direct_offset_define="false" ;;
+  *) echo "FINAMP_BENCH_ALPHABET_DIRECT_OFFSET must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
+esac
 if [[ "$targeted_download_define" == "true" && "$targeted_download_1000_define" == "true" ]]; then
   echo "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY and FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY are mutually exclusive" >&2
+  exit 2
+fi
+if [[ "$alphabet_only_define" == "true" && ( "$targeted_download_define" == "true" || "$targeted_download_1000_define" == "true" ) ]]; then
+  echo "FINAMP_BENCH_ALPHABET_ONLY cannot be combined with targeted download diagnostics" >&2
+  exit 2
+fi
+if [[ "$alphabet_direct_offset_define" == "true" && "$alphabet_only_define" != "true" ]]; then
+  echo "FINAMP_BENCH_ALPHABET_DIRECT_OFFSET requires FINAMP_BENCH_ALPHABET_ONLY=true" >&2
   exit 2
 fi
 if [[ "$smoke_define" == "true" && ( "$targeted_download_define" == "true" || "$targeted_download_1000_define" == "true" ) ]]; then
@@ -52,7 +74,7 @@ fi
 search_query_1="${FINAMP_BENCH_SEARCH_QUERY_1:-}"
 search_query_2="${FINAMP_BENCH_SEARCH_QUERY_2:-}"
 search_query_3="${FINAMP_BENCH_SEARCH_QUERY_3:-}"
-if [[ "$targeted_download_define" == "false" && "$targeted_download_1000_define" == "false" ]]; then
+if [[ "$targeted_download_define" == "false" && "$targeted_download_1000_define" == "false" && "$alphabet_only_define" == "false" ]]; then
   [[ -n "$search_query_1" ]] || {
     echo "FINAMP_BENCH_SEARCH_QUERY_1 must be set locally for smoke/full benchmark runs" >&2
     exit 2
@@ -101,6 +123,8 @@ if [[ "$targeted_download_1000_define" == "true" ]]; then
   log "Benchmark suite mode: targeted bench-1000 download diagnostics"
 elif [[ "$targeted_download_define" == "true" ]]; then
   log "Benchmark suite mode: targeted bench-100 download diagnostics"
+elif [[ "$alphabet_only_define" == "true" ]]; then
+  log "Benchmark suite mode: targeted alphabet diagnostics (direct-offset=$alphabet_direct_offset_define)"
 elif [[ "$smoke_define" == "true" ]]; then
   log "Benchmark suite mode: smoke"
 else
@@ -112,6 +136,8 @@ flutter build ios \
   --dart-define=FINAMP_BENCH_SMOKE="$smoke_define" \
   --dart-define=FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY="$targeted_download_define" \
   --dart-define=FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY="$targeted_download_1000_define" \
+  --dart-define=FINAMP_BENCH_ALPHABET_ONLY="$alphabet_only_define" \
+  --dart-define=FINAMP_BENCH_ALPHABET_DIRECT_OFFSET="$alphabet_direct_offset_define" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_1="$search_query_1" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_2="$search_query_2" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_3="$search_query_3" \
