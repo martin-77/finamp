@@ -23,6 +23,7 @@ import '../../models/finamp_models.dart';
 import '../../models/jellyfin_models.dart';
 import '../../services/downloads_service.dart';
 import '../../services/finamp_settings_helper.dart';
+import '../../services/finamp_user_helper.dart';
 import '../../services/music_screen_provider.dart';
 import '../AlbumScreen/track_list_tile.dart';
 import 'alphabet_item_list.dart';
@@ -110,6 +111,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   int _sparseUserScrollDirection = 0;
   int _contentGeneration = 0;
   int _sparseAlbumGeneration = 0;
+  BaseItemId? _sparseCurrentViewId;
 
   bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
 
@@ -123,6 +125,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _sparseAlbumWindowStartsLoading.clear();
     _sparseUserScrollActive = false;
     _sparseUserScrollDirection = 0;
+    _sparseCurrentViewId = null;
     letterToSearch = null;
     _alphabetSeekAttemptedLetter = null;
     _alphabetResolvedTargetIndex = null;
@@ -765,6 +768,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             window.items.isNotEmpty) {
           _sparseAlbumGeneration++;
           _sparseAlbumWindowStartsLoading.clear();
+          _sparseCurrentViewId = ref.read<BaseItemId?>(
+            FinampUserHelper.finampCurrentUserProvider.select(
+              (value) => value?.currentView?.id,
+            ),
+          );
           setState(() {
             _sparseAlbumTotalCount = window.totalCount;
             _sparseAlbumItems.clear();
@@ -1477,7 +1485,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
     final itemPadding = calculateItemCollectionCardWidth(ref).$2;
     final isOffline = ref.watch(finampSettingsProvider.isOffline);
-    if (isOffline && _usingSparseAlbumGrid) {
+    final currentViewId = ref.watch<BaseItemId?>(
+      FinampUserHelper.finampCurrentUserProvider.select(
+        (value) => value?.currentView?.id,
+      ),
+    );
+    if (_usingSparseAlbumGrid &&
+        (isOffline || _sparseCurrentViewId != currentViewId)) {
       _clearSparseAlbumState(invalidateContent: true);
     }
     final useListMode = widget.contentType == null || widget.contentType == ContentType.tracks
