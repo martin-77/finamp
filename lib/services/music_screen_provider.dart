@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:finamp/extensions/list.dart';
@@ -28,19 +27,6 @@ const homeScreenSectionItemLimit = 25;
 class PagedContent extends _$PagedContent {
   List<int> _pageSizes = [];
   List<ProviderBase<AsyncValue<Object?>>> _dependencies = [];
-
-  int? _virtualWindowStart;
-  int? _virtualWindowLimit;
-  int? _virtualTotalCount;
-
-  bool isVirtualPlaceholderIndex(int index) {
-    final start = _virtualWindowStart;
-    final limit = _virtualWindowLimit;
-    final total = _virtualTotalCount;
-    if (start == null || limit == null || total == null) return false;
-    if (index < 0 || index >= total) return false;
-    return index < start || index >= start + limit;
-  }
 
   @override
   PagingState<int, FinampDisplayableOrPlayable> build(FinampDisplayable<FinampDisplayableOrPlayable> request) {
@@ -95,88 +81,6 @@ class PagedContent extends _$PagedContent {
     );
   }
 
-  PagingState<int, FinampDisplayableOrPlayable>? _buildVirtualWindow(
-    MusicScreenPlayable musicRequest,
-  ) {
-    final start = _virtualWindowStart;
-    final limit = _virtualWindowLimit;
-    final total = _virtualTotalCount;
-    if (start == null || limit == null || total == null) return null;
-
-    final provider = loadHomeSectionItemsProvider(
-      request: musicRequest,
-      startIndex: start,
-      limit: limit,
-    );
-    final page = ref.watch(provider).unwrapPrevious();
-    _dependencies = [provider];
-
-    if (page is AsyncLoading) {
-      return PagingState<int, FinampDisplayableOrPlayable>(
-        pages: null,
-        keys: null,
-        isLoading: true,
-        hasNextPage: false,
-        error: null,
-      );
-    }
-    if (page is AsyncError) {
-      return PagingState<int, FinampDisplayableOrPlayable>(
-        pages: null,
-        keys: null,
-        isLoading: false,
-        hasNextPage: false,
-        error: page.error,
-      );
-    }
-
-    final items = (page as AsyncData<List<BaseItemDto>?>).value ?? const <BaseItemDto>[];
-    if (items.isEmpty) {
-      return PagingState<int, FinampDisplayableOrPlayable>(
-        pages: const [],
-        keys: const [],
-        isLoading: false,
-        hasNextPage: false,
-        error: null,
-      );
-    }
-
-    final actualItems = items
-        .map<FinampDisplayableOrPlayable>((item) => FinampPlayableDto.fromItem(item))
-        .toList(growable: false);
-    final prefixCount = start.clamp(0, total).toInt();
-    final actualCount = actualItems.length
-        .clamp(0, total - prefixCount)
-        .toInt();
-    final suffixCount = max(0, total - prefixCount - actualCount);
-
-    // The filler value is never rendered as content. The view checks the global
-    // index with isVirtualPlaceholderIndex() and renders an empty grid cell.
-    // List.filled stores repeated references, so even a large virtual gap stays
-    // cheap compared with materializing thousands of BaseItemDto objects.
-    final filler = actualItems.first;
-    final pages = <List<FinampDisplayableOrPlayable>>[
-      if (prefixCount > 0)
-        List<FinampDisplayableOrPlayable>.filled(prefixCount, filler, growable: false),
-      actualItems.take(actualCount).toList(growable: false),
-      if (suffixCount > 0)
-        List<FinampDisplayableOrPlayable>.filled(suffixCount, filler, growable: false),
-    ];
-    final keys = <int>[
-      if (prefixCount > 0) 0,
-      prefixCount,
-      if (suffixCount > 0) prefixCount + actualCount,
-    ];
-
-    return PagingState<int, FinampDisplayableOrPlayable>(
-      pages: pages,
-      keys: keys,
-      isLoading: false,
-      hasNextPage: false,
-      error: null,
-    );
-  }
-
   PagingState<int, FinampDisplayableOrPlayable> _buildPaged(FinampPagedPlayable<FinampPlayableDto> request) {
     final List<List<FinampDisplayableOrPlayable>> pages = [];
     final List<int> keys = [];
@@ -192,9 +96,6 @@ class PagedContent extends _$PagedContent {
       case MusicScreenPlayable<FinampPlayableDto>():
         musicRequest = request;
     }
-
-    final virtualState = _buildVirtualWindow(musicRequest);
-    if (virtualState != null) return virtualState;
 
     int offset = 0;
     for (int i = 0; i < _pageSizes.length; i++) {
@@ -244,7 +145,7 @@ class PagedContent extends _$PagedContent {
     }
   }
 
-  Future<({int targetIndex, int totalCount})?> resolveAlbumAlphabetTarget(String letter) async {
+  Future<int?> resolveAlbumAlphabetTargetIndex(String letter) async {
     if (letter.isEmpty ||
         ref.read(finampSettingsProvider.isOffline)) {
       return null;
@@ -327,10 +228,7 @@ class PagedContent extends _$PagedContent {
       );
     }
 
-    if (letter == "#") {
-      final total = (await query()).totalRecordCount ?? 0;
-      return (targetIndex: 0, totalCount: total);
-    }
+    if (letter == "#") return 0;
 
     final results = await Future.wait([
       query(),
@@ -338,34 +236,10 @@ class PagedContent extends _$PagedContent {
     ]);
     final total = results[0].totalRecordCount ?? 0;
     final boundaryCount = results[1].totalRecordCount ?? 0;
-    if (total <= 0) {
-      return (targetIndex: 0, totalCount: 0);
-    }
+    if (total <= 0) return 0;
 
-    return (
-      targetIndex: (total - boundaryCount).clamp(0, total - 1).toInt(),
-      totalCount: total,
-    );
+    return (total - boundaryCount).clamp(0, total - 1).toInt();
   }
-
-  Future<int?> beginVirtualAlbumAlphabetWindow(
-    String letter, {
-    int itemsBefore = 80,
-    int windowSize = 240,
-  }) async {
-    final target = await resolveAlbumAlphabetTarget(letter);
-    if (target == null || target.totalCount <= 0) return null;
-
-    final start = max(0, target.targetIndex - itemsBefore);
-    final limit = min(windowSize, target.totalCount - start);
-    _virtualWindowStart = start;
-    _virtualWindowLimit = limit;
-    _virtualTotalCount = target.totalCount;
-    _pageSizes = [];
-    ref.invalidateSelf();
-    return target.targetIndex;
-  }
-
 
   void fetchHomeScreenItems() {
     // The pagination tends to generate multiple requests at once, so block all but the initial one.  The exception is
@@ -380,9 +254,6 @@ class PagedContent extends _$PagedContent {
   }
 
   void refresh() {
-    _virtualWindowStart = null;
-    _virtualWindowLimit = null;
-    _virtualTotalCount = null;
     _pageSizes = [];
     ref.invalidateSelf();
     // Delay invalidation of page providers until after we stop depending on them
