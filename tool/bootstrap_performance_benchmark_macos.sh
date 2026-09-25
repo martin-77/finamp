@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="test/performance-benchmark-harness"
+BRANCH="${FINAMP_BENCH_BRANCH:-test/performance-benchmark-harness}"
 OUT_DIR="${FINAMP_BENCH_OUT:-benchmark-results}"
 
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -168,12 +168,19 @@ case "${FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY:-false}" in
         printf 'Targeted bench-100 download diagnostics enabled.\n'
         ;;
       *)
-        case "${FINAMP_BENCH_SMOKE:-false}" in
-      1|true|TRUE|True|yes|YES|Yes|on|ON|On)
-        printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
-        ;;
+        case "${FINAMP_BENCH_ALPHABET_ONLY:-false}" in
+          1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+            printf 'Targeted alphabet diagnostics enabled (direct-offset=%s).\n' "${FINAMP_BENCH_ALPHABET_DIRECT_OFFSET:-false}"
+            ;;
           *)
-            printf 'Full benchmark matrix enabled.\n'
+            case "${FINAMP_BENCH_SMOKE:-false}" in
+              1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+                printf 'Smoke matrix enabled via FINAMP_BENCH_SMOKE.\n'
+                ;;
+              *)
+                printf 'Full benchmark matrix enabled.\n'
+                ;;
+            esac
             ;;
         esac
         ;;
