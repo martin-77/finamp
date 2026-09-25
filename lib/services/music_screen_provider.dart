@@ -145,13 +145,8 @@ class PagedContent extends _$PagedContent {
     }
   }
 
-  Future<int?> resolveAlbumAlphabetTargetIndex(String letter) async {
-    if (letter.isEmpty ||
-        ref.read(finampSettingsProvider.isOffline)) {
-      return null;
-    }
-
-    final MusicScreenPlayable? musicRequest = switch (request) {
+  MusicScreenPlayable<FinampPlayableDto>? _albumAlphabetMusicRequest() {
+    final MusicScreenPlayable<FinampPlayableDto>? musicRequest = switch (request) {
       Genre<FinampPlayableDto> genre => genre.getMusicScreenRequest(),
       MusicScreenPlayable<FinampPlayableDto> music => music,
       _ => null,
@@ -167,7 +162,13 @@ class PagedContent extends _$PagedContent {
         )) {
       return null;
     }
+    return musicRequest;
+  }
 
+  Future<({int targetIndex, int totalCount})?> _resolveAlbumAlphabetTarget(
+    String letter,
+    MusicScreenPlayable<FinampPlayableDto> musicRequest,
+  ) async {
     final BaseItemId? libraryId;
     if (musicRequest.library == allLibraryPlaceholder) {
       libraryId = null;
@@ -228,7 +229,10 @@ class PagedContent extends _$PagedContent {
       );
     }
 
-    if (letter == "#") return 0;
+    if (letter == "#") {
+      final total = (await query()).totalRecordCount ?? 0;
+      return (targetIndex: 0, totalCount: total);
+    }
 
     final results = await Future.wait([
       query(),
@@ -236,9 +240,61 @@ class PagedContent extends _$PagedContent {
     ]);
     final total = results[0].totalRecordCount ?? 0;
     final boundaryCount = results[1].totalRecordCount ?? 0;
-    if (total <= 0) return 0;
+    if (total <= 0) return (targetIndex: 0, totalCount: 0);
 
-    return (total - boundaryCount).clamp(0, total - 1).toInt();
+    return (
+      targetIndex: (total - boundaryCount).clamp(0, total - 1).toInt(),
+      totalCount: total,
+    );
+  }
+
+  Future<int?> resolveAlbumAlphabetTargetIndex(String letter) async {
+    if (letter.isEmpty || ref.read(finampSettingsProvider.isOffline)) {
+      return null;
+    }
+    final musicRequest = _albumAlphabetMusicRequest();
+    if (musicRequest == null) return null;
+    return (await _resolveAlbumAlphabetTarget(letter, musicRequest))?.targetIndex;
+  }
+
+  Future<({
+    int targetIndex,
+    int totalCount,
+    int startIndex,
+    List<FinampPlayableDto> items,
+  })?> loadAlbumAlphabetWindow(
+    String letter, {
+    int itemsBefore = 80,
+    int windowSize = 240,
+  }) async {
+    if (letter.isEmpty || ref.read(finampSettingsProvider.isOffline)) {
+      return null;
+    }
+    final musicRequest = _albumAlphabetMusicRequest();
+    if (musicRequest == null) return null;
+
+    final target = await _resolveAlbumAlphabetTarget(letter, musicRequest);
+    if (target == null || target.totalCount <= 0) return null;
+
+    final startIndex = max(0, target.targetIndex - itemsBefore);
+    final limit = min(windowSize, target.totalCount - startIndex);
+    final page = await ref.read(
+      loadHomeSectionItemsProvider(
+        request: musicRequest,
+        startIndex: startIndex,
+        limit: limit,
+      ).future,
+    );
+    final items = (page ?? const <BaseItemDto>[])
+        .map(FinampPlayableDto.fromItem)
+        .toList(growable: false);
+
+    return (
+      targetIndex: target.targetIndex,
+      totalCount: target.totalCount,
+      startIndex: startIndex,
+      items: items,
+    );
   }
 
   void fetchHomeScreenItems() {
