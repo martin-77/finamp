@@ -1320,6 +1320,85 @@ class DownloadsSyncService {
     }
   }
 
+  /// Materialize the already-fetched metadata and image dependencies for info
+  /// tracks reached from an album. This is the synchronous equivalent of the
+  /// database/link portion of [_syncDownload] for a track with asRequired=false.
+  ///
+  /// Must be called inside an Isar write transaction, after the album has linked
+  /// the tracks into Isar. Existing DownloadItems are updated with [DownloadItem.copyWith]
+  /// so file state, paths and transcoding profiles are preserved.
+  Set<int> _materializeInfoAlbumTracks(
+    Iterable<DownloadStub> tracks,
+    BaseItemId? viewId,
+  ) {
+    final requiredImageIds = <int>{};
+
+    for (final track in tracks) {
+      assert(track.type == DownloadItemType.track);
+      var canonTrack = _isar.downloadItems.getSync(track.isarId);
+      if (canonTrack == null) {
+        throw StateError(
+          "Album info track ${track.id} was not materialized before bulk linking",
+        );
+      }
+
+      try {
+        final updatedTrack = canonTrack.copyWith(
+          item: track.baseItem,
+          viewId: viewId,
+          orderedChildItems: null,
+          forceCopy: _downloadsService.forceFullSync,
+        );
+        if (updatedTrack != null) {
+          _isar.downloadItems.putSync(updatedTrack, saveLinks: false);
+          canonTrack = updatedTrack;
+        }
+      } catch (e) {
+        // Match the existing per-track sync behavior: a metadata copy failure
+        // must not discard otherwise valid links or an existing download.
+        _syncLogger.warning(e);
+      }
+
+      final requiredImages = <DownloadStub>{};
+      final item = track.baseItem!;
+      if ((item.blurHash ?? item.imageId) != null) {
+        requiredImages.add(
+          DownloadStub.fromItem(
+            type: DownloadItemType.image,
+            item: item,
+          ),
+        );
+      }
+
+      final imageChanges = _updateChildren(
+        canonTrack,
+        true,
+        requiredImages,
+      );
+      requiredImageIds.addAll(
+        requiredImages.map((image) => image.isarId),
+      );
+
+      // This mirrors the existing info-track path for images that already
+      // existed before becoming required by this track.
+      for (final image
+          in _isar.downloadItems
+              .getAllSync(imageChanges.$2.toList())
+              .nonNulls) {
+        if (image.syncTranscodingProfile !=
+            canonTrack.syncTranscodingProfile) {
+          _downloadsService.syncItemDownloadSettings(image);
+        }
+      }
+
+      // A queued/resumed info task for the same track can now safely no-op.
+      // Required processing is intentionally left untouched.
+      _infoCompleted.add(track.isarId);
+    }
+
+    return requiredImageIds;
+  }
+
   /// Syncs a downloaded item with the latest data from the server, then recursively
   /// syncs children.  The item should already be present in Isar.  Items can be synced
   /// as required or info.  Info collections will only have info child nodes, and info
@@ -1677,6 +1756,8 @@ class DownloadsSyncService {
           infoChanges = _updateChildren(canonParent!, false, infoChildren);
         }
 
+        Set<int> requiredSyncIds;
+        Set<int> infoSyncIds;
         if (FinampSettingsHelper.finampSettings.preferQuickSyncs &&
             !_downloadsService.forceFullSync &&
             canonParent!.type == DownloadItemType.collection &&
@@ -1684,16 +1765,68 @@ class DownloadsSyncService {
             canonParent!.state == DownloadItemState.complete) {
           // When quicksyncing, unchanged tracks/albums do not need to be resynced.
           // Items we just linked may need download settings updated.
-          var quicksyncRequiredIds = requiredChanges.$1.union(requiredChanges.$2);
-          var quicksyncInfoIds = infoChanges.$1.union(infoChanges.$2);
-          addAll(quicksyncRequiredIds, quicksyncInfoIds.difference(quicksyncRequiredIds), viewId);
+          requiredSyncIds = requiredChanges.$1.union(requiredChanges.$2);
+          infoSyncIds = infoChanges.$1.union(infoChanges.$2);
         } else {
-          addAll(
-            requiredChildren.map((e) => e.isarId),
-            infoChildren.difference(requiredChildren).map((e) => e.isarId),
-            viewId,
-          );
+          requiredSyncIds =
+              requiredChildren.map((child) => child.isarId).toSet();
+          infoSyncIds =
+              infoChildren
+                  .difference(requiredChildren)
+                  .map((child) => child.isarId)
+                  .toSet();
         }
+
+        // Album child batching already returned complete BaseItemDto metadata for
+        // these tracks. Materialize the exact info-track database/link work in
+        // this album transaction rather than enqueueing one transaction per track.
+        if (!asRequired &&
+            canonParent!.type == DownloadItemType.collection &&
+            canonParent!.baseItemType == BaseItemDtoType.album &&
+            infoSyncIds.isNotEmpty) {
+          final tracksById = <int, DownloadStub>{
+            for (final child in infoChildren)
+              if (child.type == DownloadItemType.track) child.isarId: child,
+          };
+          final bulkTrackIds =
+              infoSyncIds.intersection(tracksById.keys.toSet());
+          if (bulkTrackIds.isNotEmpty) {
+            final bulkTrackStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+            final requiredImageIds = _materializeInfoAlbumTracks(
+              bulkTrackIds.map((id) => tracksById[id]!),
+              viewId,
+            );
+            if (bulkTrackStopwatch != null) {
+              bulkTrackStopwatch.stop();
+              final benchmark = PerformanceBenchmarkService.instance;
+              benchmark.incrementMetricBuffered(
+                "downloadAlbumInfoPhaseMicros_bulk_tracks",
+                bulkTrackStopwatch.elapsedMicroseconds,
+              );
+              benchmark.maxMetricBuffered(
+                "downloadAlbumInfoPhaseMicrosMax_bulk_tracks",
+                bulkTrackStopwatch.elapsedMicroseconds,
+              );
+              benchmark.incrementMetricBuffered(
+                "downloadAlbumInfoBulkTrackCount",
+                bulkTrackIds.length,
+              );
+              benchmark.incrementMetricBuffered(
+                "downloadAlbumInfoBulkImageCount",
+                requiredImageIds.length,
+              );
+            }
+            requiredSyncIds.addAll(requiredImageIds);
+            infoSyncIds.removeAll(bulkTrackIds);
+          }
+        }
+
+        addAll(
+          requiredSyncIds,
+          infoSyncIds.difference(requiredSyncIds),
+          viewId,
+        );
         // If we are a collection, move out of syncFailed because we just completed a
         // successful sync.  tracks/images will be moved out by _initiateDownload.
         // If our linked children just changed, recalculate state with new children.
