@@ -314,6 +314,37 @@ class JellyfinApiHelper {
     return response.items;
   }
 
+  /// Return only [itemIds] that are descendants of [parentItem].
+  ///
+  /// Jellyfin supports combining ParentId with ids on the normal Items
+  /// endpoint. Keep this separate from [getItems] because the general helper
+  /// intentionally rejects itemIds + parentItem for historical call sites.
+  Future<List<BaseItemDto>> getItemsInParentByIds({
+    required BaseItemDto parentItem,
+    required List<BaseItemId> itemIds,
+    required String includeItemTypes,
+    required String fields,
+  }) async {
+    if (itemIds.isEmpty) {
+      return <BaseItemDto>[];
+    }
+
+    final currentUserId = _finampUserHelper.currentUser!.id;
+    return runInIsolate((api) async {
+      final response = await api.getItems(
+        userId: currentUserId,
+        parentId: parentItem.id,
+        ids: itemIds.join(","),
+        includeItemTypes: includeItemTypes,
+        recursive: true,
+        fields: fields,
+      );
+      return QueryResult_BaseItemDto.fromJson(
+        response as Map<String, dynamic>,
+      ).items ?? <BaseItemDto>[];
+    });
+  }
+
   Future<List<BaseItemDto>> getTracksForAlbumIds({
     required List<BaseItemId> albumIds,
     required String fields,
