@@ -280,11 +280,22 @@ class PagedContent extends _$PagedContent {
     return items.length;
   }
 
+  String _albumSortInitial(FinampPlayableDto item) {
+    final value = removeDiacritics(
+      (item.item.nameForSorting ?? item.item.name ?? "").trim().toLowerCase(),
+    );
+    return value.isEmpty ? "" : value[0];
+  }
+
   Future<({
     int targetIndex,
     int estimatedTargetIndex,
     int totalCount,
     int startIndex,
+    int localTargetIndex,
+    String? previousInitial,
+    String targetInitial,
+    String? nextInitial,
     List<FinampPlayableDto> items,
   })?> loadAlbumAlphabetWindow(
     String letter, {
@@ -329,6 +340,10 @@ class PagedContent extends _$PagedContent {
           estimatedTargetIndex: estimatedTargetIndex,
           totalCount: target.totalCount,
           startIndex: startIndex,
+          localTargetIndex: 0,
+          previousInitial: null,
+          targetInitial: _albumSortInitial(items.first),
+          nextInitial: items.length > 1 ? _albumSortInitial(items[1]) : null,
           items: items,
         );
       }
@@ -354,6 +369,14 @@ class PagedContent extends _$PagedContent {
             estimatedTargetIndex: estimatedTargetIndex,
             totalCount: target.totalCount,
             startIndex: startIndex,
+            localTargetIndex: localBoundary,
+            previousInitial: localBoundary > 0
+                ? _albumSortInitial(items[localBoundary - 1])
+                : null,
+            targetInitial: _albumSortInitial(items[localBoundary]),
+            nextInitial: localBoundary + 1 < items.length
+                ? _albumSortInitial(items[localBoundary + 1])
+                : null,
             items: items,
           );
         }
@@ -373,6 +396,14 @@ class PagedContent extends _$PagedContent {
           estimatedTargetIndex: estimatedTargetIndex,
           totalCount: target.totalCount,
           startIndex: startIndex,
+          localTargetIndex: localBoundary,
+          previousInitial: localBoundary > 0
+              ? _albumSortInitial(items[localBoundary - 1])
+              : null,
+          targetInitial: _albumSortInitial(items[localBoundary]),
+          nextInitial: localBoundary + 1 < items.length
+              ? _albumSortInitial(items[localBoundary + 1])
+              : null,
           items: items,
         );
       }
