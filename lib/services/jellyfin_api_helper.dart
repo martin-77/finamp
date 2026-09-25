@@ -336,6 +336,7 @@ class JellyfinApiHelper {
 
   Future<QueryResult_BaseItemDto> getItemsWithTotalRecordCount({
     BaseItemDto? parentItem,
+    BaseItemId? parentId,
     BaseItemId? libraryFilter,
     String? includeItemTypes,
     String? sortBy,
@@ -349,11 +350,14 @@ class JellyfinApiHelper {
     ArtistType? artistType,
     BaseItemId? genreFilter,
     bool? isFavorite,
+    String? nameStartsWithOrGreater,
+    String? nameLessThan,
     int? startIndex,
     int? limit,
   }) async {
     final response = await _fetchGetItemsResponse(
       parentItem: parentItem,
+      parentId: parentId,
       libraryFilter: libraryFilter,
       includeItemTypes: includeItemTypes,
       sortBy: sortBy,
@@ -367,14 +371,59 @@ class JellyfinApiHelper {
       artistType: artistType,
       genreFilter: genreFilter,
       isFavorite: isFavorite,
+      nameStartsWithOrGreater: nameStartsWithOrGreater,
+      nameLessThan: nameLessThan,
       startIndex: startIndex,
       limit: limit,
     );
     return response;
   }
 
+  Future<({QueryResult_BaseItemDto total, QueryResult_BaseItemDto boundary})> getAlbumAlphabetCountPair({
+    BaseItemId? parentId,
+    required String? includeItemTypes,
+    required String? sortBy,
+    required String? sortOrder,
+    String? searchTerm,
+    String? filters,
+    BaseItemId? genreFilter,
+    bool? isFavorite,
+    required String boundaryLetter,
+  }) async {
+    assert(_verifyCallable());
+    final currentUserId = _finampUserHelper.currentUser!.id;
+    final fields = defaultFields;
+
+    // Keep this concurrency local to the two independent count queries. The
+    // worker queue remains serial for every other API operation.
+    return runInIsolate((api) async {
+      Future<QueryResult_BaseItemDto> query(String? boundary) async {
+        final response = await api.getItems(
+          userId: currentUserId,
+          parentId: parentId,
+          includeItemTypes: includeItemTypes,
+          recursive: true,
+          sortBy: sortBy,
+          sortOrder: sortOrder,
+          searchTerm: searchTerm,
+          filters: filters,
+          genreIds: genreFilter?.raw,
+          limit: 1,
+          fields: fields,
+          isFavorite: isFavorite,
+          nameStartsWithOrGreater: boundary,
+        );
+        return QueryResult_BaseItemDto.fromJson(response as Map<String, dynamic>);
+      }
+
+      final results = await Future.wait([query(null), query(boundaryLetter)]);
+      return (total: results[0], boundary: results[1]);
+    });
+  }
+
   Future<QueryResult_BaseItemDto> _fetchGetItemsResponse({
     BaseItemDto? parentItem,
+    BaseItemId? parentId,
     BaseItemId? libraryFilter,
     String? includeItemTypes,
     String? sortBy,
@@ -546,7 +595,7 @@ class JellyfinApiHelper {
         // that.
         response = await api.getItems(
           userId: currentUserId,
-          parentId: parentItem?.id,
+          parentId: parentItem?.id ?? parentId,
           includeItemTypes: includeItemTypes,
           recursive: recursive,
           sortBy: sortBy,

@@ -270,8 +270,12 @@ FINAMP_BENCH_ALPHABET_DIRECT_OFFSET=true \
 
 This flag selects the benchmark's direct-offset comparison mode and labels its
 results accordingly; it does not enable or disable production fast-scroller
-behavior. The normal targeted mode remains suitable for comparing the same
-real alphabet actions across baseline and candidate branches.
+behavior. On a branch that implements the sparse indexed album grid, the
+targeted run additionally performs an `M` jump followed by controlled
+forward/backward viewport scrolling. This exercises sparse-window loading and
+look-ahead prefetch after the jump. A targeted sparse jump is successful only
+when the requested target is actually rendered; a missing target fails the
+measured run rather than being reported as a successful timing.
 
 The host-facing JSONL deliberately removes global target indices, total/virtual
 item counts, sparse cache sizes, absolute grid rows and scroll extents. Those

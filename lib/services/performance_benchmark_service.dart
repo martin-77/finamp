@@ -50,6 +50,24 @@ class PerformanceBenchmarkJumpCommand {
   }
 }
 
+class PerformanceBenchmarkScrollCommand {
+  PerformanceBenchmarkScrollCommand({required this.contentType, required this.viewportDeltas});
+
+  final String contentType;
+  final List<double> viewportDeltas;
+  final Completer<void> _completer = Completer<void>();
+
+  Future<void> get completed => _completer.future;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!_completer.isCompleted) _completer.completeError(error, stackTrace);
+  }
+}
+
 class PerformanceBenchmarkTabCommand {
   PerformanceBenchmarkTabCommand({required this.contentType, required this.refresh});
 
@@ -372,6 +390,8 @@ class PerformanceBenchmarkService {
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _alphabetTapController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
+  final StreamController<PerformanceBenchmarkScrollCommand> _scrollController =
+      StreamController<PerformanceBenchmarkScrollCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
       StreamController<PerformanceBenchmarkTabCommand>.broadcast();
   final StreamController<String> _eventNameController = StreamController<String>.broadcast();
@@ -384,6 +404,8 @@ class PerformanceBenchmarkService {
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands => _jumpController.stream;
   Stream<PerformanceBenchmarkJumpCommand> get alphabetTapCommands => _alphabetTapController.stream;
+
+  Stream<PerformanceBenchmarkScrollCommand> get scrollCommands => _scrollController.stream;
 
   void dispatchAlphabetUiTap(PerformanceBenchmarkJumpCommand command) {
     if (!enabled) return;
@@ -1290,6 +1312,20 @@ class PerformanceBenchmarkService {
     mark("page-requested", values: {"contentType": contentType});
     _pageController.add(command);
     return command.completed.timeout(timeout);
+  }
+
+  Future<void> requestBenchmarkScroll({
+    required String contentType,
+    required List<double> viewportDeltas,
+    Duration timeout = const Duration(minutes: 5),
+  }) async {
+    final command = PerformanceBenchmarkScrollCommand(
+      contentType: contentType,
+      viewportDeltas: List<double>.unmodifiable(viewportDeltas),
+    );
+    mark("sparse-scroll-requested", values: {"contentType": contentType, "stepCount": viewportDeltas.length});
+    _scrollController.add(command);
+    await command.completed.timeout(timeout);
   }
 
   Future<void> requestAlphabetJump({

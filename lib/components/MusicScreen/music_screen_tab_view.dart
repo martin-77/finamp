@@ -23,6 +23,7 @@ import '../../models/finamp_models.dart';
 import '../../models/jellyfin_models.dart';
 import '../../services/downloads_service.dart';
 import '../../services/finamp_settings_helper.dart';
+import '../../services/finamp_user_helper.dart';
 import '../../services/music_screen_provider.dart';
 import '../AlbumScreen/track_list_tile.dart';
 import 'alphabet_item_list.dart';
@@ -78,10 +79,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   StreamSubscription<void>? _musicScreenRefreshStreamSubscription;
   StreamSubscription<void>? _downloadsRefreshStreamSubscription;
   StreamSubscription<PerformanceBenchmarkJumpCommand>? _benchmarkJumpSubscription;
+  StreamSubscription<PerformanceBenchmarkScrollCommand>? _benchmarkScrollSubscription;
   StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
   StreamSubscription<PerformanceBenchmarkPageCommand>? _benchmarkPageSubscription;
   PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
   Stopwatch? _benchmarkAlphabetPageWait;
+  int _benchmarkScrollToLetterInvocations = 0;
+  int _benchmarkScrollToIndexInvocations = 0;
   PerformanceBenchmarkPageCommand? _activeBenchmarkPage;
   int _benchmarkPageInitialCount = 0;
   bool _benchmarkPageFrameScheduled = false;
@@ -95,6 +99,37 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   late AutoScrollController controller;
   String? letterToSearch;
+  String? _alphabetSeekAttemptedLetter;
+  int? _alphabetResolvedTargetIndex;
+  bool _alphabetSeekInProgress = false;
+
+  static const int _sparseAlbumWindowSize = 240;
+  int? _sparseAlbumTotalCount;
+  final Map<int, FinampPlayableDto> _sparseAlbumItems = {};
+  final Set<int> _sparseAlbumWindowStartsLoading = {};
+  bool _sparseUserScrollActive = false;
+  int _sparseUserScrollDirection = 0;
+  int _contentGeneration = 0;
+  int _sparseAlbumGeneration = 0;
+  BaseItemId? _sparseCurrentViewId;
+
+  bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
+
+  void _clearSparseAlbumState({bool invalidateContent = false}) {
+    if (invalidateContent) {
+      _contentGeneration++;
+    }
+    _sparseAlbumGeneration++;
+    _sparseAlbumTotalCount = null;
+    _sparseAlbumItems.clear();
+    _sparseAlbumWindowStartsLoading.clear();
+    _sparseUserScrollActive = false;
+    _sparseUserScrollDirection = 0;
+    _sparseCurrentViewId = null;
+    letterToSearch = null;
+    _alphabetSeekAttemptedLetter = null;
+    _alphabetResolvedTargetIndex = null;
+  }
 
   Timer? timer;
 
@@ -143,6 +178,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       ref.read(pageControl.notifier).newPage();
     });
 
+    _benchmarkScrollSubscription = PerformanceBenchmarkService.instance.scrollCommands.listen((command) {
+      if (widget.contentType?.name != command.contentType) return;
+      unawaited(_runBenchmarkSparseScroll(command));
+    });
+
     _benchmarkJumpSubscription = PerformanceBenchmarkService.instance.jumpCommands.listen((command) {
       if (widget.contentType?.name != command.contentType) return;
       if (_activeBenchmarkJump != null) {
@@ -168,6 +208,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       }
 
       _activeBenchmarkJump = command;
+      _benchmarkScrollToLetterInvocations = 0;
+      _benchmarkScrollToIndexInvocations = 0;
       final benchmark = PerformanceBenchmarkService.instance;
       benchmark.mark("alphabet-jump-start", values: {"contentType": command.contentType, "letter": command.letter});
       benchmark.metric("alphabetJumpPagesLoaded", 0);
@@ -179,6 +221,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
 
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant MusicScreenTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.displayable != widget.displayable) {
+      _clearSparseAlbumState(invalidateContent: true);
+    }
   }
 
   void _recordBenchmarkSortConfiguration() {
@@ -425,7 +475,31 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   Future<void> scrollToLetter(String letter) async {
     if (letter.isEmpty) return;
 
+    // A sparse alphabet seek calls setState before it finishes positioning the
+    // grid. The same letter is just a rebuild; a different letter is a newer
+    // user intent. Queue that newer intent and let the in-flight seek finish
+    // without falling through into legacy paging.
+    if (_alphabetSeekInProgress) {
+      if (letterToSearch == letter) return;
+      letterToSearch = letter;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      return;
+    }
+
     final benchmark = PerformanceBenchmarkService.instance;
+    if (_activeBenchmarkJump != null) {
+      _benchmarkScrollToLetterInvocations++;
+    }
+    if (letterToSearch != letter) {
+      letterToSearch = letter;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+    }
+
+    final state = ref.read(pageControl);
+    if (state.isLoading) return;
+
     final pageWait = _benchmarkAlphabetPageWait;
     if (pageWait != null) {
       pageWait.stop();
@@ -435,7 +509,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     final localScan = Stopwatch()..start();
-    letterToSearch = letter;
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
 
@@ -444,7 +517,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     //TODO use binary search to improve performance for already loaded pages
-    final state = ref.read(pageControl);
     final itemList = state.items ?? [];
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
@@ -483,9 +555,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
-        await controller.scrollToIndex(
-          i,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: i,
+          itemCount: itemList.length,
           preferPosition: AutoScrollPosition.begin,
         );
         targetScroll.stop();
@@ -493,6 +565,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         _completeBenchmarkJump();
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
@@ -503,10 +577,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
-        await controller.scrollToIndex(
-          (i - 1).clamp(0, itemList.length - 1),
-          // duration: scrollDuration,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: (i - 1).clamp(0, itemList.length - 1),
+          itemCount: itemList.length,
           preferPosition: AutoScrollPosition.middle,
         );
         targetScroll.stop();
@@ -514,6 +587,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         _completeBenchmarkJump();
         return;
       }
@@ -523,25 +598,170 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     benchmark.incrementMetric("alphabetLocalScanMicros", localScan.elapsedMicroseconds);
 
     timer?.cancel();
+
+    Future<void> requestPage(int pageSize) async {
+      benchmark.incrementMetric("alphabetJumpPagesLoaded");
+      benchmark.mark(
+        "alphabet-normal-page-requested",
+        values: {
+          "loadedItems": itemList.length,
+          "pageSize": pageSize,
+          "seekAttemptedLetter": _alphabetSeekAttemptedLetter,
+          "usingSparseGrid": _usingSparseAlbumGrid,
+        },
+      );
+      benchmark.mark("alphabet-jump-page-requested", values: {"loadedItems": itemList.length, "pageSize": pageSize});
+      _benchmarkAlphabetPageWait = Stopwatch()..start();
+      ref.read(pageControl.notifier).newPage(pageSize: pageSize);
+    }
+
+    if (_alphabetResolvedTargetIndex != null && _alphabetResolvedTargetIndex! >= itemList.length) {
+      final remaining = _alphabetResolvedTargetIndex! - itemList.length + 1;
+      await requestPage(min(remaining, 5000));
+      return;
+    }
+
+    if (!_alphabetSeekInProgress && _alphabetSeekAttemptedLetter != letter && !_useListModeForCurrentContent()) {
+      _alphabetSeekAttemptedLetter = letter;
+      _alphabetSeekInProgress = true;
+      final seekGeneration = _contentGeneration;
+      final seek = Stopwatch()..start();
+      final windowWait = Stopwatch()..start();
+      benchmark.mark("alphabet-jump-seek-start");
+      try {
+        final window = await ref.read(pageControl.notifier).loadAlbumAlphabetWindow(letter);
+        seek.stop();
+        windowWait.stop();
+        benchmark.incrementMetric("alphabetSeekResolveMicros", seek.elapsedMicroseconds);
+        benchmark.incrementMetric("alphabetPageWaitMicros", windowWait.elapsedMicroseconds);
+        benchmark.mark(
+          "alphabet-jump-seek-complete",
+          values: {
+            "targetCorrectionDelta": window == null ? null : window.targetIndex - window.estimatedTargetIndex,
+            "localTargetIndex": window?.localTargetIndex,
+            "previousInitial": window?.previousInitial,
+            "targetInitial": window?.targetInitial,
+            "nextInitial": window?.nextInitial,
+            "mode": "sparse-indexed-grid",
+          },
+        );
+
+        if (seekGeneration != _contentGeneration || letterToSearch != letter) {
+          return;
+        }
+
+        if (window != null && window.totalCount > 0 && window.items.isNotEmpty) {
+          _sparseAlbumGeneration++;
+          _sparseAlbumWindowStartsLoading.clear();
+          _sparseCurrentViewId = ref.read<BaseItemId?>(
+            FinampUserHelper.finampCurrentUserProvider.select((value) => value?.currentView?.id),
+          );
+          setState(() {
+            _sparseAlbumTotalCount = window.totalCount;
+            _sparseAlbumItems.clear();
+            for (var i = 0; i < window.items.length; i++) {
+              _sparseAlbumItems[window.startIndex + i] = window.items[i];
+            }
+          });
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted || letterToSearch != letter) return;
+
+          _alphabetResolvedTargetIndex = window.targetIndex;
+          benchmark.mark(
+            "alphabet-jump-page-ready",
+            values: {"loadedItems": window.items.length, "mode": "sparse-indexed-grid"},
+          );
+          benchmark.mark("alphabet-jump-target-located");
+
+          timer?.cancel();
+          final targetScroll = Stopwatch()..start();
+          await _scrollToTargetIndex(
+            targetIndex: window.targetIndex,
+            itemCount: window.totalCount,
+            preferPosition: AutoScrollPosition.begin,
+          );
+          targetScroll.stop();
+          benchmark.incrementMetric("alphabetTargetScrollMicros", targetScroll.elapsedMicroseconds);
+          final targetRendered = controller.tagMap.containsKey(window.targetIndex);
+          if (_activeBenchmarkJump != null && !targetRendered) {
+            benchmark.mark("alphabet-jump-target-not-rendered");
+            final command = _activeBenchmarkJump!;
+            command.completeError(StateError("Alphabet jump target was not rendered"), StackTrace.current);
+            _activeBenchmarkJump = null;
+            letterToSearch = null;
+            _alphabetSeekAttemptedLetter = null;
+            _alphabetResolvedTargetIndex = null;
+            return;
+          }
+          benchmark.mark("alphabet-jump-target-rendered");
+
+          letterToSearch = null;
+          _alphabetSeekAttemptedLetter = null;
+          _alphabetResolvedTargetIndex = null;
+          _completeBenchmarkJump();
+          return;
+        }
+      } finally {
+        _alphabetSeekInProgress = false;
+        final pendingLetter = letterToSearch;
+        if (mounted && pendingLetter != null && (pendingLetter != letter || seekGeneration != _contentGeneration)) {
+          await scrollToLetter(pendingLetter);
+        }
+      }
+    }
+
+    // The sparse album seek does not depend on the legacy pager having a
+    // next page. Only stop here once the sparse path had a chance to resolve
+    // the requested letter.
     if (!state.hasNextPage) {
       letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
       _completeBenchmarkJump();
-    } else {
-      // Normal interactive use gives up after eight seconds so deferred
-      // image loading can resume. The benchmark must not do that: a slow page
-      // is exactly what we are trying to measure, so keep the target letter
-      // active until the real page arrives or the suite-level timeout fires.
-      if (_activeBenchmarkJump == null) {
-        timer = Timer(const Duration(seconds: 8), () {
-          letterToSearch = null;
-        });
-      }
-
-      benchmark.incrementMetric("alphabetJumpPagesLoaded");
-      benchmark.mark("alphabet-jump-page-requested", values: {"loadedItems": itemList.length});
-      _benchmarkAlphabetPageWait = Stopwatch()..start();
-      ref.read(pageControl.notifier).newPage();
+      return;
     }
+
+    if (!_alphabetSeekInProgress && _alphabetSeekAttemptedLetter != letter) {
+      _alphabetSeekAttemptedLetter = letter;
+      _alphabetSeekInProgress = true;
+      final seekGeneration = _contentGeneration;
+      final seek = Stopwatch()..start();
+      benchmark.mark("alphabet-jump-seek-start");
+      try {
+        final targetIndex = await ref.read(pageControl.notifier).resolveAlbumAlphabetTargetIndex(letter);
+        seek.stop();
+        benchmark.incrementMetric("alphabetSeekResolveMicros", seek.elapsedMicroseconds);
+        benchmark.mark("alphabet-jump-seek-complete", values: {"targetIndex": targetIndex});
+
+        if (seekGeneration != _contentGeneration || letterToSearch != letter) {
+          return;
+        }
+
+        _alphabetResolvedTargetIndex = targetIndex;
+        if (targetIndex != null && targetIndex >= itemList.length) {
+          final remaining = targetIndex - itemList.length + 1;
+          await requestPage(min(remaining, 5000));
+          return;
+        }
+      } finally {
+        _alphabetSeekInProgress = false;
+        final pendingLetter = letterToSearch;
+        if (mounted && pendingLetter != null && (pendingLetter != letter || seekGeneration != _contentGeneration)) {
+          await scrollToLetter(pendingLetter);
+        }
+      }
+    }
+
+    // Unsupported sort/filter combinations keep the existing paging behavior.
+    if (_activeBenchmarkJump == null) {
+      timer = Timer(const Duration(seconds: 8), () {
+        letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
+      });
+    }
+
+    await requestPage(musicScreenPageSize);
     final pageEdgeScroll = Stopwatch()..start();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
@@ -554,6 +774,219 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
     pageEdgeScroll.stop();
     benchmark.incrementMetric("alphabetPageEdgeScrollMicros", pageEdgeScroll.elapsedMicroseconds);
+  }
+
+  String _indexDistanceBucket(int distance) {
+    if (distance < 10) return "0-9";
+    if (distance < 50) return "10-49";
+    if (distance < 100) return "50-99";
+    if (distance < 500) return "100-499";
+    if (distance < 1000) return "500-999";
+    if (distance < 5000) return "1000-4999";
+    if (distance < 10000) return "5000-9999";
+    return "10000+";
+  }
+
+  bool _useListModeForCurrentContent() {
+    final contentType = widget.contentType;
+    if (contentType == null || contentType == ContentType.tracks) {
+      return true;
+    }
+    return ref.read(finampSettingsProvider.perTabContentViewType(contentType)) != ContentViewType.grid;
+  }
+
+  Future<void> _scrollToTargetIndex({
+    required int targetIndex,
+    required int itemCount,
+    required AutoScrollPosition preferPosition,
+  }) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    final renderedIndices = controller.tagMap.keys.toList(growable: false);
+    final medianIndex = renderedIndices.isEmpty ? targetIndex : renderedIndices[renderedIndices.length ~/ 2];
+    var duration = _getAnimationDurationForOffsetToIndex(targetIndex);
+    final useListMode = _useListModeForCurrentContent();
+    final useSparseDirectOffset = _usingSparseAlbumGrid && !useListMode;
+
+    if (_activeBenchmarkJump != null) {
+      benchmark.metric("alphabetRequestedAnimationMs", duration.inMilliseconds);
+      benchmark.metric("alphabetIndexDistanceBucket", _indexDistanceBucket((medianIndex - targetIndex).abs()));
+      benchmark.metric("alphabetRenderedTagCount", renderedIndices.length);
+      benchmark.metric("alphabetViewMode", useListMode ? "list" : "grid");
+    }
+
+    if (useSparseDirectOffset && controller.hasClients && itemCount > 1) {
+      final position = controller.position;
+      final estimatedOffset = _estimateGridOffsetForIndex(targetIndex, position);
+
+      benchmark.mark(
+        "alphabet-direct-offset-prejump",
+        values: {"viewMode": "grid", "offsetStrategy": "sparse-grid-geometry"},
+      );
+
+      controller.jumpTo(estimatedOffset);
+      await WidgetsBinding.instance.endOfFrame;
+      await WidgetsBinding.instance.endOfFrame;
+
+      double? exactRevealOffset;
+      double? exactCorrectionDelta;
+      final targetTagState = controller.tagMap[targetIndex];
+      final targetRenderObject = targetTagState?.context.findRenderObject();
+      if (targetRenderObject != null && targetRenderObject.attached) {
+        final viewport = RenderAbstractViewport.of(targetRenderObject);
+        final reveal = viewport.getOffsetToReveal(targetRenderObject, 0);
+        exactRevealOffset = reveal.offset.clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+        exactCorrectionDelta = exactRevealOffset - controller.position.pixels;
+
+        if (exactCorrectionDelta.abs() > 0.5) {
+          controller.jumpTo(exactRevealOffset);
+          await WidgetsBinding.instance.endOfFrame;
+        }
+      }
+
+      final visibleTags = controller.tagMap.keys.toList()..sort();
+      final crossAxisCount = _gridCrossAxisCount();
+      benchmark.mark(
+        "alphabet-grid-final-position",
+        values: {
+          "crossAxisCount": crossAxisCount,
+          "targetColumn": targetIndex % crossAxisCount,
+          "renderedTagCount": visibleTags.length,
+          "targetTagRendered": controller.tagMap.containsKey(targetIndex),
+          "firstRenderedDelta": visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
+          "exactCorrectionDelta": exactCorrectionDelta,
+          "mode": "sparse-direct-offset-exact-reveal",
+        },
+      );
+      return;
+    }
+
+    if (PerformanceBenchmarkService.enabled &&
+        PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic &&
+        controller.hasClients &&
+        itemCount > 1) {
+      final position = controller.position;
+      final estimatedOffset = useListMode
+          ? _estimateListOffsetForIndex(targetIndex, position)
+          : _estimateGridOffsetForIndex(targetIndex, position);
+
+      benchmark.mark(
+        "alphabet-direct-offset-prejump",
+        values: {
+          "viewMode": useListMode ? "list" : "grid",
+          "offsetStrategy": useListMode ? "list-extent" : "grid-geometry",
+        },
+      );
+
+      controller.jumpTo(estimatedOffset);
+      await WidgetsBinding.instance.endOfFrame;
+
+      if (MediaQuery.disableAnimationsOf(context)) {
+        duration = Duration.zero;
+      } else {
+        final refinedDurationMs = _getAnimationDurationForOffsetToIndex(targetIndex).inMilliseconds.clamp(120, 350);
+        duration = Duration(milliseconds: refinedDurationMs);
+      }
+
+      if (_activeBenchmarkJump != null) {
+        benchmark.metric("alphabetPostPrejumpAnimationMs", duration.inMilliseconds);
+      }
+    }
+
+    if (_activeBenchmarkJump != null) {
+      _benchmarkScrollToIndexInvocations++;
+    }
+    await controller.scrollToIndex(targetIndex, duration: duration, preferPosition: preferPosition);
+
+    if (_activeBenchmarkJump != null && !useListMode) {
+      await WidgetsBinding.instance.endOfFrame;
+      final visibleTags = controller.tagMap.keys.toList()..sort();
+      final crossAxisCount = _gridCrossAxisCount();
+      benchmark.mark(
+        "alphabet-grid-final-position",
+        values: {
+          "targetIndex": targetIndex,
+          "crossAxisCount": crossAxisCount,
+          "targetColumn": targetIndex % crossAxisCount,
+          "targetRow": targetIndex ~/ crossAxisCount,
+          "firstRenderedTag": visibleTags.isEmpty ? null : visibleTags.first,
+          "lastRenderedTag": visibleTags.isEmpty ? null : visibleTags.last,
+          "renderedTagCount": visibleTags.length,
+          "targetTagRendered": controller.tagMap.containsKey(targetIndex),
+          "firstRenderedDelta": visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
+        },
+      );
+    }
+  }
+
+  double _estimateListOffsetForIndex(int targetIndex, ScrollPosition position) {
+    const suggestedItemExtent = 72.0;
+    return (targetIndex * suggestedItemExtent).clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+  }
+
+  int _gridCrossAxisCount() {
+    final contentType = widget.contentType;
+    if (contentType == null) return 1;
+
+    final widthData = calculateItemCollectionCardWidth(ref);
+    final itemWidth = widthData.$1;
+    final itemPadding = widthData.$2;
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final crossAxisExtent = max(
+      1.0,
+      MediaQuery.sizeOf(context).width - mediaPadding.left - mediaPadding.right - itemPadding,
+    );
+    return max(1, ((crossAxisExtent + itemPadding) / (itemWidth + itemPadding)).round());
+  }
+
+  double _estimateGridOffsetForIndex(int targetIndex, ScrollPosition position) {
+    final contentType = widget.contentType;
+    if (contentType == null) {
+      return _estimateListOffsetForIndex(targetIndex, position);
+    }
+
+    final crossAxisCount = _gridCrossAxisCount();
+    final targetRow = targetIndex ~/ crossAxisCount;
+
+    // Sparse grids already expose the final global scroll extent because
+    // itemCount equals Jellyfin's total record count. Derive the row stride
+    // from Flutter's actual laid-out extent instead of trying to reconstruct
+    // GridView geometry from card dimensions. The previous reconstruction
+    // drifted by ~3-4%, which becomes hundreds of rows over large libraries.
+    final sparseTotal = _sparseAlbumTotalCount;
+    if (sparseTotal != null && sparseTotal > 0) {
+      final totalRows = (sparseTotal + crossAxisCount - 1) ~/ crossAxisCount;
+      if (totalRows > 0) {
+        final widthData = calculateItemCollectionCardWidth(ref);
+        final itemPadding = widthData.$2;
+        final laidOutContentExtent = position.maxScrollExtent + position.viewportDimension;
+        final usableContentExtent = max(1.0, laidOutContentExtent - (2 * itemPadding));
+        final rowStride = usableContentExtent / totalRows;
+        final estimatedOffset = itemPadding + targetRow * rowStride;
+
+        return estimatedOffset.clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+      }
+    }
+
+    final widthData = calculateItemCollectionCardWidth(ref);
+    final itemWidth = widthData.$1;
+    final itemPadding = widthData.$2;
+    final itemHeight = calculateItemCollectionCardHeight(
+      ref: ref,
+      sectionInfo: null,
+      itemType: contentType.itemType ?? BaseItemDtoType.album,
+    );
+
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final crossAxisExtent = max(
+      1.0,
+      MediaQuery.sizeOf(context).width - mediaPadding.left - mediaPadding.right - itemPadding,
+    );
+
+    final crossAxisSpacing = crossAxisExtent / crossAxisCount;
+    final mainAxisStride = itemHeight - itemWidth + crossAxisSpacing;
+    final estimatedOffset = itemPadding + targetRow * mainAxisStride;
+
+    return estimatedOffset.clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
   }
 
   Duration _getAnimationDurationForOffsetToIndex(int index) {
@@ -569,6 +1002,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final command = _activeBenchmarkJump;
     if (command == null) return;
     final state = ref.read(pageControl);
+    PerformanceBenchmarkService.instance.metric(
+      "alphabetScrollToLetterInvocations",
+      _benchmarkScrollToLetterInvocations,
+    );
+    PerformanceBenchmarkService.instance.metric("alphabetScrollToIndexInvocations", _benchmarkScrollToIndexInvocations);
     PerformanceBenchmarkService.instance.mark(
       "alphabet-jump-complete",
       values: {"loadedItems": state.items?.length ?? 0},
@@ -582,6 +1020,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _musicScreenRefreshStreamSubscription?.cancel();
     _downloadsRefreshStreamSubscription?.cancel();
     _benchmarkJumpSubscription?.cancel();
+    _benchmarkScrollSubscription?.cancel();
     _benchmarkTabSubscription?.cancel();
     _benchmarkPageSubscription?.cancel();
     _activeBenchmarkPage?.completeError(
@@ -606,8 +1045,114 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void _refresh() {
     // TODO this has ref.watch, does it explode?
     if (!context.mounted) return;
+    if (_usingSparseAlbumGrid) {
+      setState(() {
+        _clearSparseAlbumState(invalidateContent: true);
+      });
+    } else {
+      _clearSparseAlbumState(invalidateContent: true);
+    }
     ref.read(pageControl.notifier).refresh();
     // TODO test error cases?
+  }
+
+  Future<void> _runBenchmarkSparseScroll(PerformanceBenchmarkScrollCommand command) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    if (!_usingSparseAlbumGrid || !controller.hasClients) {
+      command.completeError(StateError("Sparse album grid is not active for scroll benchmark"), StackTrace.current);
+      return;
+    }
+
+    try {
+      benchmark.mark("sparse-scroll-start", values: {"steps": command.viewportDeltas.length});
+
+      for (var step = 0; step < command.viewportDeltas.length; step++) {
+        // Each benchmark segment represents a separate user drag. ScrollEnd
+        // from the previous animateTo clears the production drag flag, so
+        // re-arm it before the next synthetic segment.
+        _sparseUserScrollActive = true;
+        final delta = command.viewportDeltas[step];
+        _sparseUserScrollDirection = delta == 0 ? 0 : (delta > 0 ? 1 : -1);
+        final position = controller.position;
+        final target = (position.pixels + delta * position.viewportDimension)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+
+        benchmark.mark("sparse-scroll-step-start", values: {"step": step, "viewportDelta": delta});
+
+        await controller.animateTo(target, duration: const Duration(milliseconds: 650), curve: Curves.easeOutCubic);
+        await WidgetsBinding.instance.endOfFrame;
+
+        final deadline = DateTime.now().add(const Duration(seconds: 10));
+        while (_sparseAlbumWindowStartsLoading.isNotEmpty && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        await WidgetsBinding.instance.endOfFrame;
+
+        benchmark.mark(
+          "sparse-scroll-step-complete",
+          values: {
+            "step": step,
+            "viewportDelta": delta,
+            "pendingWindows": _sparseAlbumWindowStartsLoading.length,
+            "renderedTags": controller.tagMap.length,
+          },
+        );
+      }
+      benchmark.mark("sparse-scroll-complete", values: {"renderedTags": controller.tagMap.length});
+      command.complete();
+    } catch (error, stackTrace) {
+      command.completeError(error, stackTrace);
+    } finally {
+      _sparseUserScrollActive = false;
+      _sparseUserScrollDirection = 0;
+    }
+  }
+
+  void _queueSparseAlbumWindowLoad(int index) {
+    final benchmarkRun = PerformanceBenchmarkService.instance.activeRun;
+    if (_activeBenchmarkJump != null || (benchmarkRun?.scenario.startsWith("alphabet-sparse-scroll-") ?? false)) {
+      PerformanceBenchmarkService.instance.mark(
+        "alphabet-sparse-window-load-queued",
+        values: {"seekInProgress": _alphabetSeekInProgress, "userScrollActive": _sparseUserScrollActive},
+      );
+    }
+    final total = _sparseAlbumTotalCount;
+    if (total == null || total <= 0) return;
+
+    const step = 160;
+    final bucket = index ~/ step;
+    final startIndex = max(0, bucket * step - 40);
+    if (!_sparseAlbumWindowStartsLoading.add(startIndex)) return;
+    final generation = _sparseAlbumGeneration;
+
+    unawaited(() async {
+      try {
+        final items = await ref
+            .read(pageControl.notifier)
+            .loadAlbumWindow(startIndex: startIndex, limit: _sparseAlbumWindowSize);
+        if (!mounted || items == null || _sparseAlbumTotalCount != total || _sparseAlbumGeneration != generation) {
+          return;
+        }
+        setState(() {
+          for (var i = 0; i < items.length; i++) {
+            final globalIndex = startIndex + i;
+            if (globalIndex >= total) break;
+            _sparseAlbumItems[globalIndex] = items[i];
+          }
+        });
+        if (PerformanceBenchmarkService.instance.activeRun?.scenario.startsWith("alphabet-sparse-scroll-") ?? false) {
+          PerformanceBenchmarkService.instance.mark(
+            "alphabet-sparse-window-load-complete",
+            values: {"loadedItems": items.length},
+          );
+        }
+      } finally {
+        if (_sparseAlbumGeneration == generation) {
+          _sparseAlbumWindowStartsLoading.remove(startIndex);
+        }
+      }
+    }());
   }
 
   void _retry() {
@@ -688,9 +1233,19 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       );
     }
     final itemPadding = calculateItemCollectionCardWidth(ref).$2;
+    final isOffline = ref.watch(finampSettingsProvider.isOffline);
+    final currentViewId = ref.watch<BaseItemId?>(
+      FinampUserHelper.finampCurrentUserProvider.select((value) => value?.currentView?.id),
+    );
+    if (_usingSparseAlbumGrid && (isOffline || _sparseCurrentViewId != currentViewId)) {
+      _clearSparseAlbumState(invalidateContent: true);
+    }
     final useListMode = widget.contentType == null || widget.contentType == ContentType.tracks
         ? true
         : ref.watch(finampSettingsProvider.perTabContentViewType(widget.contentType!)) != ContentViewType.grid;
+    if (useListMode && _usingSparseAlbumGrid) {
+      _clearSparseAlbumState(invalidateContent: true);
+    }
     var tabContent = useListMode
         ? SafeArea(
             top: false,
@@ -773,6 +1328,78 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 invisibleItemsThreshold: 70,
               ),
               separatorBuilder: (context, index) => const SizedBox.shrink(),
+            ),
+          )
+        : _usingSparseAlbumGrid
+        ? NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollStartNotification && notification.dragDetails != null) {
+                _sparseUserScrollActive = true;
+              } else if (notification is ScrollUpdateNotification && notification.dragDetails != null) {
+                _sparseUserScrollActive = true;
+                final delta = notification.scrollDelta;
+                if (delta != null && delta.abs() > 0.5) {
+                  _sparseUserScrollDirection = delta > 0 ? 1 : -1;
+                }
+              } else if (notification is ScrollEndNotification) {
+                _sparseUserScrollActive = false;
+                _sparseUserScrollDirection = 0;
+              }
+              return false;
+            },
+            child: GridView.builder(
+              controller: controller,
+              physics: _DeferredLoadingAlwaysScrollableScrollPhysics(tabState: this),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(
+                top: itemPadding,
+                bottom: itemPadding,
+                left: MediaQuery.paddingOf(context).left + itemPadding,
+                right: MediaQuery.paddingOf(context).right,
+              ),
+              gridDelegate: MusicScreenGridLayout(ref: ref, contentType: widget.contentType!),
+              itemCount: _sparseAlbumTotalCount!,
+              itemBuilder: (context, index) {
+                final item = _sparseAlbumItems[index];
+                if (item == null) {
+                  // During an alphabet seek the target window is loaded
+                  // explicitly. Do not let GridView cache-extent placeholders
+                  // trigger overlapping sparse-window fetches at the same time.
+                  // Normal manual scrolling resumes indexed window loading as
+                  // soon as the seek completes.
+                  if (!_alphabetSeekInProgress && _sparseUserScrollActive) {
+                    _queueSparseAlbumWindowLoad(index);
+                  }
+                  return const SizedBox.shrink();
+                }
+                if (!_alphabetSeekInProgress && _sparseUserScrollActive && _sparseUserScrollDirection != 0) {
+                  const lookAheadItems = 40;
+                  final probeIndex = index + (_sparseUserScrollDirection * lookAheadItems);
+                  final total = _sparseAlbumTotalCount!;
+                  if (probeIndex >= 0 && probeIndex < total && !_sparseAlbumItems.containsKey(probeIndex)) {
+                    _queueSparseAlbumWindowLoad(probeIndex);
+                  }
+                }
+
+                final baseItem = item.item;
+                return CachedBuilder(
+                  key: ValueKey(baseItem.id),
+                  cacheKey: (baseItem.id, index),
+                  builder: (context) {
+                    return AutoScrollTag(
+                      key: ValueKey(index),
+                      controller: controller,
+                      index: index,
+                      child: ItemWrapper(
+                        key: ValueKey(baseItem.id),
+                        item: baseItem,
+                        isGrid: true,
+                        genreFilter: widget.sortConfig.genreFilter,
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           )
         : PagedGridView<int, FinampDisplayableOrPlayable>(
