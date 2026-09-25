@@ -1030,11 +1030,35 @@ class DownloadsSyncService {
     // ahead here lets album child requests be batched without changing task
     // ownership, priority or processing order.
     if (albums.length < albumBatchSize) {
+      final Stopwatch? queueScanStopwatch =
+          PerformanceBenchmarkService.enabled
+              ? (Stopwatch()..start())
+              : null;
       final queuedSyncs = _isar.isarTaskDatas
           .where()
           .typeEqualTo(type)
           .sortByAge()
           .findAllSync();
+      if (queueScanStopwatch != null) {
+        queueScanStopwatch.stop();
+        final PerformanceBenchmarkService activeBenchmark =
+            PerformanceBenchmarkService.instance;
+        activeBenchmark.incrementMetricBuffered(
+          "downloadAlbumLookaheadQueueScanCount",
+        );
+        activeBenchmark.incrementMetricBuffered(
+          "downloadAlbumLookaheadQueueScanMicros",
+          queueScanStopwatch.elapsedMicroseconds,
+        );
+        activeBenchmark.maxMetricBuffered(
+          "downloadAlbumLookaheadQueueScanMicrosMax",
+          queueScanStopwatch.elapsedMicroseconds,
+        );
+        activeBenchmark.maxMetricBuffered(
+          "downloadAlbumLookaheadQueueSizeMax",
+          queuedSyncs.length,
+        );
+      }
       for (final queuedSync in queuedSyncs) {
         addAlbumFromSync(queuedSync);
         if (albums.length >= albumBatchSize) {
@@ -1380,6 +1404,10 @@ class DownloadsSyncService {
         parent.type == DownloadItemType.collection &&
         parent.baseItemType == BaseItemDtoType.album &&
         !asRequired;
+    final bool benchmarkTrackInfo =
+        PerformanceBenchmarkService.enabled &&
+        parent.type == DownloadItemType.track &&
+        !asRequired;
 
     void recordAlbumInfoPhase(String phase, Stopwatch? stopwatch) {
       if (!benchmarkAlbumInfo || stopwatch == null) {
@@ -1398,6 +1426,24 @@ class DownloadsSyncService {
       );
     }
 
+    void recordTrackInfoPhase(String phase, Stopwatch? stopwatch) {
+      if (!benchmarkTrackInfo || stopwatch == null) {
+        return;
+      }
+      stopwatch.stop();
+      final int elapsed = stopwatch.elapsedMicroseconds;
+      final PerformanceBenchmarkService benchmark =
+          PerformanceBenchmarkService.instance;
+      benchmark.incrementMetricBuffered(
+        "downloadTrackInfoPhaseMicros_$phase",
+        elapsed,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadTrackInfoPhaseMicrosMax_$phase",
+        elapsed,
+      );
+    }
+
     _syncLogger.finer("Syncing ${parent.baseItemType.name} ${parent.name} with required:$asRequired viewId:$viewId");
 
     //
@@ -1408,6 +1454,8 @@ class DownloadsSyncService {
     BaseItemDto? newBaseItem;
     final benchmarkAlbumMetadataStopwatch =
         benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackMetadataStopwatch =
+        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     //If we aren't quicksyncing, fetch the latest BaseItemDto to copy into Isar.
     if (parent.type.requiresItem) {
       bool expectNewItem = false;
@@ -1438,6 +1486,7 @@ class DownloadsSyncService {
       }
     }
     recordAlbumInfoPhase("metadata", benchmarkAlbumMetadataStopwatch);
+    recordTrackInfoPhase("metadata", benchmarkTrackMetadataStopwatch);
     // We return the same BaseItemDto for all requests, so null out playlistItemId
     // as it will not usually be accurate.  Modifying without copying should be
     // fine as this item was generated within the download service, so this value
@@ -1513,6 +1562,8 @@ class DownloadsSyncService {
         if ((item.blurHash ?? item.imageId) != null) {
           requiredChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
+        final Stopwatch? benchmarkTrackViewStopwatch =
+            benchmarkTrackInfo ? (Stopwatch()..start()) : null;
         if (viewId == null && item.albumId != null) {
           isarParent ??= _isar.downloadItems.getSync(parent.isarId);
           if (isarParent?.viewId == null) {
@@ -1520,6 +1571,7 @@ class DownloadsSyncService {
             viewId = await _getAlbumViewID(item.albumId!);
           }
         }
+        recordTrackInfoPhase("view", benchmarkTrackViewStopwatch);
         if (asRequired) {
           List<BaseItemId> collectionIds = [];
           collectionIds.addAll(item.genreItems?.map((e) => e.id) ?? []);
@@ -1579,6 +1631,8 @@ class DownloadsSyncService {
     // once network requests come back.
     final benchmarkAlbumDatabaseStopwatch =
         benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackDatabaseStopwatch =
+        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     await SchedulerBinding.instance.scheduleTask(() async {
       DownloadItem? canonParent;
       _isar.writeTxnSync(() {
@@ -1680,6 +1734,7 @@ class DownloadsSyncService {
       // Set priority high to prevent stalling, but lower than creating network requests
     }, Priority.animation);
     recordAlbumInfoPhase("database", benchmarkAlbumDatabaseStopwatch);
+    recordTrackInfoPhase("database", benchmarkTrackDatabaseStopwatch);
 
     if (benchmarkNodeStopwatch != null) {
       benchmarkNodeStopwatch.stop();
