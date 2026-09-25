@@ -516,6 +516,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   Future<void> scrollToLetter(String letter) async {
     if (letter.isEmpty) return;
 
+    // A sparse alphabet seek calls setState before it finishes positioning the
+    // grid. That rebuild can re-enter scrollToLetter for the same letter. Do
+    // not let the re-entrant call fall through into the legacy paging path.
+    if (_alphabetSeekInProgress && letterToSearch == letter) return;
+
     final benchmark = PerformanceBenchmarkService.instance;
     if (_activeBenchmarkJump != null) {
       _benchmarkScrollToLetterInvocations++;
