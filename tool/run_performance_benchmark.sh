@@ -66,9 +66,6 @@ if [[ "$alphabet_direct_offset_define" == "true" && "$alphabet_only_define" != "
   echo "FINAMP_BENCH_ALPHABET_DIRECT_OFFSET requires FINAMP_BENCH_ALPHABET_ONLY=true" >&2
   exit 2
 fi
-if [[ "$alphabet_only_define" == "true" && -z "${FINAMP_BENCH_POLL_SECONDS:-}" ]]; then
-  poll_seconds="0.5"
-fi
 if [[ "$smoke_define" == "true" && ( "$targeted_download_define" == "true" || "$targeted_download_1000_define" == "true" ) ]]; then
   echo "Targeted download diagnostics and FINAMP_BENCH_SMOKE are mutually exclusive" >&2
   exit 2
