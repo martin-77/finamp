@@ -97,6 +97,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   late AutoScrollController controller;
   String? letterToSearch;
+  String? _alphabetSeekAttemptedLetter;
+  int? _alphabetResolvedTargetIndex;
+  bool _alphabetSeekInProgress = false;
 
   Timer? timer;
 
@@ -509,6 +512,15 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (_activeBenchmarkJump != null) {
       _benchmarkScrollToLetterInvocations++;
     }
+    if (letterToSearch != letter) {
+      letterToSearch = letter;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+    }
+
+    final state = ref.read(pageControl);
+    if (state.isLoading) return;
+
     final pageWait = _benchmarkAlphabetPageWait;
     if (pageWait != null) {
       pageWait.stop();
@@ -521,7 +533,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     final localScan = Stopwatch()..start();
-    letterToSearch = letter;
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
 
@@ -530,7 +541,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     //TODO use binary search to improve performance for already loaded pages
-    final state = ref.read(pageControl);
     final itemList = state.items ?? [];
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
@@ -585,6 +595,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         _completeBenchmarkJump();
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
@@ -611,6 +623,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         _completeBenchmarkJump();
         return;
       }
@@ -625,26 +639,73 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     timer?.cancel();
     if (!state.hasNextPage) {
       letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
       _completeBenchmarkJump();
-    } else {
-      // Normal interactive use gives up after eight seconds so deferred
-      // image loading can resume. The benchmark must not do that: a slow page
-      // is exactly what we are trying to measure, so keep the target letter
-      // active until the real page arrives or the suite-level timeout fires.
-      if (_activeBenchmarkJump == null) {
-        timer = Timer(const Duration(seconds: 8), () {
-          letterToSearch = null;
-        });
-      }
+      return;
+    }
 
+    Future<void> requestPage(int pageSize) async {
       benchmark.incrementMetric("alphabetJumpPagesLoaded");
       benchmark.mark(
         "alphabet-jump-page-requested",
-        values: {"loadedItems": itemList.length},
+        values: {"loadedItems": itemList.length, "pageSize": pageSize},
       );
       _benchmarkAlphabetPageWait = Stopwatch()..start();
-      ref.read(pageControl.notifier).newPage();
+      ref.read(pageControl.notifier).newPage(pageSize: pageSize);
     }
+
+    if (_alphabetResolvedTargetIndex != null &&
+        _alphabetResolvedTargetIndex! >= itemList.length) {
+      final remaining =
+          _alphabetResolvedTargetIndex! - itemList.length + 1;
+      await requestPage(min(remaining, 5000));
+      return;
+    }
+
+    if (!_alphabetSeekInProgress &&
+        _alphabetSeekAttemptedLetter != letter) {
+      _alphabetSeekAttemptedLetter = letter;
+      _alphabetSeekInProgress = true;
+      final seek = Stopwatch()..start();
+      benchmark.mark("alphabet-jump-seek-start");
+      try {
+        final targetIndex = await ref
+            .read(pageControl.notifier)
+            .resolveAlbumAlphabetTargetIndex(letter);
+        seek.stop();
+        benchmark.incrementMetric(
+          "alphabetSeekResolveMicros",
+          seek.elapsedMicroseconds,
+        );
+        benchmark.mark(
+          "alphabet-jump-seek-complete",
+          values: {"targetIndex": targetIndex},
+        );
+
+        if (letterToSearch != letter) return;
+
+        _alphabetResolvedTargetIndex = targetIndex;
+        if (targetIndex != null && targetIndex >= itemList.length) {
+          final remaining = targetIndex - itemList.length + 1;
+          await requestPage(min(remaining, 5000));
+          return;
+        }
+      } finally {
+        _alphabetSeekInProgress = false;
+      }
+    }
+
+    // Unsupported sort/filter combinations keep the existing paging behavior.
+    if (_activeBenchmarkJump == null) {
+      timer = Timer(const Duration(seconds: 8), () {
+        letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
+      });
+    }
+
+    await requestPage(musicScreenPageSize);
     final pageEdgeScroll = Stopwatch()..start();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
