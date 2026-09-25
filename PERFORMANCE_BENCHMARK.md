@@ -244,6 +244,43 @@ search strings only to exercise the build; they are never run against Jellyfin.
 
 Only after this gate passes should the physical-device smoke run be started.
 
+## Targeted alphabet fast-scroller diagnostics
+
+For isolated alphabet fast-scroller work, use the targeted albums-only mode
+instead of rerunning the complete performance matrix:
+
+```bash
+FINAMP_BENCH_ALPHABET_ONLY=true \
+  bash tool/bootstrap_performance_benchmark_macos.sh [ios-device-id]
+```
+
+This runs the fixed `# -> A -> G -> M -> Z` sequence from a freshly selected
+Albums tab, repeats the same sequence against warm state, and repeats it through
+the real alphabet UI input path. It records request/Worker work, seek timing,
+target rendering and UI quiescence without requiring the private search-query
+environment variables used by the full suite.
+
+When evaluating the sparse direct-offset implementation, enable the candidate
+path explicitly:
+
+```bash
+FINAMP_BENCH_ALPHABET_ONLY=true \
+FINAMP_BENCH_ALPHABET_DIRECT_OFFSET=true \
+  bash tool/bootstrap_performance_benchmark_macos.sh [ios-device-id]
+```
+
+The direct-offset targeted run additionally performs an `M` jump followed by
+controlled forward/backward viewport scrolling. This exercises sparse-window
+loading and look-ahead prefetch after the jump. A targeted jump is successful
+only when the requested target is actually rendered; a missing target fails the
+measured run rather than being reported as a successful timing.
+
+The host-facing JSONL deliberately removes global target indices, total/virtual
+item counts, sparse cache sizes, absolute grid rows and scroll extents. Those
+values may be used device-locally while resolving a target, but exporting them
+would reveal or tightly approximate private library cardinality. The host
+collector validates this privacy contract before generating summaries.
+
 ## Targeted bench-100 download diagnostics
 
 For D1-D5 download root-cause work, use the isolated bench-100 mode instead of
@@ -350,9 +387,11 @@ query aliases and query lengths.
   must still be safe against disclosure of the private library cardinality.
   Exact list-growth counters such as loaded items, page items added, response
   page size and alphabet pages loaded stay device-local and are stripped from
-  every host-facing record, including nested final/recovered run JSON. Repeated
-  per-page alphabet request events are suppressed as well, so their event count
-  cannot reconstruct the redacted page count.
+  every host-facing record, including nested final/recovered run JSON. Sparse
+  alphabet diagnostics also redact global target/window indices, total or
+  virtual item counts, cache sizes, absolute grid rows and absolute scroll
+  extents/offsets. Repeated per-page alphabet request events are suppressed as
+  well, so their event count cannot reconstruct the redacted page count.
 - The generated JSON/Markdown summary is the shareable/public-facing result.
   It retains a second denylist for cardinality-sensitive metrics and buckets
   image-cache scale instead of exposing exact counts.
