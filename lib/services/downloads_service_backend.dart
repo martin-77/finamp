@@ -814,6 +814,183 @@ class DownloadsSyncService {
     }
   }
 
+  Future<void> _prefillPlaylistAlbumChildren(
+    List<DownloadStub> playlistTracks,
+  ) async {
+    const int albumBatchSize = 10;
+    final Set<BaseItemId> uniqueAlbumIds = <BaseItemId>{};
+
+    for (final DownloadStub track in playlistTracks) {
+      if (track.type != DownloadItemType.track) {
+        continue;
+      }
+      final BaseItemId? albumId = track.baseItem?.albumId;
+      if (albumId == null || _childCache.containsKey(albumId.raw)) {
+        continue;
+      }
+      uniqueAlbumIds.add(albumId);
+    }
+
+    if (uniqueAlbumIds.length < 2) {
+      return;
+    }
+
+    final List<BaseItemId> albumIds = uniqueAlbumIds.toList();
+    final PerformanceBenchmarkService? benchmark =
+        PerformanceBenchmarkService.enabled
+            ? PerformanceBenchmarkService.instance
+            : null;
+
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchCandidateAlbums",
+      albumIds.length,
+    );
+    benchmark?.maxMetricBuffered(
+      "downloadAlbumBatchCandidateAlbumsMax",
+      albumIds.length >= albumBatchSize ? albumBatchSize : albumIds.length,
+    );
+
+    final Map<BaseItemId, Completer<List<String>>> reservations =
+        <BaseItemId, Completer<List<String>>>{};
+    for (final BaseItemId albumId in albumIds) {
+      final Completer<List<String>> completer = Completer<List<String>>();
+      unawaited(
+        completer.future.then<void>(
+          (_) {},
+          onError: (Object _, StackTrace __) {},
+        ),
+      );
+      reservations[albumId] = completer;
+      _childCache[albumId.raw] = completer.future;
+    }
+
+    final String fields =
+        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+
+    for (int offset = 0; offset < albumIds.length; offset += albumBatchSize) {
+      final int end =
+          (offset + albumBatchSize < albumIds.length)
+              ? offset + albumBatchSize
+              : albumIds.length;
+      final List<BaseItemId> albumChunk = albumIds.sublist(offset, end);
+
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
+      if (albumChunk.length == albumBatchSize) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchFullRequestCount",
+        );
+      } else {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestCount",
+        );
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestedAlbums",
+          albumChunk.length,
+        );
+      }
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchRequestedAlbums",
+        albumChunk.length,
+      );
+
+      try {
+        final Stopwatch? requestStopwatch =
+            PerformanceBenchmarkService.enabled
+                ? (Stopwatch()..start())
+                : null;
+        final List<BaseItemDto> childItems =
+            await _jellyfinApiData.getTracksForAlbumIds(
+              albumIds: albumChunk,
+              fields: fields,
+            );
+        if (requestStopwatch != null) {
+          requestStopwatch.stop();
+          final PerformanceBenchmarkService activeBenchmark =
+              PerformanceBenchmarkService.instance;
+          activeBenchmark.incrementMetricBuffered(
+            "downloadAlbumBatchRequestMicros",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          activeBenchmark.maxMetricBuffered(
+            "downloadAlbumBatchRequestMicrosMax",
+            requestStopwatch.elapsedMicroseconds,
+          );
+        }
+        _downloadsService.resetConnectionErrors();
+
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchReturnedTracks",
+          childItems.length,
+        );
+
+        final Map<BaseItemId, List<DownloadStub>> childrenByAlbum =
+            <BaseItemId, List<DownloadStub>>{};
+        for (final BaseItemDto childItem in childItems) {
+          final BaseItemId? childAlbumId = childItem.albumId;
+          if (childAlbumId == null) {
+            continue;
+          }
+          final List<DownloadStub> children = childrenByAlbum.putIfAbsent(
+            childAlbumId,
+            () => <DownloadStub>[],
+          );
+          children.add(
+            DownloadStub.fromItem(
+              type: DownloadItemType.track,
+              item: childItem,
+            ),
+          );
+        }
+
+        int coveredAlbums = 0;
+        for (final BaseItemId albumId in albumChunk) {
+          final Completer<List<String>> reservation = reservations[albumId]!;
+          final List<DownloadStub>? children = childrenByAlbum[albumId];
+          if (children == null || children.isEmpty) {
+            benchmark?.incrementMetricBuffered(
+              "downloadAlbumBatchMissingAlbums",
+            );
+            if (identical(_childCache[albumId.raw], reservation.future)) {
+              _childCache.remove(albumId.raw);
+            }
+            reservation.complete(<String>[]);
+            continue;
+          }
+
+          coveredAlbums++;
+          for (final DownloadStub child in children) {
+            _metadataCache[child.baseItem!.id] = Future<DownloadStub?>.value(
+              child,
+            );
+          }
+          reservation.complete(
+            children.map((DownloadStub child) => child.id).toList(),
+          );
+        }
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchCoveredAlbums",
+          coveredAlbums,
+        );
+      } catch (error, stackTrace) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchRequestFailures",
+        );
+        for (final BaseItemId albumId in albumChunk) {
+          final Completer<List<String>> reservation = reservations[albumId]!;
+          if (identical(_childCache[albumId.raw], reservation.future)) {
+            _childCache.remove(albumId.raw);
+          }
+          if (!reservation.isCompleted) {
+            reservation.completeError(error, stackTrace);
+          }
+        }
+        _syncLogger.fine(
+          "Playlist album child prefetch failed; using normal album requests on retry: $error",
+        );
+      }
+    }
+  }
+
   Future<void> _prefillInfoAlbumChildren(
     List<IsarTaskData<dynamic>> wrappedSyncs,
   ) async {
@@ -1282,6 +1459,9 @@ class DownloadsSyncService {
           if (asRequired) {
             orderedChildItems = await _getCollectionChildren(parent);
             requiredChildren.addAll(orderedChildItems);
+            if (parent.baseItemType == BaseItemDtoType.playlist) {
+              await _prefillPlaylistAlbumChildren(orderedChildItems);
+            }
           }
           if (parent.baseItemType == BaseItemDtoType.album || parent.baseItemType == BaseItemDtoType.playlist) {
             final benchmarkChildrenStopwatch =
