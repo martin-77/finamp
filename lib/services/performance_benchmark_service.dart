@@ -1666,12 +1666,28 @@ class PerformanceBenchmarkService {
 
   static const Set<String> _privateCardinalityExportKeys = {
     "alphabetJumpPagesLoaded",
+    "cachedItems",
+    "estimatedOffset",
+    "estimatedTargetIndex",
+    "exactRevealOffset",
+    "firstRenderedTag",
+    "index",
+    "lastRenderedTag",
     "loadedItems",
-    "itemsAdded",
+    "maxScrollExtent",
     "pageItemsAdded",
     "pageSize",
+    "pixels",
     "playlistItemsSeen",
     "playlistPagesFetched",
+    "scrollPixels",
+    "startIndex",
+    "targetIndex",
+    "targetPixels",
+    "targetRow",
+    "totalCount",
+    "virtualItemCount",
+    "windowStartIndex",
   };
 
   static const Set<String> _privateCardinalityEventNames = {
