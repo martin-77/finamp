@@ -376,6 +376,8 @@ class JellyfinApiHelper {
     ArtistType? artistType,
     BaseItemId? genreFilter,
     bool? isFavorite,
+    String? nameStartsWithOrGreater,
+    String? nameLessThan,
     int? startIndex,
     int? limit,
   }) async {
@@ -394,6 +396,8 @@ class JellyfinApiHelper {
       artistType: artistType,
       genreFilter: genreFilter,
       isFavorite: isFavorite,
+      nameStartsWithOrGreater: nameStartsWithOrGreater,
+      nameLessThan: nameLessThan,
       startIndex: startIndex,
       limit: limit,
     );
