@@ -796,6 +796,21 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             "alphabetTargetScrollMicros",
             targetScroll.elapsedMicroseconds,
           );
+          final targetRendered =
+              controller.tagMap.containsKey(window.targetIndex);
+          if (_activeBenchmarkJump != null && !targetRendered) {
+            benchmark.mark("alphabet-jump-target-not-rendered");
+            final command = _activeBenchmarkJump!;
+            command.completeError(
+              StateError("Alphabet jump target was not rendered"),
+              StackTrace.current,
+            );
+            _activeBenchmarkJump = null;
+            letterToSearch = null;
+            _alphabetSeekAttemptedLetter = null;
+            _alphabetResolvedTargetIndex = null;
+            return;
+          }
           benchmark.mark("alphabet-jump-target-rendered");
 
           letterToSearch = null;
