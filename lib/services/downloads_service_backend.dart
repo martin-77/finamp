@@ -861,7 +861,19 @@ class DownloadsSyncService {
 
     for (final albumChunk in albumIds.slices(albumBatchSize)) {
       benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
-      benchmark?.incrementMetricBuffered("downloadAlbumBatchFullRequestCount");
+      if (albumChunk.length == albumBatchSize) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchFullRequestCount",
+        );
+      } else {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestCount",
+        );
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestedAlbums",
+          albumChunk.length,
+        );
+      }
       benchmark?.incrementMetricBuffered(
         "downloadAlbumBatchRequestedAlbums",
         albumChunk.length,
