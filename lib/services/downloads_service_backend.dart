@@ -732,6 +732,7 @@ class DownloadsSyncService {
       _activeSyncs.clear();
       _metadataCache = {};
       _childCache = {};
+      _albumViewIndex = null;
       _callbacksComplete = Completer();
       _missingItemExceptions = 0;
       unawaited(_advanceQueue());
@@ -742,6 +743,415 @@ class DownloadsSyncService {
       }
     } finally {
       _callbacksComplete = null;
+    }
+  }
+
+  Future<void> _prefillPlaylistAlbumChildren(
+    List<DownloadStub> playlistTracks,
+  ) async {
+    const int albumBatchSize = 10;
+    final Set<BaseItemId> uniqueAlbumIds = <BaseItemId>{};
+
+    for (final DownloadStub track in playlistTracks) {
+      if (track.type != DownloadItemType.track) {
+        continue;
+      }
+      final BaseItemId? albumId = track.baseItem?.albumId;
+      if (albumId == null || _childCache.containsKey(albumId.raw)) {
+        continue;
+      }
+      uniqueAlbumIds.add(albumId);
+    }
+
+    if (uniqueAlbumIds.length < 2) {
+      return;
+    }
+
+    final List<BaseItemId> albumIds = uniqueAlbumIds.toList();
+    final PerformanceBenchmarkService? benchmark =
+        PerformanceBenchmarkService.enabled
+            ? PerformanceBenchmarkService.instance
+            : null;
+
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchCandidateAlbums",
+      albumIds.length,
+    );
+    benchmark?.maxMetricBuffered(
+      "downloadAlbumBatchCandidateAlbumsMax",
+      albumIds.length >= albumBatchSize ? albumBatchSize : albumIds.length,
+    );
+
+    final Map<BaseItemId, Completer<List<String>>> reservations =
+        <BaseItemId, Completer<List<String>>>{};
+    for (final BaseItemId albumId in albumIds) {
+      final Completer<List<String>> completer = Completer<List<String>>();
+      unawaited(
+        completer.future.then<void>(
+          (_) {},
+          onError: (Object _) {},
+        ),
+      );
+      reservations[albumId] = completer;
+      _childCache[albumId.raw] = completer.future;
+    }
+
+    final String fields =
+        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+
+    for (int offset = 0; offset < albumIds.length; offset += albumBatchSize) {
+      final int end =
+          (offset + albumBatchSize < albumIds.length)
+              ? offset + albumBatchSize
+              : albumIds.length;
+      final List<BaseItemId> albumChunk = albumIds.sublist(offset, end);
+
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
+      if (albumChunk.length == albumBatchSize) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchFullRequestCount",
+        );
+      } else {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestCount",
+        );
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchPartialRequestedAlbums",
+          albumChunk.length,
+        );
+      }
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchRequestedAlbums",
+        albumChunk.length,
+      );
+
+      try {
+        final Stopwatch? requestStopwatch =
+            PerformanceBenchmarkService.enabled
+                ? (Stopwatch()..start())
+                : null;
+        final List<BaseItemDto> childItems =
+            await _jellyfinApiData.getTracksForAlbumIds(
+              albumIds: albumChunk,
+              fields: fields,
+            );
+        if (requestStopwatch != null) {
+          requestStopwatch.stop();
+          final PerformanceBenchmarkService activeBenchmark =
+              PerformanceBenchmarkService.instance;
+          activeBenchmark.incrementMetricBuffered(
+            "downloadAlbumBatchRequestMicros",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          activeBenchmark.maxMetricBuffered(
+            "downloadAlbumBatchRequestMicrosMax",
+            requestStopwatch.elapsedMicroseconds,
+          );
+        }
+        _downloadsService.resetConnectionErrors();
+
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchReturnedTracks",
+          childItems.length,
+        );
+
+        final Map<BaseItemId, List<DownloadStub>> childrenByAlbum =
+            <BaseItemId, List<DownloadStub>>{};
+        for (final BaseItemDto childItem in childItems) {
+          final BaseItemId? childAlbumId = childItem.albumId;
+          if (childAlbumId == null) {
+            continue;
+          }
+          final List<DownloadStub> children = childrenByAlbum.putIfAbsent(
+            childAlbumId,
+            () => <DownloadStub>[],
+          );
+          children.add(
+            DownloadStub.fromItem(
+              type: DownloadItemType.track,
+              item: childItem,
+            ),
+          );
+        }
+
+        int coveredAlbums = 0;
+        for (final BaseItemId albumId in albumChunk) {
+          final Completer<List<String>> reservation = reservations[albumId]!;
+          final List<DownloadStub>? children = childrenByAlbum[albumId];
+          if (children == null || children.isEmpty) {
+            benchmark?.incrementMetricBuffered(
+              "downloadAlbumBatchMissingAlbums",
+            );
+            if (identical(_childCache[albumId.raw], reservation.future)) {
+              _childCache.remove(albumId.raw);
+            }
+            reservation.completeError(
+              StateError("Album child prefetch returned no tracks"),
+            );
+            continue;
+          }
+
+          coveredAlbums++;
+          for (final DownloadStub child in children) {
+            _metadataCache[child.baseItem!.id] = Future<DownloadStub?>.value(
+              child,
+            );
+          }
+          reservation.complete(
+            children.map((DownloadStub child) => child.id).toList(),
+          );
+        }
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchCoveredAlbums",
+          coveredAlbums,
+        );
+      } catch (error, stackTrace) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchRequestFailures",
+        );
+        for (final BaseItemId albumId in albumChunk) {
+          final Completer<List<String>> reservation = reservations[albumId]!;
+          if (identical(_childCache[albumId.raw], reservation.future)) {
+            _childCache.remove(albumId.raw);
+          }
+          if (!reservation.isCompleted) {
+            reservation.completeError(error, stackTrace);
+          }
+        }
+        _syncLogger.fine(
+          "Playlist album child prefetch failed; using normal album requests on retry: $error",
+        );
+      }
+    }
+  }
+
+  Future<void> _prefillInfoAlbumChildren(
+    List<IsarTaskData<dynamic>> wrappedSyncs,
+  ) async {
+    const albumBatchSize = 10;
+    final albums = <DownloadStub>[];
+    final selectedAlbumIds = <String>{};
+
+    void addAlbumFromSync(IsarTaskData<dynamic> wrappedSync) {
+      if (albums.length >= albumBatchSize) {
+        return;
+      }
+      final sync = wrappedSync.data as SyncNode;
+      if (sync.required) {
+        return;
+      }
+
+      final item = _isar.downloadItems.getSync(sync.stubIsarId);
+      if (item == null ||
+          item.type != DownloadItemType.collection ||
+          item.baseItemType != BaseItemDtoType.album ||
+          _childCache.containsKey(item.id) ||
+          !selectedAlbumIds.add(item.id)) {
+        return;
+      }
+      albums.add(item);
+    }
+
+    // Prefer albums already claimed by this worker.
+    for (final wrappedSync in wrappedSyncs) {
+      addAlbumFromSync(wrappedSync);
+    }
+
+    // The sync queue is intentionally mixed: required tracks, images, artists,
+    // genres and info albums share the same age-sorted task stream. Looking
+    // ahead here lets album child requests be batched without changing task
+    // ownership, priority or processing order.
+    if (albums.isNotEmpty && albums.length < albumBatchSize) {
+      final Stopwatch? queueScanStopwatch =
+          PerformanceBenchmarkService.enabled
+              ? (Stopwatch()..start())
+              : null;
+      final queuedSyncs = _isar.isarTaskDatas
+          .where()
+          .typeEqualTo(type)
+          .sortByAge()
+          .findAllSync();
+      if (queueScanStopwatch != null) {
+        queueScanStopwatch.stop();
+        final PerformanceBenchmarkService activeBenchmark =
+            PerformanceBenchmarkService.instance;
+        activeBenchmark.incrementMetricBuffered(
+          "downloadAlbumLookaheadQueueScanCount",
+        );
+        activeBenchmark.incrementMetricBuffered(
+          "downloadAlbumLookaheadQueueScanMicros",
+          queueScanStopwatch.elapsedMicroseconds,
+        );
+        activeBenchmark.maxMetricBuffered(
+          "downloadAlbumLookaheadQueueScanMicrosMax",
+          queueScanStopwatch.elapsedMicroseconds,
+        );
+        activeBenchmark.maxMetricBuffered(
+          "downloadAlbumLookaheadQueueSizeMax",
+          queuedSyncs.length,
+        );
+      }
+      for (final queuedSync in queuedSyncs) {
+        addAlbumFromSync(queuedSync);
+        if (albums.length >= albumBatchSize) {
+          break;
+        }
+      }
+    }
+
+    final benchmark =
+        PerformanceBenchmarkService.enabled
+            ? PerformanceBenchmarkService.instance
+            : null;
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchCandidateAlbums",
+      albums.length,
+    );
+    benchmark?.maxMetricBuffered(
+      "downloadAlbumBatchCandidateAlbumsMax",
+      albums.length,
+    );
+
+    if (albums.length < 2) {
+      if (albums.length == 1) {
+        benchmark?.incrementMetricBuffered(
+          "downloadAlbumBatchSingleAlbumFallbacks",
+        );
+      }
+      return;
+    }
+
+    // Reserve the normal child-cache entries before awaiting the network. A
+    // second sync worker that reaches one of these albums will wait on the same
+    // future instead of issuing a duplicate per-album request.
+    final reservations = <String, Completer<List<String>>>{};
+    for (final album in albums) {
+      final completer = Completer<List<String>>();
+      unawaited(
+        completer.future.then((_) => null, onError: (_) => null),
+      );
+      reservations[album.id] = completer;
+      _childCache[album.id] = completer.future;
+    }
+
+    benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
+    if (albums.length == albumBatchSize) {
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchFullRequestCount");
+    } else {
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestCount");
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchPartialRequestedAlbums",
+        albums.length,
+      );
+    }
+    benchmark?.incrementMetricBuffered(
+      "downloadAlbumBatchRequestedAlbums",
+      albums.length,
+    );
+
+    final albumIds = albums.map((album) => album.baseItem!.id).toList();
+    final fields =
+        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+
+    try {
+      final albumBatchStopwatch =
+          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+      final childItems = await _jellyfinApiData.getTracksForAlbumIds(
+        albumIds: albumIds,
+        fields: fields,
+      );
+      if (albumBatchStopwatch != null) {
+        albumBatchStopwatch.stop();
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.incrementMetricBuffered(
+          "downloadAlbumBatchRequestMicros",
+          albumBatchStopwatch.elapsedMicroseconds,
+        );
+        benchmark.maxMetricBuffered(
+          "downloadAlbumBatchRequestMicrosMax",
+          albumBatchStopwatch.elapsedMicroseconds,
+        );
+      }
+      _downloadsService.resetConnectionErrors();
+
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchReturnedTracks",
+        childItems.length,
+      );
+
+      final childrenByAlbum = <BaseItemId, List<DownloadStub>>{};
+      for (final childItem in childItems) {
+        final albumId = childItem.albumId;
+        if (albumId == null) {
+          continue;
+        }
+
+        childrenByAlbum
+            .putIfAbsent(albumId, () => <DownloadStub>[])
+            .add(
+              DownloadStub.fromItem(
+                type: DownloadItemType.track,
+                item: childItem,
+              ),
+            );
+      }
+
+      var coveredAlbums = 0;
+      for (final album in albums) {
+        final reservation = reservations[album.id]!;
+        final albumId = album.baseItem!.id;
+        final children = childrenByAlbum[albumId];
+
+        if (children == null || children.isEmpty) {
+          benchmark?.incrementMetricBuffered(
+            "downloadAlbumBatchMissingAlbums",
+          );
+
+          // Preserve the old per-album semantics for empty/missing results so a
+          // missing server item can still surface as a 404 rather than being
+          // silently cached as an empty album.
+          if (identical(_childCache[album.id], reservation.future)) {
+            _childCache.remove(album.id);
+          }
+          try {
+            final fallbackChildren = await _getCollectionChildren(album);
+            reservation.complete(
+              fallbackChildren.map((child) => child.id).toList(),
+            );
+          } catch (e, stack) {
+            reservation.completeError(e, stack);
+          }
+          continue;
+        }
+
+        coveredAlbums++;
+        for (final child in children) {
+          _metadataCache[child.baseItem!.id] = Future.value(child);
+        }
+        reservation.complete(
+          children.map((child) => child.id).toList(),
+        );
+      }
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchCoveredAlbums",
+        coveredAlbums,
+      );
+    } catch (e, stack) {
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchRequestFailures",
+      );
+      for (final album in albums) {
+        final reservation = reservations[album.id]!;
+        if (identical(_childCache[album.id], reservation.future)) {
+          _childCache.remove(album.id);
+        }
+        if (!reservation.isCompleted) {
+          reservation.completeError(e, stack);
+        }
+      }
+      _syncLogger.fine(
+        "Album child batch fetch failed; using normal per-album requests on retry: $e",
+      );
     }
   }
 
@@ -781,6 +1191,9 @@ class DownloadsSyncService {
         _activeSyncs.addAll(wrappedSyncs.map((e) => e.id));
         // Once we've claimed our item, try to launch another worker in case we have <5.
         unawaited(_advanceQueue());
+
+        await _prefillInfoAlbumChildren(wrappedSyncs);
+
         List<IsarTaskData<dynamic>> failedSyncs = [];
         for (var wrappedSync in wrappedSyncs) {
           SyncNode sync = wrappedSync.data as SyncNode;
@@ -837,6 +1250,82 @@ class DownloadsSyncService {
         _activeSyncs.removeAll(wrappedSyncs.map((e) => e.id));
       }
     }
+  }
+
+  /// Materialize the already-fetched metadata and image dependencies for info
+  /// tracks reached from an album. This is the synchronous equivalent of the
+  /// database/link portion of [_syncDownload] for a track with asRequired=false.
+  ///
+  /// Must be called inside an Isar write transaction, after the album has linked
+  /// the tracks into Isar. Existing DownloadItems are updated with [DownloadItem.copyWith]
+  /// so file state, paths and transcoding profiles are preserved.
+  Set<int> _materializeInfoAlbumTracks(
+    Iterable<DownloadStub> tracks,
+    BaseItemId? viewId,
+  ) {
+    final requiredImageIds = <int>{};
+
+    for (final track in tracks) {
+      assert(track.type == DownloadItemType.track);
+      var canonTrack = _isar.downloadItems.getSync(track.isarId);
+      if (canonTrack == null) {
+        throw StateError(
+          "Album info track ${track.id} was not materialized before bulk linking",
+        );
+      }
+
+      try {
+        final updatedTrack = canonTrack.copyWith(
+          item: track.baseItem,
+          viewId: viewId,
+          orderedChildItems: null,
+          forceCopy: _downloadsService.forceFullSync,
+        );
+        if (updatedTrack != null) {
+          _isar.downloadItems.putSync(updatedTrack, saveLinks: false);
+          canonTrack = updatedTrack;
+        }
+      } catch (e) {
+        // Match the existing per-track sync behavior: a metadata copy failure
+        // must not discard otherwise valid links or an existing download.
+        _syncLogger.warning(e);
+      }
+
+      final requiredImages = <DownloadStub>{};
+      final item = track.baseItem!;
+      if ((item.blurHash ?? item.imageId) != null) {
+        requiredImages.add(
+          DownloadStub.fromItem(
+            type: DownloadItemType.image,
+            item: item,
+          ),
+        );
+      }
+
+      final imageChanges = _updateChildren(
+        canonTrack!,
+        true,
+        requiredImages,
+      );
+      requiredImageIds.addAll(
+        requiredImages.map((image) => image.isarId),
+      );
+
+      // This mirrors the existing info-track path for images that already
+      // existed before becoming required by this track.
+      for (final image
+          in _isar.downloadItems
+              .getAllSync(imageChanges.$2.toList())
+              .nonNulls) {
+        if (image.syncTranscodingProfile !=
+            canonTrack!.syncTranscodingProfile) {
+          _downloadsService.syncItemDownloadSettings(image);
+        }
+      }
+
+    }
+
+    return requiredImageIds;
   }
 
   /// Syncs a downloaded item with the latest data from the server, then recursively
@@ -917,6 +1406,51 @@ class DownloadsSyncService {
         PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     final benchmarkNodeRole = asRequired ? "required" : "info";
     final benchmarkNodeType = parent.type.name;
+    final benchmarkNodeSubtype = parent.baseItemType.name;
+    final benchmarkAlbumInfo =
+        PerformanceBenchmarkService.enabled &&
+        parent.type == DownloadItemType.collection &&
+        parent.baseItemType == BaseItemDtoType.album &&
+        !asRequired;
+    final bool isInfoTrack =
+        parent.type == DownloadItemType.track && !asRequired;
+    final bool benchmarkTrackInfo =
+        PerformanceBenchmarkService.enabled && isInfoTrack;
+
+    void recordAlbumInfoPhase(String phase, Stopwatch? stopwatch) {
+      if (!benchmarkAlbumInfo || stopwatch == null) {
+        return;
+      }
+      stopwatch.stop();
+      final elapsed = stopwatch.elapsedMicroseconds;
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.incrementMetricBuffered(
+        "downloadAlbumInfoPhaseMicros_$phase",
+        elapsed,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadAlbumInfoPhaseMicrosMax_$phase",
+        elapsed,
+      );
+    }
+
+    void recordTrackInfoPhase(String phase, Stopwatch? stopwatch) {
+      if (!benchmarkTrackInfo || stopwatch == null) {
+        return;
+      }
+      stopwatch.stop();
+      final int elapsed = stopwatch.elapsedMicroseconds;
+      final PerformanceBenchmarkService benchmark =
+          PerformanceBenchmarkService.instance;
+      benchmark.incrementMetricBuffered(
+        "downloadTrackInfoPhaseMicros_$phase",
+        elapsed,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadTrackInfoPhaseMicrosMax_$phase",
+        elapsed,
+      );
+    }
 
     _syncLogger.finer("Syncing ${parent.baseItemType.name} ${parent.name} with required:$asRequired viewId:$viewId");
 
@@ -926,6 +1460,10 @@ class DownloadsSyncService {
     // newBaseItem must be calculated before children are determined so that the latest
     // metadata can be used, especially imageId and blurhash.
     BaseItemDto? newBaseItem;
+    final benchmarkAlbumMetadataStopwatch =
+        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackMetadataStopwatch =
+        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     //If we aren't quicksyncing, fetch the latest BaseItemDto to copy into Isar.
     if (parent.type.requiresItem) {
       bool expectNewItem = false;
@@ -955,6 +1493,8 @@ class DownloadsSyncService {
         }
       }
     }
+    recordAlbumInfoPhase("metadata", benchmarkAlbumMetadataStopwatch);
+    recordTrackInfoPhase("metadata", benchmarkTrackMetadataStopwatch);
     // We return the same BaseItemDto for all requests, so null out playlistItemId
     // as it will not usually be accurate.  Modifying without copying should be
     // fine as this item was generated within the download service, so this value
@@ -978,17 +1518,26 @@ class DownloadsSyncService {
           if (asRequired) {
             orderedChildItems = await _getCollectionChildren(parent);
             requiredChildren.addAll(orderedChildItems);
+            if (parent.baseItemType == BaseItemDtoType.playlist) {
+              await _prefillPlaylistAlbumChildren(orderedChildItems);
+            }
           }
           if (parent.baseItemType == BaseItemDtoType.album || parent.baseItemType == BaseItemDtoType.playlist) {
+            final benchmarkChildrenStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             orderedChildItems ??= await _getCollectionChildren(parent);
+            recordAlbumInfoPhase("children", benchmarkChildrenStopwatch);
             infoChildren.addAll(orderedChildItems);
           }
           if (parent.baseItemType == BaseItemDtoType.album && viewId == null) {
+            final benchmarkViewStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             isarParent ??= _isar.downloadItems.getSync(parent.isarId);
             if (isarParent?.viewId == null) {
               // If we are an album and have no viewId, attempt to fetch from server
               viewId = await _getAlbumViewID(BaseItemId(parent.id));
             }
+            recordAlbumInfoPhase("view", benchmarkViewStopwatch);
           }
         } catch (e) {
           _syncLogger.info("Error downloading children for ${item.name}: $e");
@@ -999,6 +1548,8 @@ class DownloadsSyncService {
           infoChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
         if (parent.baseItemType == BaseItemDtoType.album) {
+          final benchmarkArtistsStopwatch =
+              benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
           // If we are an album, add the album artists as info children
           try {
             var collectionChildren = await Future.wait(
@@ -1007,6 +1558,7 @@ class DownloadsSyncService {
               ),
             );
             infoChildren.addAll(collectionChildren.nonNulls);
+            recordAlbumInfoPhase("artists", benchmarkArtistsStopwatch);
           } catch (e) {
             _syncLogger.info("Failed to download metadata for ${item.name}: $e");
             rethrow;
@@ -1018,6 +1570,8 @@ class DownloadsSyncService {
         if ((item.blurHash ?? item.imageId) != null) {
           requiredChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
+        final Stopwatch? benchmarkTrackViewStopwatch =
+            benchmarkTrackInfo ? (Stopwatch()..start()) : null;
         if (viewId == null && item.albumId != null) {
           isarParent ??= _isar.downloadItems.getSync(parent.isarId);
           if (isarParent?.viewId == null) {
@@ -1025,6 +1579,7 @@ class DownloadsSyncService {
             viewId = await _getAlbumViewID(item.albumId!);
           }
         }
+        recordTrackInfoPhase("view", benchmarkTrackViewStopwatch);
         if (asRequired) {
           List<BaseItemId> collectionIds = [];
           collectionIds.addAll(item.genreItems?.map((e) => e.id) ?? []);
@@ -1082,8 +1637,15 @@ class DownloadsSyncService {
     //
     // Allow database work to be scheduled instead of immediately processing
     // once network requests come back.
-    await SchedulerBinding.instance.scheduleTask(() async {
+    final benchmarkAlbumDatabaseStopwatch =
+        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackDatabaseStopwatch =
+        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
+    Future<void> processDatabaseAndFiles() async {
       DownloadItem? canonParent;
+      Set<int> bulkCompletedInfoTrackIds = <int>{};
+      int? bulkTrackMicros;
+      int bulkTrackImageCount = 0;
       _isar.writeTxnSync(() {
         canonParent = _isar.downloadItems.getSync(parent.isarId);
         if (canonParent == null) {
@@ -1126,6 +1688,8 @@ class DownloadsSyncService {
           infoChanges = _updateChildren(canonParent!, false, infoChildren);
         }
 
+        Set<int> requiredSyncIds;
+        Set<int> infoSyncIds;
         if (FinampSettingsHelper.finampSettings.preferQuickSyncs &&
             !_downloadsService.forceFullSync &&
             canonParent!.type == DownloadItemType.collection &&
@@ -1133,16 +1697,55 @@ class DownloadsSyncService {
             canonParent!.state == DownloadItemState.complete) {
           // When quicksyncing, unchanged tracks/albums do not need to be resynced.
           // Items we just linked may need download settings updated.
-          var quicksyncRequiredIds = requiredChanges.$1.union(requiredChanges.$2);
-          var quicksyncInfoIds = infoChanges.$1.union(infoChanges.$2);
-          addAll(quicksyncRequiredIds, quicksyncInfoIds.difference(quicksyncRequiredIds), viewId);
+          requiredSyncIds = requiredChanges.$1.union(requiredChanges.$2);
+          infoSyncIds = infoChanges.$1.union(infoChanges.$2);
         } else {
-          addAll(
-            requiredChildren.map((e) => e.isarId),
-            infoChildren.difference(requiredChildren).map((e) => e.isarId),
-            viewId,
-          );
+          requiredSyncIds =
+              requiredChildren.map((child) => child.isarId).toSet();
+          infoSyncIds =
+              infoChildren
+                  .difference(requiredChildren)
+                  .map((child) => child.isarId)
+                  .toSet();
         }
+
+        // Album child batching already returned complete BaseItemDto metadata for
+        // these tracks. Materialize the exact info-track database/link work in
+        // this album transaction rather than enqueueing one transaction per track.
+        if (!asRequired &&
+            !_downloadsService.forceFullSync &&
+            canonParent!.type == DownloadItemType.collection &&
+            canonParent!.baseItemType == BaseItemDtoType.album &&
+            infoSyncIds.isNotEmpty) {
+          final tracksById = <int, DownloadStub>{
+            for (final child in infoChildren)
+              if (child.type == DownloadItemType.track) child.isarId: child,
+          };
+          final bulkTrackIds =
+              infoSyncIds.intersection(tracksById.keys.toSet());
+          if (bulkTrackIds.isNotEmpty) {
+            final bulkTrackStopwatch =
+                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+            final requiredImageIds = _materializeInfoAlbumTracks(
+              bulkTrackIds.map((id) => tracksById[id]!),
+              viewId,
+            );
+            if (bulkTrackStopwatch != null) {
+              bulkTrackStopwatch.stop();
+              bulkTrackMicros = bulkTrackStopwatch.elapsedMicroseconds;
+            }
+            bulkCompletedInfoTrackIds = bulkTrackIds;
+            bulkTrackImageCount = requiredImageIds.length;
+            requiredSyncIds.addAll(requiredImageIds);
+            infoSyncIds.removeAll(bulkTrackIds);
+          }
+        }
+
+        addAll(
+          requiredSyncIds,
+          infoSyncIds.difference(requiredSyncIds),
+          viewId,
+        );
         // If we are a collection, move out of syncFailed because we just completed a
         // successful sync.  tracks/images will be moved out by _initiateDownload.
         // If our linked children just changed, recalculate state with new children.
@@ -1167,6 +1770,31 @@ class DownloadsSyncService {
         }
       });
 
+      // Only mark tracks complete after the Isar transaction committed. Isar
+      // rollback cannot undo these in-memory completion sets.
+      if (bulkCompletedInfoTrackIds.isNotEmpty) {
+        _infoCompleted.addAll(bulkCompletedInfoTrackIds);
+        if (bulkTrackMicros != null) {
+          final benchmark = PerformanceBenchmarkService.instance;
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoPhaseMicros_bulk_tracks",
+            bulkTrackMicros!,
+          );
+          benchmark.maxMetricBuffered(
+            "downloadAlbumInfoPhaseMicrosMax_bulk_tracks",
+            bulkTrackMicros!,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoBulkTrackCount",
+            bulkCompletedInfoTrackIds.length,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumInfoBulkImageCount",
+            bulkTrackImageCount,
+          );
+        }
+      }
+
       //
       // Download item files if needed
       //
@@ -1181,7 +1809,18 @@ class DownloadsSyncService {
         }
       }
       // Set priority high to prevent stalling, but lower than creating network requests
-    }, Priority.animation);
+    }
+
+    if (isInfoTrack) {
+      await processDatabaseAndFiles();
+    } else {
+      await SchedulerBinding.instance.scheduleTask(
+        processDatabaseAndFiles,
+        Priority.animation,
+      );
+    }
+    recordAlbumInfoPhase("database", benchmarkAlbumDatabaseStopwatch);
+    recordTrackInfoPhase("database", benchmarkTrackDatabaseStopwatch);
 
     if (benchmarkNodeStopwatch != null) {
       benchmarkNodeStopwatch.stop();
@@ -1195,6 +1834,23 @@ class DownloadsSyncService {
       );
       benchmark.maxMetricBuffered(
         "downloadSyncNodeMicrosMax_${benchmarkNodeType}_$benchmarkNodeRole",
+        benchmarkNodeStopwatch.elapsedMicroseconds,
+      );
+
+      // Keep the aggregate node metrics above for historical comparisons, and
+      // also split them by BaseItemDtoType so broad buckets such as
+      // collection_info can be attributed without exposing item identities.
+      final subtypeMetricSuffix =
+          "${benchmarkNodeType}_${benchmarkNodeSubtype}_$benchmarkNodeRole";
+      benchmark.incrementMetricBuffered(
+        "downloadSyncNodeCount_$subtypeMetricSuffix",
+      );
+      benchmark.incrementMetricBuffered(
+        "downloadSyncNodeMicros_$subtypeMetricSuffix",
+        benchmarkNodeStopwatch.elapsedMicroseconds,
+      );
+      benchmark.maxMetricBuffered(
+        "downloadSyncNodeMicrosMax_$subtypeMetricSuffix",
         benchmarkNodeStopwatch.elapsedMicroseconds,
       );
     }
@@ -1301,9 +1957,39 @@ class DownloadsSyncService {
         }
       }
       _metadataCache[id] = itemFetch.future;
+      final metadataRequestStopwatch =
+          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
       item = await _jellyfinApiData
-          .getItemByIdBatched(id, "${_jellyfinApiData.defaultFields},sortName,MediaSources,People")
+          .getItemByIdBatched(
+            id,
+            "${_jellyfinApiData.defaultFields},sortName,MediaSources,People",
+            Duration.zero,
+          )
           .then((value) => value == null ? null : DownloadStub.fromItem(item: value, type: type));
+      if (metadataRequestStopwatch != null) {
+        metadataRequestStopwatch.stop();
+        final benchmark = PerformanceBenchmarkService.instance;
+        benchmark.incrementMetricBuffered(
+          "downloadBaseItemServerRequestCount",
+        );
+        benchmark.incrementMetricBuffered(
+          "downloadBaseItemServerRequestMicros",
+          metadataRequestStopwatch.elapsedMicroseconds,
+        );
+        benchmark.maxMetricBuffered(
+          "downloadBaseItemServerRequestMicrosMax",
+          metadataRequestStopwatch.elapsedMicroseconds,
+        );
+        if (forceServer) {
+          benchmark.incrementMetricBuffered(
+            "downloadBaseItemForcedServerRequestCount",
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadBaseItemForcedServerRequestMicros",
+            metadataRequestStopwatch.elapsedMicroseconds,
+          );
+        }
+      }
       _downloadsService.resetConnectionErrors();
       itemFetch.complete(item);
       return itemFetch.future;
@@ -1319,6 +2005,13 @@ class DownloadsSyncService {
   // These cache downloaded metadata during _syncDownload
   Map<BaseItemId, Future<DownloadStub?>> _metadataCache = {};
   Map<String, Future<List<String>>> _childCache = {};
+
+  // Lazily built once per sync. Multiple playlist tracks often resolve albums
+  // against the same small set of Jellyfin views; rebuilding/scanning those
+  // album lists for every lookup is pure repeated work.
+  Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
+  final Map<BaseItemId, Future<BaseItemId?>> _albumViewMissingLookups =
+      <BaseItemId, Future<BaseItemId?>>{};
 
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
@@ -1535,36 +2228,152 @@ class DownloadsSyncService {
     }
   }
 
-  /// Gets the View/Library ID for the given album ID by fetching album children
-  /// of all know views.  Used by [_syncDownload] to assign libraries to items
-  /// in playlists or finampCollections.
+  /// Gets the View/Library ID for the given album ID.
+  ///
+  /// The view album lists are stable for the duration of one download sync.
+  /// Build one index lazily and share it between concurrent callers instead of
+  /// repeatedly scanning the same cached view children for every track/album.
   Future<BaseItemId?> _getAlbumViewID(BaseItemId albumId) async {
-    final benchmarkStopwatch =
+    const int viewLookupChunkSize = 50;
+    final Stopwatch? benchmarkStopwatch =
         PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     int viewsExamined = 0;
     int albumIdsScanned = 0;
-    try {
-      final userHelper = GetIt.instance<FinampUserHelper>();
-      for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
-        viewsExamined++;
-        var children = await _getCollectionChildren(
-          DownloadStub.fromItem(type: DownloadItemType.collection, item: view),
-        );
-        // Iterable.nonNulls does not seem to work here, I don't know why.
-        var childIds = children
-            .map<BaseItemId?>((e) => e.baseItem?.id)
-            .where((id) => id != null)
-            .toList();
-        albumIdsScanned += childIds.length;
-        if (childIds.contains(albumId)) {
-          return view.id;
+
+    Future<List<BaseItemDto>> fetchViewMatches(
+      BaseItemDto view,
+      List<BaseItemId> itemIds,
+    ) async {
+      final List<BaseItemDto> matches = <BaseItemDto>[];
+      for (int offset = 0;
+          offset < itemIds.length;
+          offset += viewLookupChunkSize) {
+        final int end =
+            (offset + viewLookupChunkSize < itemIds.length)
+                ? offset + viewLookupChunkSize
+                : itemIds.length;
+        final List<BaseItemId> chunk = itemIds.sublist(offset, end);
+        final Stopwatch? requestStopwatch =
+            PerformanceBenchmarkService.enabled
+                ? (Stopwatch()..start())
+                : null;
+        final List<BaseItemDto> chunkMatches =
+            await _jellyfinApiData.getItemsInParentByIds(
+              parentItem: view,
+              itemIds: chunk,
+              includeItemTypes: BaseItemDtoType.album.jellyfinName!,
+              fields: _jellyfinApiData.defaultFields,
+            );
+        if (requestStopwatch != null) {
+          requestStopwatch.stop();
+          final PerformanceBenchmarkService benchmark =
+              PerformanceBenchmarkService.instance;
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumViewRequestMicros",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          benchmark.maxMetricBuffered(
+            "downloadAlbumViewRequestMicrosMax",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumViewRequestCount",
+          );
         }
+        matches.addAll(chunkMatches);
       }
-      return null;
+      return matches;
+    }
+
+    try {
+      Future<Map<BaseItemId, BaseItemId>>? indexFuture = _albumViewIndex;
+      if (indexFuture == null) {
+        indexFuture = Future<Map<BaseItemId, BaseItemId>>.sync(() async {
+          final Map<BaseItemId, BaseItemId> index =
+              <BaseItemId, BaseItemId>{};
+          final Set<BaseItemId> candidateAlbumIds = <BaseItemId>{};
+
+          final List<IsarTaskData<dynamic>> queuedSyncs =
+              _isar.isarTaskDatas
+                  .where()
+                  .typeEqualTo(type)
+                  .findAllSync();
+          for (final IsarTaskData<dynamic> wrappedSync in queuedSyncs) {
+            final SyncNode sync = wrappedSync.data as SyncNode;
+            final DownloadItem? item =
+                _isar.downloadItems.getSync(sync.stubIsarId);
+            if (item == null) {
+              continue;
+            }
+            if (item.type == DownloadItemType.collection &&
+                item.baseItemType == BaseItemDtoType.album) {
+              candidateAlbumIds.add(item.baseItem!.id);
+            } else if (item.type == DownloadItemType.track) {
+              final BaseItemId? queuedAlbumId = item.baseItem?.albumId;
+              if (queuedAlbumId != null) {
+                candidateAlbumIds.add(queuedAlbumId);
+              }
+            }
+          }
+          candidateAlbumIds.add(albumId);
+
+          final FinampUserHelper userHelper =
+              GetIt.instance<FinampUserHelper>();
+          final List<BaseItemId> candidates = candidateAlbumIds.toList();
+          for (final BaseItemDto view
+              in (userHelper.currentUser?.views.values ??
+                  <BaseItemDto>[])) {
+            viewsExamined++;
+            final List<BaseItemDto> matchingAlbums =
+                await fetchViewMatches(view, candidates);
+            for (final BaseItemDto album in matchingAlbums) {
+              albumIdsScanned++;
+              index.putIfAbsent(album.id, () => view.id);
+            }
+          }
+          return index;
+        });
+        _albumViewIndex = indexFuture;
+      }
+
+      final Map<BaseItemId, BaseItemId> index = await indexFuture;
+      final BaseItemId? indexedViewId = index[albumId];
+      if (indexedViewId != null) {
+        return indexedViewId;
+      }
+
+      // The initial index is intentionally scoped to the pending graph. If a
+      // later sync introduces another album, resolve only that missing ID and
+      // merge it into the existing index rather than rebuilding all views.
+      final Future<BaseItemId?> missingLookup =
+          _albumViewMissingLookups.putIfAbsent(albumId, () async {
+            final FinampUserHelper userHelper =
+                GetIt.instance<FinampUserHelper>();
+            for (final BaseItemDto view
+                in (userHelper.currentUser?.views.values ??
+                    <BaseItemDto>[])) {
+              viewsExamined++;
+              final List<BaseItemDto> matchingAlbums =
+                  await fetchViewMatches(view, <BaseItemId>[albumId]);
+              if (matchingAlbums.isEmpty) {
+                continue;
+              }
+              albumIdsScanned += matchingAlbums.length;
+              index.putIfAbsent(albumId, () => view.id);
+              return index[albumId];
+            }
+            return null;
+          });
+      return await missingLookup;
+    } catch (_) {
+      _albumViewIndex = null;
+      _albumViewMissingLookups.clear();
+      rethrow;
     } finally {
       if (benchmarkStopwatch != null) {
         benchmarkStopwatch.stop();
-        final benchmark = PerformanceBenchmarkService.instance;
+        final PerformanceBenchmarkService benchmark =
+            PerformanceBenchmarkService.instance;
         benchmark.incrementMetricBuffered("downloadAlbumViewLookupCount");
         benchmark.incrementMetricBuffered(
           "downloadAlbumViewLookupMicros",
