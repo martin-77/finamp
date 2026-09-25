@@ -914,6 +914,28 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       duration: duration,
       preferPosition: preferPosition,
     );
+
+    if (_activeBenchmarkJump != null && !_useListModeForCurrentContent()) {
+      await WidgetsBinding.instance.endOfFrame;
+      final visibleTags = controller.tagMap.keys.toList()..sort();
+      final crossAxisCount = _gridCrossAxisCount();
+      benchmark.mark(
+        "alphabet-grid-final-position",
+        values: {
+          "targetIndex": targetIndex,
+          "crossAxisCount": crossAxisCount,
+          "targetColumn": targetIndex % crossAxisCount,
+          "targetRow": targetIndex ~/ crossAxisCount,
+          "firstRenderedTag":
+              visibleTags.isEmpty ? null : visibleTags.first,
+          "lastRenderedTag":
+              visibleTags.isEmpty ? null : visibleTags.last,
+          "renderedTagCount": visibleTags.length,
+          "firstRenderedDelta":
+              visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
+        },
+      );
+    }
   }
 
   double _estimateListOffsetForIndex(
@@ -924,6 +946,27 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     return (targetIndex * suggestedItemExtent)
         .clamp(position.minScrollExtent, position.maxScrollExtent)
         .toDouble();
+  }
+
+  int _gridCrossAxisCount() {
+    final contentType = widget.contentType;
+    if (contentType == null) return 1;
+
+    final widthData = calculateItemCollectionCardWidth(ref);
+    final itemWidth = widthData.$1;
+    final itemPadding = widthData.$2;
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final crossAxisExtent = max(
+      1.0,
+      MediaQuery.sizeOf(context).width -
+          mediaPadding.left -
+          mediaPadding.right -
+          itemPadding,
+    );
+    return max(
+      1,
+      ((crossAxisExtent + itemPadding) / (itemWidth + itemPadding)).round(),
+    );
   }
 
   double _estimateGridOffsetForIndex(
@@ -953,10 +996,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           itemPadding,
     );
 
-    var crossAxisCount =
-        ((crossAxisExtent + itemPadding) / (itemWidth + itemPadding)).round();
-    crossAxisCount = max(1, crossAxisCount);
-
+    final crossAxisCount = _gridCrossAxisCount();
     final crossAxisSpacing = crossAxisExtent / crossAxisCount;
     final mainAxisStride = itemHeight - itemWidth + crossAxisSpacing;
     final targetRow = targetIndex ~/ crossAxisCount;
