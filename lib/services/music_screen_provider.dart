@@ -151,16 +151,12 @@ class PagedContent extends _$PagedContent {
       return null;
     }
 
-    final MusicScreenPlayable musicRequest;
-    switch (request) {
-      case Genre<FinampPlayableDto>():
-        musicRequest = request.getMusicScreenRequest();
-      case MusicScreenPlayable<FinampPlayableDto>():
-        musicRequest = request;
-      case FinampUnpagedDisplayable():
-      case UnavailableHomeSectionPlayable():
-        return null;
-    }
+    final MusicScreenPlayable? musicRequest = switch (request) {
+      Genre<FinampPlayableDto>() => request.getMusicScreenRequest(),
+      MusicScreenPlayable<FinampPlayableDto>() => request,
+      _ => null,
+    };
+    if (musicRequest == null) return null;
 
     if (musicRequest.sortConfig.sortBy != SortBy.sortName ||
         musicRequest.sortConfig.filters.any(
@@ -264,7 +260,7 @@ class PagedContent extends _$PagedContent {
     final boundaryCount = results[1].totalRecordCount ?? 0;
     if (total <= 0) return 0;
 
-    return (total - boundaryCount).clamp(0, total - 1);
+    return (total - boundaryCount).clamp(0, total - 1).toInt();
   }
 
   void fetchHomeScreenItems() {
