@@ -79,6 +79,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   late AutoScrollController controller;
   String? letterToSearch;
+  String? _alphabetSeekAttemptedLetter;
+  bool _alphabetSeekInProgress = false;
 
   Timer? timer;
 
@@ -104,7 +106,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void scrollToLetter(String letter) async {
     if (letter.isEmpty) return;
 
-    letterToSearch = letter;
+    if (letterToSearch != letter) {
+      letterToSearch = letter;
+      _alphabetSeekAttemptedLetter = null;
+    }
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
 
@@ -114,6 +119,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
     //TODO use binary search to improve performance for already loaded pages
     final state = ref.read(pageControl);
+    if (state.isLoading) return;
     final itemList = state.items ?? [];
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
@@ -154,6 +160,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
@@ -165,6 +172,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
 
         letterToSearch = null;
+        _alphabetSeekAttemptedLetter = null;
         return;
       }
     }
@@ -172,14 +180,35 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     timer?.cancel();
     if (!state.hasNextPage) {
       letterToSearch = null;
-    } else {
-      timer = Timer(const Duration(seconds: 8), () {
-        // If page loading takes too long, cancel search and allow image loading.
-        letterToSearch = null;
-      });
-
-      ref.read(pageControl.notifier).newPage();
+      _alphabetSeekAttemptedLetter = null;
+      return;
     }
+
+    if (!_alphabetSeekInProgress &&
+        _alphabetSeekAttemptedLetter != letter) {
+      _alphabetSeekAttemptedLetter = letter;
+      _alphabetSeekInProgress = true;
+      try {
+        final targetIndex = await ref
+            .read(pageControl.notifier)
+            .resolveAlphabetTargetIndex(letter);
+        if (targetIndex != null && targetIndex >= itemList.length) {
+          final missingItems = targetIndex - itemList.length + 1;
+          ref.read(pageControl.notifier).newPage(pageSize: missingItems);
+          return;
+        }
+      } finally {
+        _alphabetSeekInProgress = false;
+      }
+    }
+
+    timer = Timer(const Duration(seconds: 8), () {
+      // If fallback page loading takes too long, cancel search and allow image loading.
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+    });
+
+    ref.read(pageControl.notifier).newPage();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
     } else {
