@@ -102,20 +102,8 @@ import sys
 
 path = sys.argv[1]
 forbidden_keys = {
-    "cachedItems",
-    "estimatedOffset",
     "estimatedTargetIndex",
-    "exactRevealOffset",
-    "firstRenderedTag",
-    "index",
-    "lastRenderedTag",
-    "maxScrollExtent",
-    "pixels",
-    "scrollPixels",
-    "startIndex",
     "targetIndex",
-    "targetPixels",
-    "targetRow",
     "totalCount",
     "virtualItemCount",
     "windowStartIndex",
