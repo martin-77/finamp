@@ -1404,10 +1404,10 @@ class DownloadsSyncService {
         parent.type == DownloadItemType.collection &&
         parent.baseItemType == BaseItemDtoType.album &&
         !asRequired;
+    final bool isInfoTrack =
+        parent.type == DownloadItemType.track && !asRequired;
     final bool benchmarkTrackInfo =
-        PerformanceBenchmarkService.enabled &&
-        parent.type == DownloadItemType.track &&
-        !asRequired;
+        PerformanceBenchmarkService.enabled && isInfoTrack;
 
     void recordAlbumInfoPhase(String phase, Stopwatch? stopwatch) {
       if (!benchmarkAlbumInfo || stopwatch == null) {
@@ -1734,7 +1734,7 @@ class DownloadsSyncService {
       // Set priority high to prevent stalling, but lower than creating network requests
     }
 
-    if (benchmarkTrackInfo) {
+    if (isInfoTrack) {
       await processDatabaseAndFiles();
     } else {
       await SchedulerBinding.instance.scheduleTask(
