@@ -1391,7 +1391,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             itemBuilder: (context, index) {
               final item = _sparseAlbumItems[index];
               if (item == null) {
-                _queueSparseAlbumWindowLoad(index);
+                // During an alphabet seek the target window is loaded
+                // explicitly. Do not let GridView cache-extent placeholders
+                // trigger overlapping sparse-window fetches at the same time.
+                // Normal manual scrolling resumes indexed window loading as
+                // soon as the seek completes.
+                if (!_alphabetSeekInProgress) {
+                  _queueSparseAlbumWindowLoad(index);
+                }
                 return const SizedBox.shrink();
               }
               final baseItem = item.item;
