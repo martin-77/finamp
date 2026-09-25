@@ -269,6 +269,14 @@ class PerformanceBenchmarkService {
     "FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY",
     defaultValue: false,
   );
+  static const bool targetedAlphabet = bool.fromEnvironment(
+    "FINAMP_BENCH_ALPHABET_ONLY",
+    defaultValue: false,
+  );
+  static const bool alphabetDirectOffsetDiagnostic = bool.fromEnvironment(
+    "FINAMP_BENCH_ALPHABET_DIRECT_OFFSET",
+    defaultValue: false,
+  );
   static const String variant = String.fromEnvironment(
     "FINAMP_BENCH_VARIANT",
     defaultValue: "unknown",
