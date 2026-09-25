@@ -292,7 +292,6 @@ class JellyfinApiHelper {
 
     final response = await _fetchGetItemsResponse(
       parentItem: parentItem,
-      parentId: parentId,
       libraryFilter: libraryFilter,
       includeItemTypes: includeItemTypes,
       sortBy: sortBy,
