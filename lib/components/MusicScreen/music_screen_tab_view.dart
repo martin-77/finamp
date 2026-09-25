@@ -1511,6 +1511,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final useListMode = widget.contentType == null || widget.contentType == ContentType.tracks
         ? true
         : ref.watch(finampSettingsProvider.perTabContentViewType(widget.contentType!)) != ContentViewType.grid;
+    if (useListMode && _usingSparseAlbumGrid) {
+      _sparseAlbumGeneration++;
+      _sparseAlbumTotalCount = null;
+      _sparseAlbumItems.clear();
+      _sparseAlbumWindowStartsLoading.clear();
+      _sparseUserScrollActive = false;
+      _sparseUserScrollDirection = 0;
+    }
     var tabContent = useListMode
         ? SafeArea(
             top: false,
