@@ -690,7 +690,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final medianIndex = renderedIndices.isEmpty
         ? targetIndex
         : renderedIndices[renderedIndices.length ~/ 2];
-    final duration = _getAnimationDurationForOffsetToIndex(targetIndex);
+    var duration = _getAnimationDurationForOffsetToIndex(targetIndex);
 
     if (_activeBenchmarkJump != null) {
       _benchmarkScrollToIndexInvocations++;
@@ -717,28 +717,35 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         controller.hasClients &&
         itemCount > 1) {
       final position = controller.position;
-      final fraction = targetIndex / (itemCount - 1);
-      final estimatedOffset =
-          (position.maxScrollExtent * fraction)
-              .clamp(position.minScrollExtent, position.maxScrollExtent)
-              .toDouble();
+      final useListMode = _useListModeForCurrentContent();
+      final estimatedOffset = useListMode
+          ? _estimateListOffsetForIndex(targetIndex, position)
+          : _estimateGridOffsetForIndex(targetIndex, position);
 
       benchmark.mark(
         "alphabet-direct-offset-prejump",
         values: {
-          "viewMode": _useListModeForCurrentContent() ? "list" : "grid",
-          "targetFractionBucket": switch (fraction) {
-            < 0.1 => "0-10%",
-            < 0.25 => "10-25%",
-            < 0.5 => "25-50%",
-            < 0.75 => "50-75%",
-            < 0.9 => "75-90%",
-            _ => "90-100%",
-          },
+          "viewMode": useListMode ? "list" : "grid",
+          "offsetStrategy": useListMode ? "list-extent" : "grid-geometry",
         },
       );
+
       controller.jumpTo(estimatedOffset);
       await WidgetsBinding.instance.endOfFrame;
+
+      duration = MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : _getAnimationDurationForOffsetToIndex(targetIndex).clamp(
+              const Duration(milliseconds: 120),
+              const Duration(milliseconds: 350),
+            );
+
+      if (_activeBenchmarkJump != null) {
+        benchmark.metric(
+          "alphabetPostPrejumpAnimationMs",
+          duration.inMilliseconds,
+        );
+      }
     }
 
     await controller.scrollToIndex(
@@ -746,6 +753,57 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       duration: duration,
       preferPosition: preferPosition,
     );
+  }
+
+  double _estimateListOffsetForIndex(
+    int targetIndex,
+    ScrollPosition position,
+  ) {
+    const suggestedItemExtent = 72.0;
+    return (targetIndex * suggestedItemExtent)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+  }
+
+  double _estimateGridOffsetForIndex(
+    int targetIndex,
+    ScrollPosition position,
+  ) {
+    final contentType = widget.contentType;
+    if (contentType == null) {
+      return _estimateListOffsetForIndex(targetIndex, position);
+    }
+
+    final widthData = calculateItemCollectionCardWidth(ref);
+    final itemWidth = widthData.$1;
+    final itemPadding = widthData.$2;
+    final itemHeight = calculateItemCollectionCardHeight(
+      ref: ref,
+      sectionInfo: null,
+      itemType: contentType.itemType ?? BaseItemDtoType.album,
+    );
+
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final crossAxisExtent = max(
+      1.0,
+      MediaQuery.sizeOf(context).width -
+          mediaPadding.left -
+          mediaPadding.right -
+          itemPadding,
+    );
+
+    var crossAxisCount =
+        ((crossAxisExtent + itemPadding) / (itemWidth + itemPadding)).round();
+    crossAxisCount = max(1, crossAxisCount);
+
+    final crossAxisSpacing = crossAxisExtent / crossAxisCount;
+    final mainAxisStride = itemHeight - itemWidth + crossAxisSpacing;
+    final targetRow = targetIndex ~/ crossAxisCount;
+    final estimatedOffset = itemPadding + targetRow * mainAxisStride;
+
+    return estimatedOffset
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
   }
 
   Duration _getAnimationDurationForOffsetToIndex(int index) {
