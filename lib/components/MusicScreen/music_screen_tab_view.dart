@@ -738,17 +738,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark(
           "alphabet-jump-seek-complete",
           values: {
-            "targetIndex": window?.targetIndex,
-            "estimatedTargetIndex": window?.estimatedTargetIndex,
             "targetCorrectionDelta": window == null
                 ? null
                 : window.targetIndex - window.estimatedTargetIndex,
-            "windowStartIndex": window?.startIndex,
             "localTargetIndex": window?.localTargetIndex,
             "previousInitial": window?.previousInitial,
             "targetInitial": window?.targetInitial,
             "nextInitial": window?.nextInitial,
-            "totalCount": window?.totalCount,
             "mode": "sparse-indexed-grid",
           },
         );
@@ -778,7 +774,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             "alphabet-jump-page-ready",
             values: {
               "loadedItems": window.items.length,
-              "virtualItemCount": window.totalCount,
               "mode": "sparse-indexed-grid",
             },
           );
@@ -980,8 +975,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         values: {
           "viewMode": "grid",
           "offsetStrategy": "sparse-grid-geometry",
-          "estimatedOffset": estimatedOffset,
-          "maxScrollExtent": position.maxScrollExtent,
         },
       );
 
@@ -1012,23 +1005,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       benchmark.mark(
         "alphabet-grid-final-position",
         values: {
-          "targetIndex": targetIndex,
           "crossAxisCount": crossAxisCount,
           "targetColumn": targetIndex % crossAxisCount,
-          "targetRow": targetIndex ~/ crossAxisCount,
-          "firstRenderedTag":
-              visibleTags.isEmpty ? null : visibleTags.first,
-          "lastRenderedTag":
-              visibleTags.isEmpty ? null : visibleTags.last,
           "renderedTagCount": visibleTags.length,
           "targetTagRendered": controller.tagMap.containsKey(targetIndex),
           "firstRenderedDelta":
               visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
-          "estimatedOffset": estimatedOffset,
-          "exactRevealOffset": exactRevealOffset,
           "exactCorrectionDelta": exactCorrectionDelta,
-          "scrollPixels": controller.position.pixels,
-          "maxScrollExtent": controller.position.maxScrollExtent,
           "mode": "sparse-direct-offset-exact-reveal",
         },
       );
@@ -1299,7 +1282,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         "sparse-scroll-start",
         values: {
           "steps": command.viewportDeltas.length,
-          "cachedItems": _sparseAlbumItems.length,
         },
       );
 
@@ -1320,9 +1302,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           values: {
             "step": step,
             "viewportDelta": delta,
-            "pixels": position.pixels,
-            "targetPixels": target,
-            "cachedItems": _sparseAlbumItems.length,
           },
         );
 
@@ -1345,8 +1324,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           values: {
             "step": step,
             "viewportDelta": delta,
-            "pixels": controller.position.pixels,
-            "cachedItems": _sparseAlbumItems.length,
             "pendingWindows": _sparseAlbumWindowStartsLoading.length,
             "renderedTags": controller.tagMap.length,
           },
@@ -1355,7 +1332,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       benchmark.mark(
         "sparse-scroll-complete",
         values: {
-          "cachedItems": _sparseAlbumItems.length,
           "renderedTags": controller.tagMap.length,
         },
       );
@@ -1376,7 +1352,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       PerformanceBenchmarkService.instance.mark(
         "alphabet-sparse-window-load-queued",
         values: {
-          "index": index,
           "seekInProgress": _alphabetSeekInProgress,
           "userScrollActive": _sparseUserScrollActive,
         },
@@ -1416,9 +1391,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           PerformanceBenchmarkService.instance.mark(
             "alphabet-sparse-window-load-complete",
             values: {
-              "startIndex": startIndex,
               "loadedItems": items.length,
-              "cachedItems": _sparseAlbumItems.length,
             },
           );
         }
