@@ -260,8 +260,7 @@ the real alphabet UI input path. It records request/Worker work, seek timing,
 target rendering and UI quiescence without requiring the private search-query
 environment variables used by the full suite.
 
-When evaluating the sparse direct-offset implementation, enable the candidate
-path explicitly:
+For direct-offset comparisons, enable the diagnostic mode explicitly:
 
 ```bash
 FINAMP_BENCH_ALPHABET_ONLY=true \
@@ -269,10 +268,13 @@ FINAMP_BENCH_ALPHABET_DIRECT_OFFSET=true \
   bash tool/bootstrap_performance_benchmark_macos.sh [ios-device-id]
 ```
 
-The direct-offset targeted run additionally performs an `M` jump followed by
-controlled forward/backward viewport scrolling. This exercises sparse-window
-loading and look-ahead prefetch after the jump. A targeted jump is successful
-only when the requested target is actually rendered; a missing target fails the
+This flag selects the benchmark's direct-offset comparison mode and labels its
+results accordingly; it does not enable or disable production fast-scroller
+behavior. On a branch that implements the sparse indexed album grid, the
+targeted run additionally performs an `M` jump followed by controlled
+forward/backward viewport scrolling. This exercises sparse-window loading and
+look-ahead prefetch after the jump. A targeted sparse jump is successful only
+when the requested target is actually rendered; a missing target fails the
 measured run rather than being reported as a successful timing.
 
 The host-facing JSONL deliberately removes global target indices, total/virtual
