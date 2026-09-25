@@ -701,6 +701,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 ? null
                 : window.targetIndex - window.estimatedTargetIndex,
             "windowStartIndex": window?.startIndex,
+            "localTargetIndex": window?.localTargetIndex,
+            "previousInitial": window?.previousInitial,
+            "targetInitial": window?.targetInitial,
+            "nextInitial": window?.nextInitial,
             "totalCount": window?.totalCount,
             "mode": "sparse-indexed-grid",
           },
@@ -931,6 +935,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           "lastRenderedTag":
               visibleTags.isEmpty ? null : visibleTags.last,
           "renderedTagCount": visibleTags.length,
+          "targetTagRendered": controller.tagMap.containsKey(targetIndex),
           "firstRenderedDelta":
               visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
         },
