@@ -73,11 +73,16 @@ flutter pub get
 
 step "Static benchmark preflight"
 
-# Match the upstream formatting gate instead of checking only benchmark-touched
-# files. Formatting drift must fail locally before either benchmark or fix PR
-# is opened.
-dart format --output=none --set-exit-if-changed lib/l10n/
-dart format --output=none --set-exit-if-changed lib/
+# Keep PR-touched Dart files formatter-clean without reformatting unrelated
+# existing source. The comparison base can be overridden for stacked PRs.
+format_base="${FINAMP_BENCH_FORMAT_BASE:-origin/redesign}"
+changed_dart_files="$(git diff --name-only --diff-filter=ACMR "$format_base"...HEAD -- 'lib/*.dart' 'lib/**/*.dart')"
+if [[ -n "$changed_dart_files" ]]; then
+  # File names in this repository do not contain newlines; feed one path per
+  # line to xargs so this remains compatible with the macOS system Bash.
+  printf '%s\n' "$changed_dart_files" | xargs dart format --output=none --set-exit-if-changed
+fi
+git diff --check "$format_base"...HEAD
 
 analyze_log="$(mktemp)"
 if ! flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee "$analyze_log"; then
