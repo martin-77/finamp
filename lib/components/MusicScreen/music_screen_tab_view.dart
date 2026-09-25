@@ -82,6 +82,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   StreamSubscription<PerformanceBenchmarkPageCommand>? _benchmarkPageSubscription;
   PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
   Stopwatch? _benchmarkAlphabetPageWait;
+  int _benchmarkScrollToLetterInvocations = 0;
+  int _benchmarkScrollToIndexInvocations = 0;
   PerformanceBenchmarkPageCommand? _activeBenchmarkPage;
   int _benchmarkPageInitialCount = 0;
   bool _benchmarkPageFrameScheduled = false;
@@ -186,6 +188,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       }
 
       _activeBenchmarkJump = command;
+      _benchmarkScrollToLetterInvocations = 0;
+      _benchmarkScrollToIndexInvocations = 0;
       final benchmark = PerformanceBenchmarkService.instance;
       benchmark.mark(
         "alphabet-jump-start",
@@ -498,6 +502,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (letter.isEmpty) return;
 
     final benchmark = PerformanceBenchmarkService.instance;
+    if (_activeBenchmarkJump != null) {
+      _benchmarkScrollToLetterInvocations++;
+    }
     final pageWait = _benchmarkAlphabetPageWait;
     if (pageWait != null) {
       pageWait.stop();
@@ -561,9 +568,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
-        await controller.scrollToIndex(
-          i,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: i,
+          itemCount: itemList.length,
           preferPosition: AutoScrollPosition.begin,
         );
         targetScroll.stop();
@@ -587,10 +594,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
-        await controller.scrollToIndex(
-          (i - 1).clamp(0, itemList.length - 1),
-          // duration: scrollDuration,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: (i - 1).clamp(0, itemList.length - 1),
+          itemCount: itemList.length,
           preferPosition: AutoScrollPosition.middle,
         );
         targetScroll.stop();
@@ -652,6 +658,96 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     );
   }
 
+  String _indexDistanceBucket(int distance) {
+    if (distance < 10) return "0-9";
+    if (distance < 50) return "10-49";
+    if (distance < 100) return "50-99";
+    if (distance < 500) return "100-499";
+    if (distance < 1000) return "500-999";
+    if (distance < 5000) return "1000-4999";
+    if (distance < 10000) return "5000-9999";
+    return "10000+";
+  }
+
+  bool _useListModeForCurrentContent() {
+    final contentType = widget.contentType;
+    if (contentType == null || contentType == ContentType.tracks) {
+      return true;
+    }
+    return ref.read(
+          finampSettingsProvider.perTabContentViewType(contentType),
+        ) !=
+        ContentViewType.grid;
+  }
+
+  Future<void> _scrollToTargetIndex({
+    required int targetIndex,
+    required int itemCount,
+    required AutoScrollPosition preferPosition,
+  }) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    final renderedIndices = controller.tagMap.keys.toList(growable: false);
+    final medianIndex = renderedIndices.isEmpty
+        ? targetIndex
+        : renderedIndices[renderedIndices.length ~/ 2];
+    final duration = _getAnimationDurationForOffsetToIndex(targetIndex);
+
+    if (_activeBenchmarkJump != null) {
+      _benchmarkScrollToIndexInvocations++;
+      benchmark.metric(
+        "alphabetRequestedAnimationMs",
+        duration.inMilliseconds,
+      );
+      benchmark.metric(
+        "alphabetIndexDistanceBucket",
+        _indexDistanceBucket((medianIndex - targetIndex).abs()),
+      );
+      benchmark.metric(
+        "alphabetRenderedTagCount",
+        renderedIndices.length,
+      );
+      benchmark.metric(
+        "alphabetViewMode",
+        _useListModeForCurrentContent() ? "list" : "grid",
+      );
+    }
+
+    if (PerformanceBenchmarkService.enabled &&
+        PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic &&
+        controller.hasClients &&
+        itemCount > 1) {
+      final position = controller.position;
+      final fraction = targetIndex / (itemCount - 1);
+      final estimatedOffset =
+          (position.maxScrollExtent * fraction)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+
+      benchmark.mark(
+        "alphabet-direct-offset-prejump",
+        values: {
+          "viewMode": _useListModeForCurrentContent() ? "list" : "grid",
+          "targetFractionBucket": switch (fraction) {
+            < 0.1 => "0-10%",
+            < 0.25 => "10-25%",
+            < 0.5 => "25-50%",
+            < 0.75 => "50-75%",
+            < 0.9 => "75-90%",
+            _ => "90-100%",
+          },
+        },
+      );
+      controller.jumpTo(estimatedOffset);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+
+    await controller.scrollToIndex(
+      targetIndex,
+      duration: duration,
+      preferPosition: preferPosition,
+    );
+  }
+
   Duration _getAnimationDurationForOffsetToIndex(int index) {
     final renderedIndices = controller.tagMap.keys;
     if (renderedIndices.isEmpty) return Duration(milliseconds: 200);
@@ -665,6 +761,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final command = _activeBenchmarkJump;
     if (command == null) return;
     final state = ref.read(pageControl);
+    PerformanceBenchmarkService.instance.metric(
+      "alphabetScrollToLetterInvocations",
+      _benchmarkScrollToLetterInvocations,
+    );
+    PerformanceBenchmarkService.instance.metric(
+      "alphabetScrollToIndexInvocations",
+      _benchmarkScrollToIndexInvocations,
+    );
     PerformanceBenchmarkService.instance.mark(
       "alphabet-jump-complete",
       values: {"loadedItems": state.items?.length ?? 0},
