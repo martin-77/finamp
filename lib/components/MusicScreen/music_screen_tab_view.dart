@@ -101,6 +101,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   int? _alphabetResolvedTargetIndex;
   bool _alphabetSeekInProgress = false;
 
+  static const int _sparseAlbumWindowSize = 240;
+  int? _sparseAlbumTotalCount;
+  final Map<int, FinampPlayableDto> _sparseAlbumItems = {};
+  final Set<int> _sparseAlbumWindowStartsLoading = {};
+
+  bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
+
   Timer? timer;
 
   @override
@@ -664,6 +671,88 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     if (!_alphabetSeekInProgress &&
+        _alphabetSeekAttemptedLetter != letter &&
+        !_useListModeForCurrentContent()) {
+      _alphabetSeekAttemptedLetter = letter;
+      _alphabetSeekInProgress = true;
+      final seek = Stopwatch()..start();
+      final windowWait = Stopwatch()..start();
+      benchmark.mark("alphabet-jump-seek-start");
+      try {
+        final window = await ref
+            .read(pageControl.notifier)
+            .loadAlbumAlphabetWindow(letter);
+        seek.stop();
+        windowWait.stop();
+        benchmark.incrementMetric(
+          "alphabetSeekResolveMicros",
+          seek.elapsedMicroseconds,
+        );
+        benchmark.incrementMetric(
+          "alphabetPageWaitMicros",
+          windowWait.elapsedMicroseconds,
+        );
+        benchmark.mark(
+          "alphabet-jump-seek-complete",
+          values: {
+            "targetIndex": window?.targetIndex,
+            "totalCount": window?.totalCount,
+            "mode": "sparse-indexed-grid",
+          },
+        );
+
+        if (letterToSearch != letter) return;
+
+        if (window != null &&
+            window.totalCount > 0 &&
+            window.items.isNotEmpty) {
+          setState(() {
+            _sparseAlbumTotalCount = window.totalCount;
+            _sparseAlbumItems.clear();
+            for (var i = 0; i < window.items.length; i++) {
+              _sparseAlbumItems[window.startIndex + i] = window.items[i];
+            }
+          });
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted || letterToSearch != letter) return;
+
+          _alphabetResolvedTargetIndex = window.targetIndex;
+          benchmark.mark(
+            "alphabet-jump-page-ready",
+            values: {
+              "loadedItems": window.items.length,
+              "virtualItemCount": window.totalCount,
+              "mode": "sparse-indexed-grid",
+            },
+          );
+          benchmark.mark("alphabet-jump-target-located");
+
+          timer?.cancel();
+          final targetScroll = Stopwatch()..start();
+          await _scrollToTargetIndex(
+            targetIndex: window.targetIndex,
+            itemCount: window.totalCount,
+            preferPosition: AutoScrollPosition.begin,
+          );
+          targetScroll.stop();
+          benchmark.incrementMetric(
+            "alphabetTargetScrollMicros",
+            targetScroll.elapsedMicroseconds,
+          );
+          benchmark.mark("alphabet-jump-target-rendered");
+
+          letterToSearch = null;
+          _alphabetSeekAttemptedLetter = null;
+          _alphabetResolvedTargetIndex = null;
+          _completeBenchmarkJump();
+          return;
+        }
+      } finally {
+        _alphabetSeekInProgress = false;
+      }
+    }
+
+    if (!_alphabetSeekInProgress &&
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
       _alphabetSeekInProgress = true;
@@ -931,8 +1020,44 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void _refresh() {
     // TODO this has ref.watch, does it explode?
     if (!context.mounted) return;
+    if (_usingSparseAlbumGrid) {
+      setState(() {
+        _sparseAlbumTotalCount = null;
+        _sparseAlbumItems.clear();
+        _sparseAlbumWindowStartsLoading.clear();
+      });
+    }
     ref.read(pageControl.notifier).refresh();
     // TODO test error cases?
+  }
+
+  void _queueSparseAlbumWindowLoad(int index) {
+    final total = _sparseAlbumTotalCount;
+    if (total == null || total <= 0) return;
+
+    const step = 160;
+    final bucket = index ~/ step;
+    final startIndex = max(0, bucket * step - 40);
+    if (!_sparseAlbumWindowStartsLoading.add(startIndex)) return;
+
+    unawaited(() async {
+      try {
+        final items = await ref.read(pageControl.notifier).loadAlbumWindow(
+              startIndex: startIndex,
+              limit: _sparseAlbumWindowSize,
+            );
+        if (!mounted || items == null || _sparseAlbumTotalCount != total) return;
+        setState(() {
+          for (var i = 0; i < items.length; i++) {
+            final globalIndex = startIndex + i;
+            if (globalIndex >= total) break;
+            _sparseAlbumItems[globalIndex] = items[i];
+          }
+        });
+      } finally {
+        _sparseAlbumWindowStartsLoading.remove(startIndex);
+      }
+    }());
   }
 
   void _retry() {
@@ -1099,6 +1224,48 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
               ),
               separatorBuilder: (context, index) => const SizedBox.shrink(),
             ),
+          )
+        : _usingSparseAlbumGrid
+        ? GridView.builder(
+            controller: controller,
+            physics: _DeferredLoadingAlwaysScrollableScrollPhysics(tabState: this),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+              top: itemPadding,
+              bottom: itemPadding,
+              left: MediaQuery.paddingOf(context).left + itemPadding,
+              right: MediaQuery.paddingOf(context).right,
+            ),
+            gridDelegate: MusicScreenGridLayout(
+              ref: ref,
+              contentType: widget.contentType!,
+            ),
+            itemCount: _sparseAlbumTotalCount!,
+            itemBuilder: (context, index) {
+              final item = _sparseAlbumItems[index];
+              if (item == null) {
+                _queueSparseAlbumWindowLoad(index);
+                return const SizedBox.shrink();
+              }
+              final baseItem = item.item;
+              return CachedBuilder(
+                key: ValueKey(baseItem.id),
+                cacheKey: (baseItem.id, index),
+                builder: (context) {
+                  return AutoScrollTag(
+                    key: ValueKey(index),
+                    controller: controller,
+                    index: index,
+                    child: ItemWrapper(
+                      key: ValueKey(baseItem.id),
+                      item: baseItem,
+                      isGrid: true,
+                      genreFilter: widget.sortConfig.genreFilter,
+                    ),
+                  );
+                },
+              );
+            },
           )
         : PagedGridView<int, FinampDisplayableOrPlayable>(
             // If we made it here, we must be in a non-track music screen, so pageControl should only return FinampPlayableItem
