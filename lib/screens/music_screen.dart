@@ -114,8 +114,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
   @override
   void initState() {
     super.initState();
-    _benchmarkTabSubscription =
-        PerformanceBenchmarkService.instance.tabCommands.listen((command) {
+    _benchmarkTabSubscription = PerformanceBenchmarkService.instance.tabCommands.listen((command) {
       if (!mounted || widget.singleTabConfig != null) return;
 
       final tabs = ref
@@ -134,10 +133,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       });
 
       if (index < 0) {
-        command.completeError(
-          StateError("Requested benchmark tab is not visible"),
-          StackTrace.current,
-        );
+        command.completeError(StateError("Requested benchmark tab is not visible"), StackTrace.current);
         return;
       }
 
@@ -150,16 +146,12 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       command.markSelected(contentTab.name);
       PerformanceBenchmarkService.instance.mark(
         "ui-tab-selected",
-        values: {
-          "requestedContentType": command.contentType,
-          "contentType": contentTab.name,
-        },
+        values: {"requestedContentType": command.contentType, "contentType": contentTab.name},
       );
       setState(() {});
     });
 
-    _benchmarkSearchSubscription =
-        PerformanceBenchmarkService.instance.searchCommands.listen((command) {
+    _benchmarkSearchSubscription = PerformanceBenchmarkService.instance.searchCommands.listen((command) {
       if (!mounted || widget.singleTabConfig != null) return;
 
       final tabs = ref
@@ -178,10 +170,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       });
 
       if (index < 0) {
-        command.completeError(
-          StateError("Requested benchmark search tab is not visible"),
-          StackTrace.current,
-        );
+        command.completeError(StateError("Requested benchmark search tab is not visible"), StackTrace.current);
         return;
       }
 
@@ -198,11 +187,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
 
       PerformanceBenchmarkService.instance.mark(
         "search-applied",
-        values: {
-          "contentType": contentTab.name,
-          "queryAlias": command.queryAlias,
-          "queryLength": command.query.length,
-        },
+        values: {"contentType": contentTab.name, "queryAlias": command.queryAlias, "queryLength": command.query.length},
       );
       setState(() {});
     });
@@ -327,9 +312,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> with TickerProviderSt
       final selectedContentType = selectedTab == ContentType.genericArtists
           ? ref.watch(finampSettingsProvider.defaultArtistType).tabType
           : selectedTab;
-      PerformanceBenchmarkService.instance.setStartupSelectedContentType(
-        selectedContentType.name,
-      );
+      PerformanceBenchmarkService.instance.setStartupSelectedContentType(selectedContentType.name);
     }
 
     // If this setting changes, the appbar will change its preferred height, so we need to rebuild the scaffold.

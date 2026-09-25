@@ -68,15 +68,11 @@ class _AlbumScreenContentState extends ConsumerState<AlbumScreenContent> {
       _benchmarkDetailCommand = command;
       PerformanceBenchmarkService.instance.mark(
         "detail-screen-mounted",
-        values: {
-          "targetAlias": command.targetAlias,
-          "targetType": command.targetType,
-        },
+        values: {"targetAlias": command.targetAlias, "targetType": command.targetType},
       );
       if (command.refresh) {
         ref.invalidate(getAlbumOrPlaylistTracksProvider(widget.parent));
-        if (BaseItemDtoType.fromItem(widget.parent) ==
-            BaseItemDtoType.playlist) {
+        if (BaseItemDtoType.fromItem(widget.parent) == BaseItemDtoType.playlist) {
           // Playlist rendering goes through the sorted provider. Invalidate the
           // family explicitly so refreshed-detail can never reuse a warm sorted
           // result just because the underlying provider happened not to notify.
@@ -129,11 +125,7 @@ class _AlbumScreenContentState extends ConsumerState<AlbumScreenContent> {
       if (!_benchmarkDetailFrameScheduled) {
         _benchmarkDetailFrameScheduled = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted ||
-              !identical(
-                PerformanceBenchmarkService.instance.activeDetailCommand,
-                benchmarkCommand,
-              )) {
+          if (!mounted || !identical(PerformanceBenchmarkService.instance.activeDetailCommand, benchmarkCommand)) {
             return;
           }
           benchmark.mark(

@@ -53,10 +53,7 @@ class KeepScreenOnHelper {
     if (!PerformanceBenchmarkService.enabled) return;
     _performanceBenchmarkOverride = enabled;
     setKeepScreenOn();
-    PerformanceBenchmarkService.instance.diagnostic(
-      "benchmark-screen-awake-override",
-      values: {"enabled": enabled},
-    );
+    PerformanceBenchmarkService.instance.diagnostic("benchmark-screen-awake-override", values: {"enabled": enabled});
   }
 
   void setKeepScreenOn() {

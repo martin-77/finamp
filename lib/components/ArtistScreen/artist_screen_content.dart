@@ -70,10 +70,7 @@ class _ArtistScreenContentState extends ConsumerState<ArtistScreenContent> {
       _benchmarkDetailCommand = command;
       PerformanceBenchmarkService.instance.mark(
         "detail-screen-mounted",
-        values: {
-          "targetAlias": command.targetAlias,
-          "targetType": command.targetType,
-        },
+        values: {"targetAlias": command.targetAlias, "targetType": command.targetType},
       );
       if (command.refresh) {
         ref.invalidate(getArtistTracksSectionProvider);
@@ -239,22 +236,14 @@ class _ArtistScreenContentState extends ConsumerState<ArtistScreenContent> {
     final allTracks = ref.watch(allTracksProvider.future);
 
     final isLoading = topTracksAsync == null || albumArtistAlbumsAsync == null || performingArtistAlbumsAsync == null;
-    final benchmarkDetailReady =
-        !isLoading &&
-        allPerformingArtistTracksAsync != null &&
-        allTracksAsync != null;
+    final benchmarkDetailReady = !isLoading && allPerformingArtistTracksAsync != null && allTracksAsync != null;
 
     final benchmarkCommand = _benchmarkDetailCommand;
     if (benchmarkCommand != null && benchmarkDetailReady) {
       final benchmark = PerformanceBenchmarkService.instance;
       final visibleChildCount =
-          topTracksAsync!.length +
-          albumArtistAlbumsAsync!.length +
-          performingArtistAlbumsAsync!.length;
-      benchmark.metric(
-        "artistResolvedTrackCount",
-        allTracksAsync!.length,
-      );
+          topTracksAsync!.length + albumArtistAlbumsAsync!.length + performingArtistAlbumsAsync!.length;
+      benchmark.metric("artistResolvedTrackCount", allTracksAsync!.length);
       if (!_benchmarkDetailDataMarked) {
         _benchmarkDetailDataMarked = true;
         benchmark.mark(
@@ -270,11 +259,7 @@ class _ArtistScreenContentState extends ConsumerState<ArtistScreenContent> {
       if (!_benchmarkDetailFrameScheduled) {
         _benchmarkDetailFrameScheduled = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted ||
-              !identical(
-                PerformanceBenchmarkService.instance.activeDetailCommand,
-                benchmarkCommand,
-              )) {
+          if (!mounted || !identical(PerformanceBenchmarkService.instance.activeDetailCommand, benchmarkCommand)) {
             return;
           }
           benchmark.mark(

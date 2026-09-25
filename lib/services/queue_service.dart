@@ -390,9 +390,7 @@ class QueueService {
   /// process restart so queue-restore startup cost is reproducible.
   Future<int> persistPerformanceBenchmarkQueue() async {
     if (!PerformanceBenchmarkService.enabled) {
-      throw StateError(
-        "Explicit queue persistence is only available in benchmark mode",
-      );
+      throw StateError("Explicit queue persistence is only available in benchmark mode");
     }
     final info = _saveCurrentQueue(withPosition: true);
     await _queuesBox.flush();
@@ -411,16 +409,12 @@ class QueueService {
   /// exercise the normal explicit restore path against that snapshot.
   Future<int> clearActiveQueuePreservingPerformanceBenchmarkSnapshot() async {
     if (!PerformanceBenchmarkService.enabled) {
-      throw StateError(
-        "Benchmark queue preparation is only available in benchmark mode",
-      );
+      throw StateError("Benchmark queue preparation is only available in benchmark mode");
     }
 
     final snapshot = _queuesBox.get("latest");
     if (snapshot == null || snapshot.trackCount == 0) {
-      throw StateError(
-        "Benchmark queue preparation requires a non-empty persisted queue",
-      );
+      throw StateError("Benchmark queue preparation requires a non-empty persisted queue");
     }
 
     await stopAndClearQueue();
@@ -437,20 +431,13 @@ class QueueService {
 
     final persisted = _queuesBox.get("latest");
     final activeCount = getQueue().trackCount;
-    if (persisted == null ||
-        persisted.trackCount != snapshot.trackCount ||
-        activeCount != 0) {
-      throw StateError(
-        "Benchmark queue preparation did not preserve the persisted snapshot",
-      );
+    if (persisted == null || persisted.trackCount != snapshot.trackCount || activeCount != 0) {
+      throw StateError("Benchmark queue preparation did not preserve the persisted snapshot");
     }
 
     PerformanceBenchmarkService.instance.diagnostic(
       "queue-benchmark-active-cleared-snapshot-preserved",
-      values: {
-        "storedTrackCount": persisted.trackCount,
-        "activeTrackCount": activeCount,
-      },
+      values: {"storedTrackCount": persisted.trackCount, "activeTrackCount": activeCount},
     );
     return persisted.trackCount;
   }
@@ -462,16 +449,12 @@ class QueueService {
   /// performance is covered independently of that preference.
   Future<int> restorePerformanceBenchmarkPersistedQueue() async {
     if (!PerformanceBenchmarkService.enabled) {
-      throw StateError(
-        "Explicit queue restore is only available in benchmark mode",
-      );
+      throw StateError("Explicit queue restore is only available in benchmark mode");
     }
 
     final info = _queuesBox.get("latest");
     if (info == null || info.trackCount == 0) {
-      PerformanceBenchmarkService.instance.diagnostic(
-        "queue-restore-explicit-missing",
-      );
+      PerformanceBenchmarkService.instance.diagnostic("queue-restore-explicit-missing");
       return 0;
     }
 
@@ -487,10 +470,7 @@ class QueueService {
     if (currentCount > 0) {
       PerformanceBenchmarkService.instance.diagnostic(
         "queue-restore-explicit-clearing-partial-active-queue",
-        values: {
-          "storedTrackCount": info.trackCount,
-          "activeTrackCount": currentCount,
-        },
+        values: {"storedTrackCount": info.trackCount, "activeTrackCount": currentCount},
       );
       // stopAndClearQueue does not replace the persisted "latest" snapshot
       // while a restored queue is still pending save, so the original
@@ -530,9 +510,7 @@ class QueueService {
   /// queue-restore benchmark so later UI/cache phases start from neutral state.
   Future<void> clearPerformanceBenchmarkQueueState() async {
     if (!PerformanceBenchmarkService.enabled) {
-      throw StateError(
-        "Benchmark queue cleanup is only available in benchmark mode",
-      );
+      throw StateError("Benchmark queue cleanup is only available in benchmark mode");
     }
 
     final benchmarkSnapshot = _queuesBox.get("latest");
@@ -547,17 +525,12 @@ class QueueService {
     final activeCount = getQueue().trackCount;
     final persisted = _queuesBox.get("latest");
     if (activeCount != 0 || persisted != null) {
-      throw StateError(
-        "Benchmark queue cleanup did not reach an empty terminal state",
-      );
+      throw StateError("Benchmark queue cleanup did not reach an empty terminal state");
     }
 
     PerformanceBenchmarkService.instance.diagnostic(
       "queue-benchmark-state-cleared",
-      values: {
-        "activeTrackCount": activeCount,
-        "persistedQueuePresent": false,
-      },
+      values: {"activeTrackCount": activeCount, "persistedQueuePresent": false},
     );
   }
 
@@ -584,9 +557,7 @@ class QueueService {
           }
 
           if (FinampSettingsHelper.finampSettings.autoloadLastQueueOnStartup && !await _hasInitialPlayLink()) {
-            final benchmarkStopwatch = PerformanceBenchmarkService.enabled
-                ? (Stopwatch()..start())
-                : null;
+            final benchmarkStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
             try {
               await loadSavedQueue(info);
               if (benchmarkStopwatch != null) {
@@ -595,8 +566,7 @@ class QueueService {
                   "queue-restore-complete",
                   values: {
                     "storedTrackCount": info.trackCount,
-                    "durationMs":
-                        benchmarkStopwatch.elapsedMicroseconds / 1000.0,
+                    "durationMs": benchmarkStopwatch.elapsedMicroseconds / 1000.0,
                   },
                 );
               }
@@ -607,8 +577,7 @@ class QueueService {
                   "queue-restore-failed",
                   values: {
                     "storedTrackCount": info.trackCount,
-                    "durationMs":
-                        benchmarkStopwatch.elapsedMicroseconds / 1000.0,
+                    "durationMs": benchmarkStopwatch.elapsedMicroseconds / 1000.0,
                     "errorType": error.runtimeType.toString(),
                   },
                 );
@@ -888,10 +857,7 @@ class QueueService {
         final benchmark = PerformanceBenchmarkService.instance;
         benchmark.mark("playable-slice-resolve-start");
         final base = await slice.resolve();
-        benchmark.mark(
-          "playable-slice-resolve-end",
-          values: {"resolvedTrackCount": base.items.length},
-        );
+        benchmark.mark("playable-slice-resolve-end", values: {"resolvedTrackCount": base.items.length});
         benchmark.metric("resolvedTrackCount", base.items.length);
         final order = switch (base.shuffleState) {
           SliceShuffleState.preShuffled => FinampPlaybackOrder.linear,
@@ -906,10 +872,7 @@ class QueueService {
           initialIndex: order == FinampPlaybackOrder.linear ? base.startingIndex : null,
           beginPlaying: beginPlaying,
         );
-        benchmark.mark(
-          "queue-replace-end",
-          values: {"queueLength": base.items.length},
-        );
+        benchmark.mark("queue-replace-end", values: {"queueLength": base.items.length});
         benchmark.metric("queueLength", base.items.length);
         _queueServiceLogger.info(
           "Started playing '${base.source.name.getLocalized(GlobalSnackbar.requireL10n)}' (${base.source.type}) in order $order from index ${base.startingIndex}",
@@ -918,10 +881,7 @@ class QueueService {
       // TODO also do pre-cache work in other queue add methods?
       case PreCachedPlayableSlice slice:
         final benchmark = PerformanceBenchmarkService.instance;
-        benchmark.mark(
-          "queue-replace-start",
-          values: {"cachedTrackCount": slice.cachedTracks.length},
-        );
+        benchmark.mark("queue-replace-start", values: {"cachedTrackCount": slice.cachedTracks.length});
         // Shuffle state is linear or preshuffled, so ignore.
         await _replaceWholeQueue(
           itemList: slice.cachedTracks,
@@ -930,10 +890,7 @@ class QueueService {
           initialIndex: slice.startingOffset,
           beginPlaying: beginPlaying,
         );
-        benchmark.mark(
-          "queue-replace-end",
-          values: {"queueLength": slice.cachedTracks.length},
-        );
+        benchmark.mark("queue-replace-end", values: {"queueLength": slice.cachedTracks.length});
         benchmark.metric("initialQueueLength", slice.cachedTracks.length);
         _queueServiceLogger.info(
           "Started playing '${slice.source.name.getLocalized(GlobalSnackbar.requireL10n)}' (${slice.source.type}), pending additional tracks",
@@ -941,10 +898,7 @@ class QueueService {
         _queueServiceLogger.info("Items for queue: [${slice.cachedTracks.map((e) => e.name).join(", ")}]");
         benchmark.mark("followup-tracks-fetch-start");
         final additionalTracks = List.of(await slice.fetchTracks);
-        benchmark.mark(
-          "followup-tracks-fetch-end",
-          values: {"resolvedTrackCount": additionalTracks.length},
-        );
+        benchmark.mark("followup-tracks-fetch-end", values: {"resolvedTrackCount": additionalTracks.length});
         benchmark.metric("resolvedTrackCount", additionalTracks.length);
         if (!slice.combineTracks) {
           assert(() {
@@ -1080,15 +1034,9 @@ class QueueService {
         }
       }
       mediaItemBuild.stop();
-      benchmark.metric(
-        "queueMediaItemsBuildMicros",
-        mediaItemBuild.elapsedMicroseconds,
-      );
+      benchmark.metric("queueMediaItemsBuildMicros", mediaItemBuild.elapsedMicroseconds);
       benchmark.metric("queueMediaItemsBuilt", newItems.length);
-      benchmark.mark(
-        "queue-media-items-build-end",
-        values: {"queueLength": newItems.length},
-      );
+      benchmark.mark("queue-media-items-build-end", values: {"queueLength": newItems.length});
 
       if (Platform.isIOS || Platform.isMacOS) {
         // Both iOS and macOS will start playing the first queue index if we don't stop first.
@@ -1115,10 +1063,7 @@ class QueueService {
           initialPosition: initialSeekPosition ?? Duration.zero,
         );
         audioSourceInstall.stop();
-        benchmark.metric(
-          "queueAudioSourcesInstallMicros",
-          audioSourceInstall.elapsedMicroseconds,
-        );
+        benchmark.metric("queueAudioSourcesInstallMicros", audioSourceInstall.elapsedMicroseconds);
         benchmark.mark("queue-audio-sources-install-end");
       } finally {
         _activeInitialIndex = null;
@@ -1152,10 +1097,7 @@ class QueueService {
       final orderApply = Stopwatch()..start();
       await setPlaybackOrder(order, shuffleOrder: shuffleOrder);
       orderApply.stop();
-      benchmark.metric(
-        "queueOrderApplyMicros",
-        orderApply.elapsedMicroseconds,
-      );
+      benchmark.metric("queueOrderApplyMicros", orderApply.elapsedMicroseconds);
       benchmark.mark("queue-order-apply-end");
 
       if (beginPlaying) {

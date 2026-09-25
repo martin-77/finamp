@@ -217,36 +217,21 @@ class ServerState {
     };
   }
 
-  static void _benchmarkConnectionDiagnostic(
-    String stage,
-    Uri uri, {
-    Object? error,
-  }) {
+  static void _benchmarkConnectionDiagnostic(String stage, Uri uri, {Object? error}) {
     final values = <String, Object?>{
       "stage": stage,
       ..._safeEndpoint(uri),
       if (error != null) "errorType": error.runtimeType.toString(),
     };
-    PerformanceBenchmarkService.instance.diagnostic(
-      "server-connection",
-      values: values,
-    );
+    PerformanceBenchmarkService.instance.diagnostic("server-connection", values: values);
   }
 
-  static void _logConnectionFailure(
-    String attempt,
-    Uri uri,
-    Object error,
-  ) {
+  static void _logConnectionFailure(String attempt, Uri uri, Object error) {
     _benchmarkConnectionDiagnostic("$attempt-failed", uri, error: error);
     if (PerformanceBenchmarkService.enabled) {
-      serverStateLogger.severe(
-        "Couldn't reach server during $attempt (${error.runtimeType})",
-      );
+      serverStateLogger.severe("Couldn't reach server during $attempt (${error.runtimeType})");
     } else {
-      serverStateLogger.severe(
-        "Couldn't reach server at $uri during $attempt: $error",
-      );
+      serverStateLogger.severe("Couldn't reach server at $uri during $attempt: $error");
     }
   }
 
@@ -272,21 +257,18 @@ class ServerState {
     if (connectionTestDebounceTimer?.isActive ?? false) {
       connectionTestDebounceTimer?.cancel();
     }
-    connectionTestDebounceTimer = Timer(
-      const Duration(milliseconds: 500),
-      () async {
+    connectionTestDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      updateCallback?.call();
+      try {
+        baseUrlToTest = baseUrl;
         updateCallback?.call();
-        try {
-          baseUrlToTest = baseUrl;
-          updateCallback?.call();
-          await testServerConnection(baseUrl);
-          baseUrlToTest = null;
-          updateCallback?.call();
-        } catch (err) {
-          // nop, make sure *not* to reset the baseUrlToTest
-        }
-      },
-    );
+        await testServerConnection(baseUrl);
+        baseUrlToTest = null;
+        updateCallback?.call();
+      } catch (err) {
+        // nop, make sure *not* to reset the baseUrlToTest
+      }
+    });
   }
 
   Future<void> testServerConnection(String baseUrl) async {
@@ -296,8 +278,7 @@ class ServerState {
     bool unspecifiedPort = false;
     String baseUrlToTest = baseUrl.trim();
 
-    if (!(baseUrlToTest.startsWith("http://") ||
-        baseUrlToTest.startsWith("https://"))) {
+    if (!(baseUrlToTest.startsWith("http://") || baseUrlToTest.startsWith("https://"))) {
       baseUrlToTest = "https://$baseUrlToTest";
       unspecifiedProtocol = true;
     }
@@ -308,8 +289,7 @@ class ServerState {
     }
 
     if (baseUrlToTest.endsWith("/")) {
-      baseUrlToTest =
-          baseUrlToTest.substring(0, baseUrlToTest.length - 1);
+      baseUrlToTest = baseUrlToTest.substring(0, baseUrlToTest.length - 1);
     }
 
     jellyfinApiHelper.baseUrlTemp = Uri.parse(baseUrlToTest);
@@ -321,16 +301,9 @@ class ServerState {
       publicServerInfo = await jellyfinApiHelper.loadServerPublicInfo();
       _benchmarkConnectionDiagnostic("https-success", attemptUri);
     } catch (error) {
-      if (await ClientCertificateInstaller.isCertificateRequiredError(
-        error,
-        attemptUri,
-      )) {
+      if (await ClientCertificateInstaller.isCertificateRequiredError(error, attemptUri)) {
         clientCertificateRequired = true;
-        _benchmarkConnectionDiagnostic(
-          "client-certificate-required",
-          attemptUri,
-          error: error,
-        );
+        _benchmarkConnectionDiagnostic("client-certificate-required", attemptUri, error: error);
         return;
       } else {
         _logConnectionFailure("https", attemptUri, error);
@@ -378,10 +351,7 @@ class ServerState {
     if (publicServerInfo != null) {
       manualServer = publicServerInfo;
       this.baseUrl = baseUrlToTest;
-      _benchmarkConnectionDiagnostic(
-        "selected",
-        Uri.parse(baseUrlToTest),
-      );
+      _benchmarkConnectionDiagnostic("selected", Uri.parse(baseUrlToTest));
     }
   }
 }
@@ -392,10 +362,5 @@ class ConnectionState {
   QuickConnectState? quickConnectState;
   UserDto? selectedUser;
 
-  ConnectionState({
-    this.isConnected = false,
-    this.isAuthenticating = false,
-    this.quickConnectState,
-    this.selectedUser,
-  });
+  ConnectionState({this.isConnected = false, this.isAuthenticating = false, this.quickConnectState, this.selectedUser});
 }

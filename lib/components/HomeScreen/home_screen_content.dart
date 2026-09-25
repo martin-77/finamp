@@ -64,8 +64,7 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
   @override
   void initState() {
     super.initState();
-    _benchmarkTabSubscription =
-        PerformanceBenchmarkService.instance.tabCommands.listen((command) {
+    _benchmarkTabSubscription = PerformanceBenchmarkService.instance.tabCommands.listen((command) {
       if (command.contentType == "home") {
         _activateBenchmarkTab(command);
       }
@@ -91,22 +90,15 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     _benchmarkDataMarked = false;
     _benchmarkFrameScheduled = false;
     if (command.refresh) {
-      PerformanceBenchmarkService.instance.mark(
-        "ui-tab-refresh-start",
-        values: {"contentType": "home"},
-      );
+      PerformanceBenchmarkService.instance.mark("ui-tab-refresh-start", values: {"contentType": "home"});
       unawaited(_refresh());
     } else {
-      PerformanceBenchmarkService.instance.mark(
-        "ui-tab-warm-state-reused",
-        values: {"contentType": "home"},
-      );
+      PerformanceBenchmarkService.instance.mark("ui-tab-warm-state-reused", values: {"contentType": "home"});
     }
   }
 
   bool _watchHomeSectionsReady() {
-    final sections =
-        ref.watch(finampSettingsProvider.homeScreenConfiguration).sections;
+    final sections = ref.watch(finampSettingsProvider.homeScreenConfiguration).sections;
     for (final section in sections) {
       final resolved = ref.watch(resolveSectionProvider(section));
       if (resolved.isLoading) return false;
@@ -125,12 +117,8 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
       _startupReadyReported = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        PerformanceBenchmarkService.instance.diagnostic(
-          "startup-home-first-rendered-content",
-        );
-        PerformanceBenchmarkService.instance.reportStartupScreenReady(
-          "home",
-        );
+        PerformanceBenchmarkService.instance.diagnostic("startup-home-first-rendered-content");
+        PerformanceBenchmarkService.instance.reportStartupScreenReady("home");
       });
     }
 
@@ -140,20 +128,14 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
     final benchmark = PerformanceBenchmarkService.instance;
     if (!_benchmarkDataMarked) {
       _benchmarkDataMarked = true;
-      benchmark.mark(
-        "ui-tab-data-ready",
-        values: {"contentType": "home"},
-      );
+      benchmark.mark("ui-tab-data-ready", values: {"contentType": "home"});
     }
 
     if (_benchmarkFrameScheduled) return;
     _benchmarkFrameScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !identical(_activeBenchmarkTab, command)) return;
-      benchmark.mark(
-        "ui-tab-first-rendered-content",
-        values: {"contentType": "home"},
-      );
+      benchmark.mark("ui-tab-first-rendered-content", values: {"contentType": "home"});
       command.complete();
       _activeBenchmarkTab = null;
       _benchmarkFrameScheduled = false;
@@ -172,9 +154,7 @@ class _HomeScreenContentState extends ConsumerState<HomeScreenContent>
   Widget build(BuildContext context) {
     super.build(context);
     widget.refresh?.callback = _refresh;
-    final benchmarkHomeReady = PerformanceBenchmarkService.enabled
-        ? _watchHomeSectionsReady()
-        : false;
+    final benchmarkHomeReady = PerformanceBenchmarkService.enabled ? _watchHomeSectionsReady() : false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _maybeCompleteBenchmarkHome(benchmarkHomeReady);
     });

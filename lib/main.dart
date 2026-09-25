@@ -140,10 +140,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     await setupLogging();
     await _setupEdgeToEdgeOverlayStyle();
     _mainLog.info("Setup edge-to-edge overlay");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-hive-isar",
-      setupHive,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-hive-isar", setupHive);
     _mainLog.info("Setup hive and isar");
     final recoveredBenchmark = await PerformanceBenchmarkService.instance.recoverInterruptedRun();
     if (recoveredBenchmark != null) {
@@ -163,61 +160,31 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
     _migrateDeviceId();
     await _migrateThemeModeLocale();
     _mainLog.info("Completed applicable migrations");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "trust-platform-certificates",
-      _trustAndroidUserCerts,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("trust-platform-certificates", _trustAndroidUserCerts);
     await PerformanceBenchmarkService.instance.runStartupTask(
       "install-client-certificate",
       () => ClientCertificateInstaller().installClientCertificate(),
     );
     _mainLog.info("Installed client certificate");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-user-helper",
-      _setupFinampUserHelper,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-user-helper", _setupFinampUserHelper);
     _mainLog.info("Setup user helper");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-jellyfin-api",
-      _setupJellyfinApiData,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-jellyfin-api", _setupJellyfinApiData);
     _mainLog.info("setup jellyfin api");
     _setupOfflineListenLogHelper();
     _mainLog.info("Setup offline listen tracking");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-downloads-service",
-      _setupDownloadsHelper,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-downloads-service", _setupDownloadsHelper);
     _mainLog.info("Setup downloads service");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-providers",
-      _setupProviders,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-providers", _setupProviders);
     _mainLog.info("Setup providers");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-os-integration",
-      () => _setupOSIntegration(args),
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-os-integration", () => _setupOSIntegration(args));
     _mainLog.info("Setup os integrations");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-playon-registration",
-      _setupPlayOnService,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-playon-registration", _setupPlayOnService);
     _mainLog.info("Setup PlayOnService");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-playback-services",
-      _setupPlaybackServices,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-playback-services", _setupPlaybackServices);
     _mainLog.info("Setup audio player");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-keep-screen-on",
-      _setupKeepScreenOnHelper,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-keep-screen-on", _setupKeepScreenOnHelper);
     _mainLog.info("Setup KeepScreenOnHelper");
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "setup-discord-rpc",
-      _setupDiscordRpc,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("setup-discord-rpc", _setupDiscordRpc);
     _mainLog.info("Setup Discord RPC");
   } catch (error, trace) {
     if (!integrationTesting) {
@@ -238,25 +205,13 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
         details = details.copyWith(stack: error.stackTrace ?? details.stack);
       }
       final stack = details.stack ?? StackTrace.current;
-      unawaited(
-        PerformanceBenchmarkService.instance.recordCrash(
-          error,
-          stack,
-          source: "FlutterError.onError",
-        ),
-      );
+      unawaited(PerformanceBenchmarkService.instance.recordCrash(error, stack, source: "FlutterError.onError"));
       FlutterError.presentError(details);
       flutterLogger.severe(error, error, details.stack);
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
-      unawaited(
-        PerformanceBenchmarkService.instance.recordCrash(
-          error,
-          stack,
-          source: "PlatformDispatcher.onError",
-        ),
-      );
+      unawaited(PerformanceBenchmarkService.instance.recordCrash(error, stack, source: "PlatformDispatcher.onError"));
       flutterLogger.severe(error, error, stack);
 
       // We have not handled printing to console, flutter should still do that.
@@ -268,12 +223,7 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
 
   await findSystemLocale();
   await initializeDateFormatting();
-  unawaited(
-    PerformanceBenchmarkService.instance.runStartupTask(
-      "system-palette",
-      fetchSystemPalette,
-    ),
-  );
+  unawaited(PerformanceBenchmarkService.instance.runStartupTask("system-palette", fetchSystemPalette));
   await initDBus();
 
   _mainLog.info("Launching main app");
@@ -281,20 +231,12 @@ Future<void> main(List<String> args, {bool integrationTesting = false, bool logi
   // Integration testing will launch the widgets itself, so just return
   if (!integrationTesting) {
     if (PerformanceBenchmarkService.enabled) {
-      SchedulerBinding.instance.addTimingsCallback(
-        PerformanceBenchmarkService.instance.recordFrameTimings,
-      );
+      SchedulerBinding.instance.addTimingsCallback(PerformanceBenchmarkService.instance.recordFrameTimings);
     }
-    await PerformanceBenchmarkService.instance.reportStartupMilestone(
-      "startup-main-init-complete",
-    );
+    await PerformanceBenchmarkService.instance.reportStartupMilestone("startup-main-init-complete");
     runApp(const Finamp());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(
-        PerformanceBenchmarkService.instance.reportStartupMilestone(
-          "startup-first-frame",
-        ),
-      );
+      unawaited(PerformanceBenchmarkService.instance.reportStartupMilestone("startup-first-frame"));
     });
     PerformanceBenchmarkSuiteRunner.instance.arm();
   }
@@ -354,19 +296,11 @@ Future<void> _setupDownloadsHelper() async {
       if (PerformanceBenchmarkService.enabled) {
         unawaited(
           PerformanceBenchmarkService.instance
-              .runStartupTask(
-                "repair-downloads-after-location-recreation",
-                downloadsService.repairAllDownloads,
-              )
+              .runStartupTask("repair-downloads-after-location-recreation", downloadsService.repairAllDownloads)
               .catchError((dynamic error) => GlobalSnackbar.error(error)),
         );
       } else {
-        unawaited(
-          downloadsService.repairAllDownloads().then(
-            (value) => null,
-            onError: GlobalSnackbar.error,
-          ),
-        );
+        unawaited(downloadsService.repairAllDownloads().then((value) => null, onError: GlobalSnackbar.error));
       }
     }
   }
@@ -381,93 +315,76 @@ Future<void> _setupDownloadsHelper() async {
     GetIt.instance<FinampUserHelper>().runUserHook(() {
       final benchmark = PerformanceBenchmarkService.instance;
       unawaited(
-        benchmark.runStartupTask(
-          "default-playlist-metadata-lifecycle",
-          () async {
-            final suiteStage = await benchmark.getSuiteStage();
+        benchmark
+            .runStartupTask("default-playlist-metadata-lifecycle", () async {
+              final suiteStage = await benchmark.getSuiteStage();
 
-            if (suiteStage != "realistic-startup-prepared") {
-              benchmark.diagnostic(
-                suiteStage == null
-                    ? "startup-playlist-metadata-work-suppressed-for-preconditioning"
-                    : "startup-playlist-metadata-work-not-repeated",
-                values: {"suiteStage": suiteStage ?? "fresh-preconditioning"},
-              );
-              return;
-            }
+              if (suiteStage != "realistic-startup-prepared") {
+                benchmark.diagnostic(
+                  suiteStage == null
+                      ? "startup-playlist-metadata-work-suppressed-for-preconditioning"
+                      : "startup-playlist-metadata-work-not-repeated",
+                  values: {"suiteStage": suiteStage ?? "fresh-preconditioning"},
+                );
+                return;
+              }
 
-            final metadataStub = DownloadStub.fromFinampCollection(
-              FinampCollection(
-                type: FinampCollectionType.allPlaylistsMetadata,
-              ),
-            );
-            await benchmark.setDownloadCleanupRequired(
-              targetAlias: "all-playlists-metadata",
-              targetItemId: metadataStub.id,
-              targetItemType: metadataStub.type.name,
-            );
-            benchmark.markStartupPlaylistMetadataWorkRan();
-            try {
-              final planning = Stopwatch()..start();
-              benchmark.diagnostic(
-                "startup-playlist-metadata-plan-start",
-                values: {"processElapsedMs": benchmark.processElapsedMs},
+              final metadataStub = DownloadStub.fromFinampCollection(
+                FinampCollection(type: FinampCollectionType.allPlaylistsMetadata),
               );
-              await downloadsService.addDefaultPlaylistInfoDownload();
-              planning.stop();
-              benchmark.diagnostic(
-                "startup-playlist-metadata-plan-complete",
-                values: {
-                  "durationMs":
-                      planning.elapsedMicroseconds / 1000.0,
-                  "processElapsedMs": benchmark.processElapsedMs,
-                },
+              await benchmark.setDownloadCleanupRequired(
+                targetAlias: "all-playlists-metadata",
+                targetItemId: metadataStub.id,
+                targetItemType: metadataStub.type.name,
               );
+              benchmark.markStartupPlaylistMetadataWorkRan();
+              try {
+                final planning = Stopwatch()..start();
+                benchmark.diagnostic(
+                  "startup-playlist-metadata-plan-start",
+                  values: {"processElapsedMs": benchmark.processElapsedMs},
+                );
+                await downloadsService.addDefaultPlaylistInfoDownload();
+                planning.stop();
+                benchmark.diagnostic(
+                  "startup-playlist-metadata-plan-complete",
+                  values: {
+                    "durationMs": planning.elapsedMicroseconds / 1000.0,
+                    "processElapsedMs": benchmark.processElapsedMs,
+                  },
+                );
 
-              final settle = Stopwatch()..start();
-              benchmark.diagnostic(
-                "startup-playlist-metadata-settle-start",
-                values: {"processElapsedMs": benchmark.processElapsedMs},
-              );
-              await downloadsService
-                  .waitForPerformanceBenchmarkDownloadSystemIdle(
-                stableFor: const Duration(seconds: 5),
-                timeout: const Duration(hours: 3),
-              );
-              settle.stop();
-              benchmark.diagnostic(
-                "startup-playlist-metadata-settle-complete",
-                values: {
-                  "durationMs": settle.elapsedMicroseconds / 1000.0,
-                  "processElapsedMs": benchmark.processElapsedMs,
-                },
-              );
-              benchmark.reportStartupPlaylistMetadataWorkResult(
-                success: true,
-              );
-            } catch (e) {
-              benchmark.reportStartupPlaylistMetadataWorkResult(
-                success: false,
-                errorType: e.runtimeType.toString(),
-              );
-              _mainLog.severe(
-                "Benchmark startup playlist metadata download failed: $e",
-              );
-            }
-          },
-        ).catchError((Object error) {
-          _mainLog.severe(
-            "Benchmark startup playlist metadata lifecycle failed: $error",
-          );
-        }),
+                final settle = Stopwatch()..start();
+                benchmark.diagnostic(
+                  "startup-playlist-metadata-settle-start",
+                  values: {"processElapsedMs": benchmark.processElapsedMs},
+                );
+                await downloadsService.waitForPerformanceBenchmarkDownloadSystemIdle(
+                  stableFor: const Duration(seconds: 5),
+                  timeout: const Duration(hours: 3),
+                );
+                settle.stop();
+                benchmark.diagnostic(
+                  "startup-playlist-metadata-settle-complete",
+                  values: {
+                    "durationMs": settle.elapsedMicroseconds / 1000.0,
+                    "processElapsedMs": benchmark.processElapsedMs,
+                  },
+                );
+                benchmark.reportStartupPlaylistMetadataWorkResult(success: true);
+              } catch (e) {
+                benchmark.reportStartupPlaylistMetadataWorkResult(success: false, errorType: e.runtimeType.toString());
+                _mainLog.severe("Benchmark startup playlist metadata download failed: $e");
+              }
+            })
+            .catchError((Object error) {
+              _mainLog.severe("Benchmark startup playlist metadata lifecycle failed: $error");
+            }),
       );
     });
-
   } else if (!FinampSettingsHelper.finampSettings.hasDownloadedPlaylistInfo) {
     GetIt.instance<FinampUserHelper>().runUserHook(() async {
-      await downloadsService
-          .addDefaultPlaylistInfoDownload()
-          .catchError((Object e) {
+      await downloadsService.addDefaultPlaylistInfoDownload().catchError((Object e) {
         // log error without snackbar, we don't want users to be greeted with
         // errors on first launch
         _mainLog.severe("Failed to download playlist metadata: $e");
@@ -475,17 +392,13 @@ Future<void> _setupDownloadsHelper() async {
       FinampSetters.setHasDownloadedPlaylistInfo(true);
     });
   }
-
 }
 
 Future<void> _setupPlayOnService() async {
   final playOnService = PlayOnService();
   GetIt.instance.registerSingleton(playOnService);
   GetIt.instance<FinampUserHelper>().runUserHook(() async {
-    await PerformanceBenchmarkService.instance.runStartupTask(
-      "play-on-service",
-      playOnService.initialize,
-    );
+    await PerformanceBenchmarkService.instance.runStartupTask("play-on-service", playOnService.initialize);
   });
 }
 
@@ -545,10 +458,7 @@ Future<void> _setupProviders() async {
   container.listen(finampSettingsProvider, (_, _) {});
   await container.read(finampSettingsProvider.future);
 
-  await PerformanceBenchmarkService.instance.runStartupTask(
-    "init-image-cache",
-    initImageCache,
-  );
+  await PerformanceBenchmarkService.instance.runStartupTask("init-image-cache", initImageCache);
 
   DataSourceService.create();
   AutoOffline.startWatching();
@@ -671,10 +581,7 @@ Future<void> _setupPlaybackServices() async {
   // Begin to restore queue
   unawaited(
     PerformanceBenchmarkService.instance
-        .runStartupTask(
-          "initial-queue-restore",
-          queueService.performInitialQueueLoad,
-        )
+        .runStartupTask("initial-queue-restore", queueService.performInitialQueueLoad)
         .catchError((dynamic x) => GlobalSnackbar.error(x)),
   );
 }

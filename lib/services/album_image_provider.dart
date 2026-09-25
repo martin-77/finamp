@@ -64,10 +64,7 @@ Future<void> initImageCache() async {
   if (PerformanceBenchmarkService.enabled) {
     PerformanceBenchmarkService.instance.diagnostic(
       "startup-image-cache-index-loaded",
-      values: {
-        "persistentEntryCount": entries.length,
-        "mappedPlayerEntries": _playerImageCache.length,
-      },
+      values: {"persistentEntryCount": entries.length, "mappedPlayerEntries": _playerImageCache.length},
     );
   }
   await _imageCache.config.repo.close();
@@ -92,8 +89,7 @@ Future<void> clearPerformanceBenchmarkImageCache() async {
   PaintingBinding.instance.imageCache.clearLiveImages();
 
   await _imageCache.config.repo.open();
-  final persistentEntries =
-      await _imageCache.config.repo.getAllObjects();
+  final persistentEntries = await _imageCache.config.repo.getAllObjects();
   await _imageCache.config.repo.close();
 
   final memoryCache = PaintingBinding.instance.imageCache;
@@ -105,9 +101,7 @@ Future<void> clearPerformanceBenchmarkImageCache() async {
       albumRequestsCache.isNotEmpty ||
       memoryCurrentSize != 0 ||
       persistentEntries.isNotEmpty) {
-    throw StateError(
-      "Benchmark image cache cleanup did not clear persistent/retained cache state",
-    );
+    throw StateError("Benchmark image cache cleanup did not clear persistent/retained cache state");
   }
 
   PerformanceBenchmarkService.instance.diagnostic(
@@ -157,9 +151,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
   });
 
   if (request.item.imageId == null) {
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "imageNoPrimaryImage",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("imageNoPrimaryImage");
     return AlbumImageInfo.empty(request);
   }
 
@@ -168,9 +160,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
 
   File? downloadedImage = isardownloader.getImageDownload(item: request.item)?.file;
   if (downloadedImage != null) {
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "imageDownloadedFileHit",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("imageDownloadedFileHit");
   }
 
   String key;
@@ -187,17 +177,13 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
     final isValid = cacheEntry?.validTill.isAfter(DateTime.now()) ?? false;
     if (isValid && cacheEntry!.file.existsSync()) {
       downloadedImage = cacheEntry.file;
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "imagePersistentCacheHit",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("imagePersistentCacheHit");
     }
   }
 
   if (downloadedImage == null) {
     if (ref.watch(finampSettingsProvider.isOffline)) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "imageOfflineMiss",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("imageOfflineMiss");
       return AlbumImageInfo.empty(request);
     }
 
@@ -216,15 +202,11 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
     }
 
     if (imageUrl == null) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "imageNoResolvedUrl",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("imageNoResolvedUrl");
       return AlbumImageInfo.empty(request);
     }
 
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "imageNetworkFetch",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("imageNetworkFetch");
 
     if (request.fullQuality) {
       // If we want full quality player images, retrieve them via the image cache instead of linking directly.
@@ -234,10 +216,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
         benchmark.imageLoadStarted();
         FileInfo imageFile;
         try {
-          imageFile = await _imageCache.downloadFile(
-            imageUrl.toString(),
-            key: key,
-          );
+          imageFile = await _imageCache.downloadFile(imageUrl.toString(), key: key);
           benchmark.imageLoadCompleted();
         } catch (_) {
           benchmark.imageLoadCompleted(failed: true);
@@ -253,9 +232,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
         _playerImageCache[key] = imageFile;
         final fileImage = FileImage(imageFile.file, scale: 0.25);
         ref.state = AlbumImageInfo(
-          PerformanceBenchmarkService.enabled
-              ? CachedImage(fileImage, key)
-              : fileImage,
+          PerformanceBenchmarkService.enabled ? CachedImage(fileImage, key) : fileImage,
           request,
           Uri.file(imageFile.file.path),
           fullQuality: true,
@@ -277,9 +254,7 @@ albumImageProvider = Provider.autoDispose.family<AlbumImageInfo, AlbumImageReque
   // downloads are already de-dupped by blurHash and do not need CachedImage
   // Allow drawing albums up to 4X intrinsic size by setting scale
   final fileImage = FileImage(downloadedImage, scale: 0.25);
-  ImageProvider<Object> out = PerformanceBenchmarkService.enabled
-      ? CachedImage(fileImage, key)
-      : fileImage;
+  ImageProvider<Object> out = PerformanceBenchmarkService.enabled ? CachedImage(fileImage, key) : fileImage;
   if (!request.fullQuality) {
     // Limit memory cached image size to twice displayed size
     // This helps keep cache usage by fileImages in check
@@ -309,9 +284,7 @@ class CachedImage extends ImageProvider<CachedImage> {
     _ => throw UnsupportedError("Unsupported base image provider $_base"),
   };
 
-  ImageStreamCompleter _trackBenchmarkLoad(
-    ImageStreamCompleter completer,
-  ) {
+  ImageStreamCompleter _trackBenchmarkLoad(ImageStreamCompleter completer) {
     final benchmark = PerformanceBenchmarkService.instance;
     if (!PerformanceBenchmarkService.enabled) {
       return completer;
@@ -339,17 +312,11 @@ class CachedImage extends ImageProvider<CachedImage> {
   }
 
   @override
-  ImageStreamCompleter loadBuffer(
-    CachedImage key,
-    DecoderBufferCallback decode,
-  ) =>
+  ImageStreamCompleter loadBuffer(CachedImage key, DecoderBufferCallback decode) =>
       _trackBenchmarkLoad(_base.loadBuffer(key._base, decode));
 
   @override
-  ImageStreamCompleter loadImage(
-    CachedImage key,
-    ImageDecoderCallback decode,
-  ) =>
+  ImageStreamCompleter loadImage(CachedImage key, ImageDecoderCallback decode) =>
       _trackBenchmarkLoad(_base.loadImage(key._base, decode));
 
   @override

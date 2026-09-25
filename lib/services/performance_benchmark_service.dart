@@ -12,11 +12,7 @@ import 'package:path/path.dart' as path_helper;
 import 'package:path_provider/path_provider.dart';
 
 class PerformanceBenchmarkTarget {
-  const PerformanceBenchmarkTarget({
-    required this.alias,
-    required this.itemType,
-    required this.itemId,
-  });
+  const PerformanceBenchmarkTarget({required this.alias, required this.itemType, required this.itemId});
 
   final String alias;
   final String itemType;
@@ -24,11 +20,7 @@ class PerformanceBenchmarkTarget {
   /// Device-local only. Never emitted in benchmark exports.
   final String itemId;
 
-  Map<String, dynamic> toLocalJson() => {
-    "alias": alias,
-    "itemType": itemType,
-    "itemId": itemId,
-  };
+  Map<String, dynamic> toLocalJson() => {"alias": alias, "itemType": itemType, "itemId": itemId};
 
   factory PerformanceBenchmarkTarget.fromLocalJson(Map<String, dynamic> json) {
     return PerformanceBenchmarkTarget(
@@ -40,10 +32,7 @@ class PerformanceBenchmarkTarget {
 }
 
 class PerformanceBenchmarkJumpCommand {
-  PerformanceBenchmarkJumpCommand({
-    required this.contentType,
-    required this.letter,
-  });
+  PerformanceBenchmarkJumpCommand({required this.contentType, required this.letter});
 
   final String contentType;
   final String letter;
@@ -61,10 +50,7 @@ class PerformanceBenchmarkJumpCommand {
 }
 
 class PerformanceBenchmarkTabCommand {
-  PerformanceBenchmarkTabCommand({
-    required this.contentType,
-    required this.refresh,
-  });
+  PerformanceBenchmarkTabCommand({required this.contentType, required this.refresh});
 
   final String contentType;
   final bool refresh;
@@ -131,11 +117,7 @@ class PerformanceBenchmarkPageCommand {
 }
 
 class PerformanceBenchmarkSearchCommand {
-  PerformanceBenchmarkSearchCommand({
-    required this.contentType,
-    required this.queryAlias,
-    required this.query,
-  });
+  PerformanceBenchmarkSearchCommand({required this.contentType, required this.queryAlias, required this.query});
 
   final String contentType;
   final String queryAlias;
@@ -162,11 +144,7 @@ class PerformanceBenchmarkSearchCommand {
 }
 
 class PerformanceBenchmarkEvent {
-  const PerformanceBenchmarkEvent({
-    required this.name,
-    required this.elapsedMicros,
-    this.values = const {},
-  });
+  const PerformanceBenchmarkEvent({required this.name, required this.elapsedMicros, this.values = const {}});
 
   final String name;
   final int elapsedMicros;
@@ -179,14 +157,7 @@ class PerformanceBenchmarkEvent {
   };
 }
 
-enum PerformanceBenchmarkResult {
-  running,
-  success,
-  failed,
-  timeout,
-  unexpectedExit,
-  cancelled,
-}
+enum PerformanceBenchmarkResult { running, success, failed, timeout, unexpectedExit, cancelled }
 
 class PerformanceBenchmarkRun {
   PerformanceBenchmarkRun({
@@ -217,13 +188,7 @@ class PerformanceBenchmarkRun {
 
   void mark(String name, {Map<String, Object?> values = const {}}) {
     lastStep = name;
-    events.add(
-      PerformanceBenchmarkEvent(
-        name: name,
-        elapsedMicros: stopwatch.elapsedMicroseconds,
-        values: values,
-      ),
-    );
+    events.add(PerformanceBenchmarkEvent(name: name, elapsedMicros: stopwatch.elapsedMicroseconds, values: values));
   }
 
   void setMetric(String name, Object? value) {
@@ -253,14 +218,8 @@ class PerformanceBenchmarkRun {
 /// Timings use one monotonic [Stopwatch] per run. Target IDs are stored only in
 /// a device-local Hive box and are deliberately excluded from exported data.
 class PerformanceBenchmarkService {
-  static const bool enabled = bool.fromEnvironment(
-    "FINAMP_PERFORMANCE_BENCHMARK",
-    defaultValue: false,
-  );
-  static const bool smoke = bool.fromEnvironment(
-    "FINAMP_BENCH_SMOKE",
-    defaultValue: false,
-  );
+  static const bool enabled = bool.fromEnvironment("FINAMP_PERFORMANCE_BENCHMARK", defaultValue: false);
+  static const bool smoke = bool.fromEnvironment("FINAMP_BENCH_SMOKE", defaultValue: false);
   static const bool targetedDownloadBench100 = bool.fromEnvironment(
     "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY",
     defaultValue: false,
@@ -269,42 +228,21 @@ class PerformanceBenchmarkService {
     "FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY",
     defaultValue: false,
   );
-  static const String variant = String.fromEnvironment(
-    "FINAMP_BENCH_VARIANT",
-    defaultValue: "unknown",
-  );
-  static const String suiteRunId = String.fromEnvironment(
-    "FINAMP_BENCH_RUN_ID",
-    defaultValue: "manual",
-  );
-  static const String searchQuery1 = String.fromEnvironment(
-    "FINAMP_BENCH_SEARCH_QUERY_1",
-    defaultValue: "",
-  );
-  static const String searchQuery2 = String.fromEnvironment(
-    "FINAMP_BENCH_SEARCH_QUERY_2",
-    defaultValue: "",
-  );
-  static const String searchQuery3 = String.fromEnvironment(
-    "FINAMP_BENCH_SEARCH_QUERY_3",
-    defaultValue: "",
-  );
+  static const String variant = String.fromEnvironment("FINAMP_BENCH_VARIANT", defaultValue: "unknown");
+  static const String suiteRunId = String.fromEnvironment("FINAMP_BENCH_RUN_ID", defaultValue: "manual");
+  static const String searchQuery1 = String.fromEnvironment("FINAMP_BENCH_SEARCH_QUERY_1", defaultValue: "");
+  static const String searchQuery2 = String.fromEnvironment("FINAMP_BENCH_SEARCH_QUERY_2", defaultValue: "");
+  static const String searchQuery3 = String.fromEnvironment("FINAMP_BENCH_SEARCH_QUERY_3", defaultValue: "");
 
   static final _logger = Logger("PerformanceBenchmark");
   static const _boxName = "PerformanceBenchmark";
-  static String get _targetKeyPrefix =>
-      "target:$suiteRunId:";
-  static String get _runKeyPrefix =>
-      "run:$suiteRunId:";
-  static String get _activeRunKey =>
-      "active-run:$suiteRunId";
+  static String get _targetKeyPrefix => "target:$suiteRunId:";
+  static String get _runKeyPrefix => "run:$suiteRunId:";
+  static String get _activeRunKey => "active-run:$suiteRunId";
   static const _cleanupRequiredKey = "cleanup-required";
-  static String get _originalOfflineKey =>
-      "original-offline:$suiteRunId";
-  static String get _hostStreamFileName =>
-      "finamp-benchmark-stream-$variant-$suiteRunId.jsonl";
-  static String get _suiteStageFileName =>
-      "finamp-benchmark-stage-$variant-$suiteRunId.txt";
+  static String get _originalOfflineKey => "original-offline:$suiteRunId";
+  static String get _hostStreamFileName => "finamp-benchmark-stream-$variant-$suiteRunId.jsonl";
+  static String get _suiteStageFileName => "finamp-benchmark-stage-$variant-$suiteRunId.txt";
 
   static final PerformanceBenchmarkService instance = PerformanceBenchmarkService._();
 
@@ -347,9 +285,7 @@ class PerformanceBenchmarkService {
 
   static Map<String, dynamic> _publicRunJsonMap(Map<String, dynamic> runJson) {
     final output = Map<String, dynamic>.from(runJson);
-    final metrics = Map<String, dynamic>.from(
-      (output["metrics"] as Map?)?.cast<String, dynamic>() ?? const {},
-    );
+    final metrics = Map<String, dynamic>.from((output["metrics"] as Map?)?.cast<String, dynamic>() ?? const {});
 
     final keys = metrics.keys.toList();
     for (final key in keys) {
@@ -368,14 +304,12 @@ class PerformanceBenchmarkService {
     return output;
   }
 
-  static Map<String, dynamic> _publicRunJson(PerformanceBenchmarkRun run) =>
-      _publicRunJsonMap(run.toJson());
+  static Map<String, dynamic> _publicRunJson(PerformanceBenchmarkRun run) => _publicRunJsonMap(run.toJson());
 
   Box<String>? _box;
   File? _hostStreamFile;
   final Stopwatch _processStopwatch = Stopwatch();
-  static const MethodChannel _nativeLaunchTimingChannel =
-      MethodChannel("finamp/benchmark_launch_timing");
+  static const MethodChannel _nativeLaunchTimingChannel = MethodChannel("finamp/benchmark_launch_timing");
 
   Timer? _heartbeatTimer;
   Future<void> _hostWriteChain = Future<void>.value();
@@ -387,13 +321,11 @@ class PerformanceBenchmarkService {
   int _runSequence = 0;
   int _startupPendingTasks = 0;
   int _startupGeneration = 0;
-  final StreamController<int> _startupTaskController =
-      StreamController<int>.broadcast();
+  final StreamController<int> _startupTaskController = StreamController<int>.broadcast();
   int _networkRequestsInFlight = 0;
   int _httpRequestsInFlight = 0;
   int _networkGeneration = 0;
-  final StreamController<int> _networkRequestController =
-      StreamController<int>.broadcast();
+  final StreamController<int> _networkRequestController = StreamController<int>.broadcast();
   String? _httpFirstRequestRunId;
   String? _httpFirstResponseRunId;
   String? _playbackSourceRunId;
@@ -427,17 +359,14 @@ class PerformanceBenchmarkService {
   int _startupImageMaxConcurrentLoads = 0;
   int _imageLoadsInFlight = 0;
   int _imageLoadGeneration = 0;
-  final StreamController<int> _imageLoadController =
-      StreamController<int>.broadcast();
+  final StreamController<int> _imageLoadController = StreamController<int>.broadcast();
   int _uiActivityGeneration = 0;
-  final StreamController<int> _uiActivityController =
-      StreamController<int>.broadcast();
+  final StreamController<int> _uiActivityController = StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
       StreamController<PerformanceBenchmarkTabCommand>.broadcast();
-  final StreamController<String> _eventNameController =
-      StreamController<String>.broadcast();
+  final StreamController<String> _eventNameController = StreamController<String>.broadcast();
   final StreamController<PerformanceBenchmarkPageCommand> _pageController =
       StreamController<PerformanceBenchmarkPageCommand>.broadcast();
   final StreamController<PerformanceBenchmarkSearchCommand> _searchController =
@@ -445,26 +374,18 @@ class PerformanceBenchmarkService {
   String? _startupSelectedContentType;
   final Completer<void> _startupScreenReady = Completer<void>();
 
-  Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
-      _jumpController.stream;
-  Stream<PerformanceBenchmarkTabCommand> get tabCommands =>
-      _tabController.stream;
-  Stream<PerformanceBenchmarkPageCommand> get pageCommands =>
-      _pageController.stream;
-  Stream<PerformanceBenchmarkSearchCommand> get searchCommands =>
-      _searchController.stream;
+  Stream<PerformanceBenchmarkJumpCommand> get jumpCommands => _jumpController.stream;
+  Stream<PerformanceBenchmarkTabCommand> get tabCommands => _tabController.stream;
+  Stream<PerformanceBenchmarkPageCommand> get pageCommands => _pageController.stream;
+  Stream<PerformanceBenchmarkSearchCommand> get searchCommands => _searchController.stream;
 
   PerformanceBenchmarkRun? get activeRun => _activeRun;
   PerformanceBenchmarkTabCommand? get activeTabCommand => _activeTabCommand;
-  PerformanceBenchmarkDetailCommand? get activeDetailCommand =>
-      _activeDetailCommand;
-  PerformanceBenchmarkSearchCommand? get activeSearchCommand =>
-      _activeSearchCommand;
+  PerformanceBenchmarkDetailCommand? get activeDetailCommand => _activeDetailCommand;
+  PerformanceBenchmarkSearchCommand? get activeSearchCommand => _activeSearchCommand;
   bool get hasActiveRun => _activeRun != null;
-  bool get startupPlaylistMetadataWorkRan =>
-      _startupPlaylistMetadataWorkRan;
-  bool? get startupPlaylistMetadataWorkSucceeded =>
-      _startupPlaylistMetadataWorkSucceeded;
+  bool get startupPlaylistMetadataWorkRan => _startupPlaylistMetadataWorkRan;
+  bool? get startupPlaylistMetadataWorkSucceeded => _startupPlaylistMetadataWorkSucceeded;
 
   void markStartupPlaylistMetadataWorkRan() {
     if (!enabled) return;
@@ -472,20 +393,12 @@ class PerformanceBenchmarkService {
     diagnostic("startup-playlist-metadata-work-started");
   }
 
-  void reportStartupPlaylistMetadataWorkResult({
-    required bool success,
-    String? errorType,
-  }) {
+  void reportStartupPlaylistMetadataWorkResult({required bool success, String? errorType}) {
     if (!enabled) return;
     _startupPlaylistMetadataWorkSucceeded = success;
     diagnostic(
-      success
-          ? "startup-playlist-metadata-work-complete"
-          : "startup-playlist-metadata-work-failed",
-      values: {
-        "success": success,
-        if (errorType != null) "errorType": errorType,
-      },
+      success ? "startup-playlist-metadata-work-complete" : "startup-playlist-metadata-work-failed",
+      values: {"success": success, if (errorType != null) "errorType": errorType},
     );
   }
 
@@ -512,31 +425,19 @@ class PerformanceBenchmarkService {
   void setStartupSelectedContentType(String contentType) {
     if (!enabled || _startupSelectedContentType != null) return;
     _startupSelectedContentType = contentType;
-    diagnostic(
-      "startup-selected-content-type",
-      values: {"contentType": contentType},
-    );
+    diagnostic("startup-selected-content-type", values: {"contentType": contentType});
   }
 
   void reportStartupScreenReady(String contentType) {
-    if (!enabled ||
-        _startupScreenReady.isCompleted ||
-        _startupSelectedContentType != contentType) {
+    if (!enabled || _startupScreenReady.isCompleted || _startupSelectedContentType != contentType) {
       return;
     }
 
     _startupScreenReady.complete();
-    unawaited(
-      reportStartupMilestone(
-        "startup-screen-first-rendered-content",
-        values: {"contentType": contentType},
-      ),
-    );
+    unawaited(reportStartupMilestone("startup-screen-first-rendered-content", values: {"contentType": contentType}));
   }
 
-  Future<void> waitForStartupScreenReady({
-    Duration timeout = const Duration(minutes: 3),
-  }) async {
+  Future<void> waitForStartupScreenReady({Duration timeout = const Duration(minutes: 3)}) async {
     if (!enabled) return;
     if (_startupScreenReady.isCompleted) return;
     await _startupScreenReady.future.timeout(timeout);
@@ -545,9 +446,7 @@ class PerformanceBenchmarkService {
   Future<double?> nativeLaunchElapsedMs() async {
     if (!enabled || !Platform.isIOS) return null;
     try {
-      final value = await _nativeLaunchTimingChannel.invokeMethod<double>(
-        "elapsedMilliseconds",
-      );
+      final value = await _nativeLaunchTimingChannel.invokeMethod<double>("elapsedMilliseconds");
       return value;
     } on PlatformException {
       return null;
@@ -556,10 +455,7 @@ class PerformanceBenchmarkService {
     }
   }
 
-  Future<void> reportStartupMilestone(
-    String name, {
-    Map<String, Object?> values = const {},
-  }) async {
+  Future<void> reportStartupMilestone(String name, {Map<String, Object?> values = const {}}) async {
     if (!enabled) return;
     final nativeElapsed = await nativeLaunchElapsedMs();
     final dartElapsed = processElapsedMs;
@@ -570,8 +466,7 @@ class PerformanceBenchmarkService {
         "processElapsedMs": dartElapsed,
         if (nativeElapsed != null) ...{
           "nativeLaunchElapsedMs": nativeElapsed,
-          "nativeToDartMainMs":
-              (nativeElapsed - dartElapsed).clamp(0.0, double.infinity),
+          "nativeToDartMainMs": (nativeElapsed - dartElapsed).clamp(0.0, double.infinity),
         },
       },
     );
@@ -584,8 +479,7 @@ class PerformanceBenchmarkService {
       ..start();
   }
 
-  double get processElapsedMs =>
-      _processStopwatch.elapsedMicroseconds / 1000.0;
+  double get processElapsedMs => _processStopwatch.elapsedMicroseconds / 1000.0;
 
   void startHeartbeat() {
     if (!enabled || _heartbeatTimer != null) return;
@@ -624,10 +518,7 @@ class PerformanceBenchmarkService {
   Future<void> setSuiteStage(String stage) async {
     final file = await _suiteStageFile();
     await file.writeAsString(stage, flush: true);
-    diagnostic(
-      "suite-stage",
-      values: {"stage": stage},
-    );
+    diagnostic("suite-stage", values: {"stage": stage});
   }
 
   Future<Box<String>> _getBox() async {
@@ -641,17 +532,9 @@ class PerformanceBenchmarkService {
     return _box = await Hive.openBox<String>(_boxName, path: directory.path);
   }
 
-  Future<void> saveTarget({
-    required String alias,
-    required String itemType,
-    required String itemId,
-  }) async {
+  Future<void> saveTarget({required String alias, required String itemType, required String itemId}) async {
     final box = await _getBox();
-    final target = PerformanceBenchmarkTarget(
-      alias: alias,
-      itemType: itemType,
-      itemId: itemId,
-    );
+    final target = PerformanceBenchmarkTarget(alias: alias, itemType: itemType, itemId: itemId);
     await box.put("$_targetKeyPrefix$alias", jsonEncode(target.toLocalJson()));
   }
 
@@ -660,22 +543,16 @@ class PerformanceBenchmarkService {
     final encoded = box.get("$_targetKeyPrefix$alias");
     if (encoded == null) return null;
 
-    return PerformanceBenchmarkTarget.fromLocalJson(
-      jsonDecode(encoded) as Map<String, dynamic>,
-    );
+    return PerformanceBenchmarkTarget.fromLocalJson(jsonDecode(encoded) as Map<String, dynamic>);
   }
 
   /// Transitional fallback for a cleanup marker written by an older
   /// benchmark build before targets were namespaced by suite run id.
-  Future<PerformanceBenchmarkTarget?> getLegacyTargetForCleanup(
-    String alias,
-  ) async {
+  Future<PerformanceBenchmarkTarget?> getLegacyTargetForCleanup(String alias) async {
     final box = await _getBox();
     final encoded = box.get("target:$alias");
     if (encoded == null) return null;
-    return PerformanceBenchmarkTarget.fromLocalJson(
-      jsonDecode(encoded) as Map<String, dynamic>,
-    );
+    return PerformanceBenchmarkTarget.fromLocalJson(jsonDecode(encoded) as Map<String, dynamic>);
   }
 
   Future<List<PerformanceBenchmarkTarget>> getTargets() async {
@@ -685,9 +562,7 @@ class PerformanceBenchmarkService {
         .where((key) => key.startsWith(_targetKeyPrefix))
         .map(box.get)
         .whereType<String>()
-        .map((encoded) => PerformanceBenchmarkTarget.fromLocalJson(
-              jsonDecode(encoded) as Map<String, dynamic>,
-            ))
+        .map((encoded) => PerformanceBenchmarkTarget.fromLocalJson(jsonDecode(encoded) as Map<String, dynamic>))
         .toList();
   }
 
@@ -705,18 +580,12 @@ class PerformanceBenchmarkService {
     recovered["finished"] = true;
     recovered["result"] = PerformanceBenchmarkResult.unexpectedExit.name;
     recovered["recoveredAt"] = DateTime.now().toUtc().toIso8601String();
-    recovered["failure"] = {
-      "type": "unexpected-exit",
-      "lastStep": recovered["lastStep"],
-    };
+    recovered["failure"] = {"type": "unexpected-exit", "lastStep": recovered["lastStep"]};
 
     final id = recovered["id"] as String;
     await box.put("$_runKeyPrefix$id", jsonEncode(recovered));
     await box.delete(_activeRunKey);
-    _emitHostRecord(
-      "run-recovered",
-      {"run": _publicRunJsonMap(recovered)},
-    );
+    _emitHostRecord("run-recovered", {"run": _publicRunJsonMap(recovered)});
     _logger.warning(
       "BENCH RUN $id recovered as unexpected-exit "
       "lastStep=${recovered["lastStep"]}",
@@ -735,11 +604,8 @@ class PerformanceBenchmarkService {
     if (_activeRun != null) {
       throw StateError("A benchmark run is already active");
     }
-    if (!allowPendingDownloadCleanup &&
-        await getDownloadCleanupRequirement() != null) {
-      throw StateError(
-        "A benchmark download still requires cleanup before another run can start",
-      );
+    if (!allowPendingDownloadCleanup && await getDownloadCleanupRequirement() != null) {
+      throw StateError("A benchmark download still requires cleanup before another run can start");
     }
 
     final now = DateTime.now();
@@ -763,9 +629,7 @@ class PerformanceBenchmarkService {
       "BENCH RUN ${run.id} scenario=${run.scenario} "
       "variant=${run.variant} mode=${run.mode}",
     );
-    _emitHostRecord("run-start", {
-      "run": run.toJson(),
-    });
+    _emitHostRecord("run-start", {"run": run.toJson()});
     return run;
   }
 
@@ -823,13 +687,10 @@ class PerformanceBenchmarkService {
   }) {
     if (!enabled) return;
     final run = _activeRun;
-    final isPlaybackRun = run != null &&
-        (run.scenario.startsWith("playback-startup-") ||
-            run.scenario == "artist-album-track-drilldown");
+    final isPlaybackRun =
+        run != null && (run.scenario.startsWith("playback-startup-") || run.scenario == "artist-album-track-drilldown");
     if (!isPlaybackRun ||
-        !run!.events.any(
-          (event) => event.name == "playback-action-received",
-        ) ||
+        !run!.events.any((event) => event.name == "playback-action-received") ||
         _playbackSourceRunId == run.id) {
       return;
     }
@@ -908,11 +769,7 @@ class PerformanceBenchmarkService {
         "fullyReadyMs": processElapsedMs,
         if (nativeElapsed != null) ...{
           "nativeFullyReadyMs": nativeElapsed,
-          "nativeToDartMainMs":
-              (nativeElapsed - processElapsedMs).clamp(
-                0.0,
-                double.infinity,
-              ),
+          "nativeToDartMainMs": (nativeElapsed - processElapsedMs).clamp(0.0, double.infinity),
         },
         "requestCount": _startupNetworkRequestCount,
         "responseBytes": _startupNetworkResponseBytes,
@@ -983,22 +840,13 @@ class PerformanceBenchmarkService {
     unawaited(_persistActiveRun());
   }
 
-  Future<T> runStartupTask<T>(
-    String taskName,
-    Future<T> Function() operation,
-  ) async {
+  Future<T> runStartupTask<T>(String taskName, Future<T> Function() operation) async {
     if (!enabled) return operation();
 
     _startupPendingTasks++;
     _startupGeneration++;
     _startupTaskController.add(_startupPendingTasks);
-    diagnostic(
-      "startup-task-start",
-      values: {
-        "task": taskName,
-        "pendingTasks": _startupPendingTasks,
-      },
-    );
+    diagnostic("startup-task-start", values: {"task": taskName, "pendingTasks": _startupPendingTasks});
 
     final stopwatch = Stopwatch()..start();
     try {
@@ -1058,9 +906,7 @@ class PerformanceBenchmarkService {
     _imageLoadGeneration++;
     _imageLoadController.add(_imageLoadsInFlight);
     _uiActivityChanged();
-    incrementMetricBuffered(
-      failed ? "imageLoadFailed" : "imageLoadCompleted",
-    );
+    incrementMetricBuffered(failed ? "imageLoadFailed" : "imageLoadCompleted");
     if (synchronous) {
       incrementMetricBuffered("imageLoadSynchronous");
     }
@@ -1075,21 +921,13 @@ class PerformanceBenchmarkService {
     final overall = Stopwatch()..start();
     while (overall.elapsed < timeout) {
       if (_imageLoadsInFlight != 0) {
-        await _imageLoadController.stream
-            .firstWhere((pending) => pending == 0)
-            .timeout(timeout - overall.elapsed);
+        await _imageLoadController.stream.firstWhere((pending) => pending == 0).timeout(timeout - overall.elapsed);
       }
 
       final generationAtZero = _imageLoadGeneration;
       await Future<void>.delayed(quietPeriod);
-      if (_imageLoadsInFlight == 0 &&
-          _imageLoadGeneration == generationAtZero) {
-        mark(
-          "image-loads-quiescent",
-          values: {
-            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
-          },
-        );
+      if (_imageLoadsInFlight == 0 && _imageLoadGeneration == generationAtZero) {
+        mark("image-loads-quiescent", values: {"waitDurationMs": overall.elapsedMicroseconds / 1000.0});
         return;
       }
     }
@@ -1105,16 +943,10 @@ class PerformanceBenchmarkService {
     _networkRequestController.add(_networkRequestsInFlight);
     _uiActivityChanged();
     incrementMetricBuffered("workerOperationCount");
-    maxMetricBuffered(
-      "networkMaxConcurrentIncludingWorker",
-      _networkRequestsInFlight,
-    );
+    maxMetricBuffered("networkMaxConcurrentIncludingWorker", _networkRequestsInFlight);
   }
 
-  void workerOperationCompleted({
-    required int durationMicros,
-    required bool failed,
-  }) {
+  void workerOperationCompleted({required int durationMicros, required bool failed}) {
     if (!enabled) return;
     _startupWorkerDurationMicros += durationMicros;
     if (durationMicros > _startupWorkerDurationMicrosMax) {
@@ -1123,14 +955,8 @@ class PerformanceBenchmarkService {
     if (failed) {
       _startupWorkerOperationFailed++;
     }
-    incrementMetricBuffered(
-      "workerDurationMicrosTotal",
-      durationMicros,
-    );
-    maxMetricBuffered(
-      "workerDurationMicrosMax",
-      durationMicros,
-    );
+    incrementMetricBuffered("workerDurationMicrosTotal", durationMicros);
+    maxMetricBuffered("workerDurationMicrosMax", durationMicros);
     if (failed) {
       incrementMetricBuffered("workerOperationFailed");
     }
@@ -1157,18 +983,11 @@ class PerformanceBenchmarkService {
     if (run != null && _httpFirstRequestRunId != run.id) {
       _httpFirstRequestRunId = run.id;
       _httpFirstResponseRunId = null;
-      mark(
-        "http-first-request-start",
-        values: {"inFlight": _httpRequestsInFlight},
-      );
+      mark("http-first-request-start", values: {"inFlight": _httpRequestsInFlight});
     }
   }
 
-  void networkRequestCompleted({
-    int? responseBytes,
-    int? durationMicros,
-    int? statusCode,
-  }) {
+  void networkRequestCompleted({int? responseBytes, int? durationMicros, int? statusCode}) {
     if (!enabled) return;
     if (responseBytes != null && responseBytes >= 0) {
       _startupNetworkResponseBytes += responseBytes;
@@ -1182,10 +1001,7 @@ class PerformanceBenchmarkService {
       if (durationMicros > _startupNetworkDurationMicrosMax) {
         _startupNetworkDurationMicrosMax = durationMicros;
       }
-      incrementMetricBuffered(
-        "httpDurationMicrosTotal",
-        durationMicros,
-      );
+      incrementMetricBuffered("httpDurationMicrosTotal", durationMicros);
       maxMetricBuffered("httpDurationMicrosMax", durationMicros);
       incrementMetricBuffered("httpResponsesTimed");
     }
@@ -1199,9 +1015,7 @@ class PerformanceBenchmarkService {
     }
 
     final run = _activeRun;
-    if (run != null &&
-        _httpFirstRequestRunId == run.id &&
-        _httpFirstResponseRunId != run.id) {
+    if (run != null && _httpFirstRequestRunId == run.id && _httpFirstResponseRunId != run.id) {
       _httpFirstResponseRunId = run.id;
       mark(
         "http-first-response-complete",
@@ -1246,15 +1060,11 @@ class PerformanceBenchmarkService {
         final becameIdle = Completer<void>();
         late final StreamSubscription<int> subscription;
         subscription = _uiActivityController.stream.listen((_) {
-          if (_networkRequestsInFlight == 0 &&
-              _imageLoadsInFlight == 0 &&
-              !becameIdle.isCompleted) {
+          if (_networkRequestsInFlight == 0 && _imageLoadsInFlight == 0 && !becameIdle.isCompleted) {
             becameIdle.complete();
           }
         });
-        if (_networkRequestsInFlight == 0 &&
-            _imageLoadsInFlight == 0 &&
-            !becameIdle.isCompleted) {
+        if (_networkRequestsInFlight == 0 && _imageLoadsInFlight == 0 && !becameIdle.isCompleted) {
           becameIdle.complete();
         }
         try {
@@ -1294,23 +1104,14 @@ class PerformanceBenchmarkService {
         overall.stop();
         mark(
           "ui-fully-quiescent",
-          values: {
-            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
-            "quietPeriodMs": quietPeriod.inMilliseconds,
-          },
+          values: {"waitDurationMs": overall.elapsedMicroseconds / 1000.0, "quietPeriodMs": quietPeriod.inMilliseconds},
         );
-        metric(
-          "uiQuiescenceWaitMicros",
-          overall.elapsedMicroseconds,
-        );
+        metric("uiQuiescenceWaitMicros", overall.elapsedMicroseconds);
         return;
       }
     }
 
-    throw TimeoutException(
-      "UI activity did not become quiescent",
-      timeout,
-    );
+    throw TimeoutException("UI activity did not become quiescent", timeout);
   }
 
   Future<void> waitForNetworkQuiescence({
@@ -1322,39 +1123,27 @@ class PerformanceBenchmarkService {
     final overall = Stopwatch()..start();
     diagnostic(
       "network-quiescence-wait-start",
-      values: {
-        "inFlight": _networkRequestsInFlight,
-        "quietPeriodMs": quietPeriod.inMilliseconds,
-      },
+      values: {"inFlight": _networkRequestsInFlight, "quietPeriodMs": quietPeriod.inMilliseconds},
     );
 
     while (overall.elapsed < timeout) {
       if (_networkRequestsInFlight != 0) {
-        await _networkRequestController.stream
-            .firstWhere((pending) => pending == 0)
-            .timeout(timeout - overall.elapsed);
+        await _networkRequestController.stream.firstWhere((pending) => pending == 0).timeout(timeout - overall.elapsed);
       }
 
       final generationAtZero = _networkGeneration;
       await Future<void>.delayed(quietPeriod);
-      if (_networkRequestsInFlight == 0 &&
-          _networkGeneration == generationAtZero) {
+      if (_networkRequestsInFlight == 0 && _networkGeneration == generationAtZero) {
         overall.stop();
         diagnostic(
           "network-quiescent",
-          values: {
-            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
-            "processElapsedMs": processElapsedMs,
-          },
+          values: {"waitDurationMs": overall.elapsedMicroseconds / 1000.0, "processElapsedMs": processElapsedMs},
         );
         return;
       }
     }
 
-    throw TimeoutException(
-      "Network activity did not become quiescent",
-      timeout,
-    );
+    throw TimeoutException("Network activity did not become quiescent", timeout);
   }
 
   Future<void> waitForStartupQuiescence({
@@ -1366,49 +1155,32 @@ class PerformanceBenchmarkService {
     final overall = Stopwatch()..start();
     diagnostic(
       "startup-quiescence-wait-start",
-      values: {
-        "pendingTasks": _startupPendingTasks,
-        "quietPeriodMs": quietPeriod.inMilliseconds,
-      },
+      values: {"pendingTasks": _startupPendingTasks, "quietPeriodMs": quietPeriod.inMilliseconds},
     );
 
     while (overall.elapsed < timeout) {
       if (_startupPendingTasks != 0) {
-        await _startupTaskController.stream
-            .firstWhere((pending) => pending == 0)
-            .timeout(timeout - overall.elapsed);
+        await _startupTaskController.stream.firstWhere((pending) => pending == 0).timeout(timeout - overall.elapsed);
       }
 
       final generationAtZero = _startupGeneration;
       await Future<void>.delayed(quietPeriod);
 
-      if (_startupPendingTasks == 0 &&
-          _startupGeneration == generationAtZero) {
+      if (_startupPendingTasks == 0 && _startupGeneration == generationAtZero) {
         overall.stop();
         diagnostic(
           "startup-quiescent",
-          values: {
-            "waitDurationMs": overall.elapsedMicroseconds / 1000.0,
-            "processElapsedMs": processElapsedMs,
-          },
+          values: {"waitDurationMs": overall.elapsedMicroseconds / 1000.0, "processElapsedMs": processElapsedMs},
         );
         return;
       }
     }
 
-    throw TimeoutException(
-      "Startup tasks did not become quiescent",
-      timeout,
-    );
+    throw TimeoutException("Startup tasks did not become quiescent", timeout);
   }
 
-  Future<void> waitForEvent(
-    String name, {
-    Duration timeout = const Duration(seconds: 60),
-  }) {
-    return _eventNameController.stream
-        .firstWhere((eventName) => eventName == name)
-        .timeout(timeout);
+  Future<void> waitForEvent(String name, {Duration timeout = const Duration(seconds: 60)}) {
+    return _eventNameController.stream.firstWhere((eventName) => eventName == name).timeout(timeout);
   }
 
   Future<String> requestUiTab({
@@ -1419,18 +1191,9 @@ class PerformanceBenchmarkService {
     if (_activeTabCommand != null) {
       throw StateError("Another benchmark UI tab command is already active");
     }
-    final command = PerformanceBenchmarkTabCommand(
-      contentType: contentType,
-      refresh: refresh,
-    );
+    final command = PerformanceBenchmarkTabCommand(contentType: contentType, refresh: refresh);
     _activeTabCommand = command;
-    mark(
-      "ui-tab-requested",
-      values: {
-        "contentType": contentType,
-        "refresh": refresh,
-      },
-    );
+    mark("ui-tab-requested", values: {"contentType": contentType, "refresh": refresh});
     _tabController.add(command);
     try {
       await command.completed.timeout(timeout);
@@ -1464,14 +1227,7 @@ class PerformanceBenchmarkService {
       refresh: refresh,
     );
     _activeDetailCommand = command;
-    mark(
-      "detail-open-requested",
-      values: {
-        "targetAlias": targetAlias,
-        "targetType": targetType,
-        "refresh": refresh,
-      },
-    );
+    mark("detail-open-requested", values: {"targetAlias": targetAlias, "targetType": targetType, "refresh": refresh});
     open();
     try {
       await command.completed.timeout(timeout);
@@ -1492,19 +1248,11 @@ class PerformanceBenchmarkService {
       throw StateError("Another benchmark search command is already active");
     }
 
-    final command = PerformanceBenchmarkSearchCommand(
-      contentType: contentType,
-      queryAlias: queryAlias,
-      query: query,
-    );
+    final command = PerformanceBenchmarkSearchCommand(contentType: contentType, queryAlias: queryAlias, query: query);
     _activeSearchCommand = command;
     mark(
       "search-requested",
-      values: {
-        "contentType": contentType,
-        "queryAlias": queryAlias,
-        "queryLength": query.length,
-      },
+      values: {"contentType": contentType, "queryAlias": queryAlias, "queryLength": query.length},
     );
     _searchController.add(command);
 
@@ -1522,15 +1270,9 @@ class PerformanceBenchmarkService {
     }
   }
 
-  Future<bool> requestNextPage({
-    required String contentType,
-    Duration timeout = const Duration(minutes: 10),
-  }) async {
+  Future<bool> requestNextPage({required String contentType, Duration timeout = const Duration(minutes: 10)}) async {
     final command = PerformanceBenchmarkPageCommand(contentType: contentType);
-    mark(
-      "page-requested",
-      values: {"contentType": contentType},
-    );
+    mark("page-requested", values: {"contentType": contentType});
     _pageController.add(command);
     return command.completed.timeout(timeout);
   }
@@ -1540,14 +1282,8 @@ class PerformanceBenchmarkService {
     required String letter,
     Duration timeout = const Duration(minutes: 30),
   }) async {
-    final command = PerformanceBenchmarkJumpCommand(
-      contentType: contentType,
-      letter: letter,
-    );
-    mark(
-      "alphabet-jump-requested",
-      values: {"contentType": contentType, "letter": letter},
-    );
+    final command = PerformanceBenchmarkJumpCommand(contentType: contentType, letter: letter);
+    mark("alphabet-jump-requested", values: {"contentType": contentType, "letter": letter});
     _jumpController.add(command);
     await command.completed.timeout(timeout);
   }
@@ -1571,10 +1307,7 @@ class PerformanceBenchmarkService {
     await _persistWriteChain;
   }
 
-  void diagnostic(
-    String name, {
-    Map<String, Object?> values = const {},
-  }) {
+  void diagnostic(String name, {Map<String, Object?> values = const {}}) {
     if (!enabled) return;
 
     Map<String, Object?> outputValues = values;
@@ -1587,10 +1320,7 @@ class PerformanceBenchmarkService {
       };
     }
 
-    _emitHostRecord("diagnostic", {
-      "name": name,
-      if (outputValues.isNotEmpty) "values": outputValues,
-    });
+    _emitHostRecord("diagnostic", {"name": name, if (outputValues.isNotEmpty) "values": outputValues});
   }
 
   static const Set<String> _privateCardinalityExportKeys = {
@@ -1603,9 +1333,7 @@ class PerformanceBenchmarkService {
     "playlistPagesFetched",
   };
 
-  static const Set<String> _privateCardinalityEventNames = {
-    "alphabet-jump-page-requested",
-  };
+  static const Set<String> _privateCardinalityEventNames = {"alphabet-jump-page-requested"};
 
   Object? _sanitizeHostExportValue(Object? value) {
     if (value is Map<Object?, Object?>) {
@@ -1622,8 +1350,7 @@ class PerformanceBenchmarkService {
     if (value is Iterable<Object?>) {
       final sanitized = <Object?>[];
       for (final item in value) {
-        if (item is Map<Object?, Object?> &&
-            _privateCardinalityEventNames.contains(item["name"])) {
+        if (item is Map<Object?, Object?> && _privateCardinalityEventNames.contains(item["name"])) {
           continue;
         }
         sanitized.add(_sanitizeHostExportValue(item));
@@ -1633,28 +1360,22 @@ class PerformanceBenchmarkService {
     return value;
   }
 
-  void _emitHostRecord(
-    String type,
-    Map<String, Object?> payload,
-  ) {
+  void _emitHostRecord(String type, Map<String, Object?> payload) {
     // Some counters are needed locally to decide when paging/scroller work has
     // really completed, but exporting them can reveal the exact cardinality of
     // a private library once a list reaches its end. Keep them device-local in
     // the in-memory/Hive run state and remove them from every host-facing
     // record, including the final nested run JSON.
-    if (type == "metric" &&
-        _privateCardinalityExportKeys.contains(payload["name"])) {
+    if (type == "metric" && _privateCardinalityExportKeys.contains(payload["name"])) {
       return;
     }
     if (type == "event") {
       final event = payload["event"];
-      if (event is Map<Object?, Object?> &&
-          _privateCardinalityEventNames.contains(event["name"])) {
+      if (event is Map<Object?, Object?> && _privateCardinalityEventNames.contains(event["name"])) {
         return;
       }
     }
-    final sanitizedPayload =
-        _sanitizeHostExportValue(payload) as Map<String, Object?>;
+    final sanitizedPayload = _sanitizeHostExportValue(payload) as Map<String, Object?>;
     final record = <String, Object?>{
       "type": type,
       "emittedAt": DateTime.now().toUtc().toIso8601String(),
@@ -1672,26 +1393,16 @@ class PerformanceBenchmarkService {
 
   Future<void> _appendHostRecord(String encoded) async {
     final file = _hostStreamFile ??= File(
-      path_helper.join(
-        (await getApplicationDocumentsDirectory()).path,
-        _hostStreamFileName,
-      ),
+      path_helper.join((await getApplicationDocumentsDirectory()).path, _hostStreamFileName),
     );
-    await file.writeAsString(
-      "$encoded\n",
-      mode: FileMode.append,
-      flush: true,
-    );
+    await file.writeAsString("$encoded\n", mode: FileMode.append, flush: true);
   }
 
   Future<void> resetHostStream() async {
     if (!enabled) return;
     _hostWriteChain = _hostWriteChain.then((_) async {
       final file = _hostStreamFile ??= File(
-        path_helper.join(
-          (await getApplicationDocumentsDirectory()).path,
-          _hostStreamFileName,
-        ),
+        path_helper.join((await getApplicationDocumentsDirectory()).path, _hostStreamFileName),
       );
       if (await file.exists()) {
         await file.delete();
@@ -1715,29 +1426,15 @@ class PerformanceBenchmarkService {
       mark("$name-end");
       return result;
     } on TimeoutException catch (error, stackTrace) {
-      await failActiveRun(
-        result: PerformanceBenchmarkResult.timeout,
-        error: error,
-        stackTrace: stackTrace,
-        step: name,
-      );
+      await failActiveRun(result: PerformanceBenchmarkResult.timeout, error: error, stackTrace: stackTrace, step: name);
       rethrow;
     } catch (error, stackTrace) {
-      await failActiveRun(
-        result: PerformanceBenchmarkResult.failed,
-        error: error,
-        stackTrace: stackTrace,
-        step: name,
-      );
+      await failActiveRun(result: PerformanceBenchmarkResult.failed, error: error, stackTrace: stackTrace, step: name);
       rethrow;
     }
   }
 
-  Future<void> recordCrash(
-    Object error,
-    StackTrace stackTrace, {
-    required String source,
-  }) async {
+  Future<void> recordCrash(Object error, StackTrace stackTrace, {required String source}) async {
     final run = _activeRun;
     if (run == null) return;
 
@@ -1750,13 +1447,7 @@ class PerformanceBenchmarkService {
       "errorType": error.runtimeType.toString(),
       "lastStep": run.lastStep,
     };
-    run.mark(
-      "uncaught-error",
-      values: {
-        "source": source,
-        "errorType": error.runtimeType.toString(),
-      },
-    );
+    run.mark("uncaught-error", values: {"source": source, "errorType": error.runtimeType.toString()});
     await _persistActiveRun();
   }
 
@@ -1770,11 +1461,7 @@ class PerformanceBenchmarkService {
     if (run == null) return;
 
     run.result = result;
-    run.failure = {
-      "type": result.name,
-      "errorType": error.runtimeType.toString(),
-      "lastStep": step ?? run.lastStep,
-    };
+    run.failure = {"type": result.name, "errorType": error.runtimeType.toString(), "lastStep": step ?? run.lastStep};
     final rssEnd = ProcessInfo.currentRss;
     run.setMetric("rssEndBytes", rssEnd);
     run.setMetric("maxRssBytesAtEnd", ProcessInfo.maxRss);
@@ -1782,13 +1469,7 @@ class PerformanceBenchmarkService {
     if (rssStart is int) {
       run.setMetric("rssDeltaBytes", rssEnd - rssStart);
     }
-    run.mark(
-      "run-failed",
-      values: {
-        "result": result.name,
-        "errorType": error.runtimeType.toString(),
-      },
-    );
+    run.mark("run-failed", values: {"result": result.name, "errorType": error.runtimeType.toString()});
     run.stopwatch.stop();
     run.finished = true;
     _activeRun = null;
@@ -1825,9 +1506,7 @@ class PerformanceBenchmarkService {
   }) async {
     final box = await _getBox();
     if (required) {
-      final target = targetItemId == null
-          ? await getTarget(targetAlias)
-          : null;
+      final target = targetItemId == null ? await getTarget(targetAlias) : null;
       final resolvedItemId = targetItemId ?? target?.itemId;
       final resolvedItemType = targetItemType ?? target?.itemType;
       await box.put(
@@ -1848,9 +1527,7 @@ class PerformanceBenchmarkService {
   Future<Map<String, dynamic>?> getDownloadCleanupRequirement() async {
     final box = await _getBox();
     final encoded = box.get(_cleanupRequiredKey);
-    return encoded == null
-        ? null
-        : jsonDecode(encoded) as Map<String, dynamic>;
+    return encoded == null ? null : jsonDecode(encoded) as Map<String, dynamic>;
   }
 
   Future<bool> isDownloadCleanupTarget(String itemId) async {
@@ -1864,8 +1541,7 @@ class PerformanceBenchmarkService {
 
     final alias = requirement["targetAlias"] as String?;
     if (alias == null) return false;
-    final target =
-        await getTarget(alias) ?? await getLegacyTargetForCleanup(alias);
+    final target = await getTarget(alias) ?? await getLegacyTargetForCleanup(alias);
     return target?.itemId == itemId;
   }
 
@@ -1880,9 +1556,7 @@ class PerformanceBenchmarkService {
     await _persistActiveRun();
   }
 
-  Future<PerformanceBenchmarkRun> finishRun({
-    Map<String, Object?> metrics = const {},
-  }) async {
+  Future<PerformanceBenchmarkRun> finishRun({Map<String, Object?> metrics = const {}}) async {
     final run = _activeRun;
     if (run == null) {
       throw StateError("No benchmark run is active");
@@ -1901,9 +1575,7 @@ class PerformanceBenchmarkService {
     run.mark("run-end");
     run.stopwatch.stop();
     run.finished = true;
-    run.result = run.failure == null
-        ? PerformanceBenchmarkResult.success
-        : PerformanceBenchmarkResult.failed;
+    run.result = run.failure == null ? PerformanceBenchmarkResult.success : PerformanceBenchmarkResult.failed;
     _activeRun = null;
 
     await _flushActiveRunPersistence();
@@ -1946,42 +1618,24 @@ class PerformanceBenchmarkService {
         .map((encoded) => jsonDecode(encoded) as Map<String, dynamic>)
         .toList();
 
-    runs.sort(
-      (a, b) => (a["startedAt"] as String).compareTo(b["startedAt"] as String),
-    );
+    runs.sort((a, b) => (a["startedAt"] as String).compareTo(b["startedAt"] as String));
     return runs;
   }
 
   Future<void> clearRuns() async {
     final box = await _getBox();
-    await box.deleteAll(
-      box.keys
-          .whereType<String>()
-          .where((key) => key.startsWith(_runKeyPrefix)),
-    );
+    await box.deleteAll(box.keys.whereType<String>().where((key) => key.startsWith(_runKeyPrefix)));
   }
 
   Future<void> clearTargets() async {
     final box = await _getBox();
-    await box.deleteAll(
-      box.keys
-          .whereType<String>()
-          .where((key) => key.startsWith(_targetKeyPrefix)),
-    );
+    await box.deleteAll(box.keys.whereType<String>().where((key) => key.startsWith(_targetKeyPrefix)));
   }
 
   Future<Uint8List> exportBytes() async {
-    final runs = (await getRuns())
-        .map(_publicRunJsonMap)
-        .toList(growable: false);
-    final export = {
-      "schemaVersion": 2,
-      "generatedAt": DateTime.now().toUtc().toIso8601String(),
-      "runs": runs,
-    };
-    return Uint8List.fromList(
-      utf8.encode(const JsonEncoder.withIndent("  ").convert(export)),
-    );
+    final runs = (await getRuns()).map(_publicRunJsonMap).toList(growable: false);
+    final export = {"schemaVersion": 2, "generatedAt": DateTime.now().toUtc().toIso8601String(), "runs": runs};
+    return Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent("  ").convert(export)));
   }
 
   Future<void> export() async {
@@ -1990,9 +1644,7 @@ class PerformanceBenchmarkService {
 
     await FilePicker.saveFile(
       fileName: fileName,
-      initialDirectory:
-          (await getApplicationDocumentsDirectory()).path +
-          path_helper.separator,
+      initialDirectory: (await getApplicationDocumentsDirectory()).path + path_helper.separator,
       bytes: await exportBytes(),
     );
   }

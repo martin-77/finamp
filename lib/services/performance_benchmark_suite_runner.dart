@@ -30,8 +30,7 @@ import 'package:hive_ce/hive.dart';
 /// benchmark run starts automatically after authentication. UI navigation,
 /// playback and download phases are layered on top of the same recorder.
 class PerformanceBenchmarkSuiteRunner {
-  static final PerformanceBenchmarkSuiteRunner instance =
-      PerformanceBenchmarkSuiteRunner._();
+  static final PerformanceBenchmarkSuiteRunner instance = PerformanceBenchmarkSuiteRunner._();
 
   PerformanceBenchmarkSuiteRunner._();
 
@@ -83,12 +82,9 @@ class PerformanceBenchmarkSuiteRunner {
   ];
 
   bool _postStageAtOrAfter(String? current, String target) {
-    final currentIndex =
-        _postStageOrder.indexOf(current ?? "post-restart-running");
+    final currentIndex = _postStageOrder.indexOf(current ?? "post-restart-running");
     final targetIndex = _postStageOrder.indexOf(target);
-    return currentIndex >= 0 &&
-        targetIndex >= 0 &&
-        currentIndex >= targetIndex;
+    return currentIndex >= 0 && targetIndex >= 0 && currentIndex >= targetIndex;
   }
 
   void arm() {
@@ -100,20 +96,12 @@ class PerformanceBenchmarkSuiteRunner {
   Future<void> _armAsync() async {
     final recorder = PerformanceBenchmarkService.instance;
     recorder.startHeartbeat();
-    GetIt.instance<KeepScreenOnHelper>()
-        .setPerformanceBenchmarkOverride(true);
+    GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(true);
     final stage = await recorder.getSuiteStage();
 
-    if (PerformanceBenchmarkService.targetedDownloadBench100 ||
-        PerformanceBenchmarkService.targetedDownloadBench1000) {
-      final String targetAlias =
-          PerformanceBenchmarkService.targetedDownloadBench1000
-              ? "bench-1000"
-              : "bench-100";
-      recorder.diagnostic(
-        "suite-targeted-mode",
-        values: {"target": targetAlias, "scope": "download-diagnostics"},
-      );
+    if (PerformanceBenchmarkService.targetedDownloadBench100 || PerformanceBenchmarkService.targetedDownloadBench1000) {
+      final String targetAlias = PerformanceBenchmarkService.targetedDownloadBench1000 ? "bench-1000" : "bench-100";
+      recorder.diagnostic("suite-targeted-mode", values: {"target": targetAlias, "scope": "download-diagnostics"});
       GetIt.instance<FinampUserHelper>().runUserHook(() {
         unawaited(_runTargetedDownloadDiagnostics());
       });
@@ -167,25 +155,11 @@ class PerformanceBenchmarkSuiteRunner {
       return;
     }
 
-    if (stage.startsWith("startup-repeat-") &&
-        stage.endsWith("-running")) {
-      final repeat = int.tryParse(
-        stage
-            .replaceFirst("startup-repeat-", "")
-            .replaceFirst("-running", ""),
-      );
-      if (repeat == null ||
-          repeat < 1 ||
-          repeat > _startupRepeatCount) {
-        recorder.diagnostic(
-          "suite-error",
-          values: {
-            "phase": "startup-repeat-routing",
-            "stage": stage,
-          },
-        );
-        GetIt.instance<KeepScreenOnHelper>()
-            .setPerformanceBenchmarkOverride(false);
+    if (stage.startsWith("startup-repeat-") && stage.endsWith("-running")) {
+      final repeat = int.tryParse(stage.replaceFirst("startup-repeat-", "").replaceFirst("-running", ""));
+      if (repeat == null || repeat < 1 || repeat > _startupRepeatCount) {
+        recorder.diagnostic("suite-error", values: {"phase": "startup-repeat-routing", "stage": stage});
+        GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
         recorder.stopHeartbeat();
         await recorder.flushHostStream();
         return;
@@ -214,8 +188,7 @@ class PerformanceBenchmarkSuiteRunner {
 
     if (stage == "complete") {
       recorder.diagnostic("suite-already-complete");
-      GetIt.instance<KeepScreenOnHelper>()
-          .setPerformanceBenchmarkOverride(false);
+      GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
       recorder.stopHeartbeat();
       return;
     }
@@ -247,21 +220,10 @@ class PerformanceBenchmarkSuiteRunner {
     Duration networkTimeout = const Duration(minutes: 30),
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
-    await recorder.waitForStartupQuiescence(
-      quietPeriod: const Duration(seconds: 3),
-      timeout: startupTaskTimeout,
-    );
-    await recorder.waitForStartupScreenReady(
-      timeout: screenTimeout,
-    );
-    await recorder.waitForImageQuiescence(
-      quietPeriod: const Duration(seconds: 1),
-      timeout: imageTimeout,
-    );
-    await recorder.waitForNetworkQuiescence(
-      quietPeriod: const Duration(seconds: 3),
-      timeout: networkTimeout,
-    );
+    await recorder.waitForStartupQuiescence(quietPeriod: const Duration(seconds: 3), timeout: startupTaskTimeout);
+    await recorder.waitForStartupScreenReady(timeout: screenTimeout);
+    await recorder.waitForImageQuiescence(quietPeriod: const Duration(seconds: 1), timeout: imageTimeout);
+    await recorder.waitForNetworkQuiescence(quietPeriod: const Duration(seconds: 3), timeout: networkTimeout);
     recorder.reportStartupFrameSummary(phase);
     recorder.reportStartupNetworkSummary(phase: phase);
     await recorder.reportStartupPhaseResult(phase);
@@ -280,9 +242,7 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<Box<FinampSettings>> _benchmarkSettingsBox() async {
     if (!Hive.isBoxOpen("FinampSettings")) {
-      PerformanceBenchmarkService.instance.diagnostic(
-        "benchmark-settings-box-reopen",
-      );
+      PerformanceBenchmarkService.instance.diagnostic("benchmark-settings-box-reopen");
       await Hive.openBox<FinampSettings>("FinampSettings");
     }
     return Hive.box<FinampSettings>("FinampSettings");
@@ -306,10 +266,7 @@ class PerformanceBenchmarkSuiteRunner {
     settings.isOffline = offline;
     await box.put("FinampSettings", settings);
     await box.flush();
-    PerformanceBenchmarkService.instance.diagnostic(
-      "benchmark-offline-state-persisted",
-      values: {"offline": offline},
-    );
+    PerformanceBenchmarkService.instance.diagnostic("benchmark-offline-state-persisted", values: {"offline": offline});
   }
 
   Future<void> _ensureSuiteOnlineBaseline() async {
@@ -318,10 +275,7 @@ class PerformanceBenchmarkSuiteRunner {
     if (originalOffline == null) {
       originalOffline = await _benchmarkOfflineState();
       await recorder.saveOriginalOfflineState(originalOffline);
-      recorder.diagnostic(
-        "suite-original-offline-state-saved",
-        values: {"offline": originalOffline},
-      );
+      recorder.diagnostic("suite-original-offline-state-saved", values: {"offline": originalOffline});
     }
 
     if (await _benchmarkOfflineState()) {
@@ -330,16 +284,11 @@ class PerformanceBenchmarkSuiteRunner {
         quietPeriod: const Duration(milliseconds: 750),
         timeout: const Duration(minutes: 5),
       );
-      recorder.diagnostic(
-        "suite-online-baseline-forced",
-        values: {"originalOffline": originalOffline},
-      );
+      recorder.diagnostic("suite-online-baseline-forced", values: {"originalOffline": originalOffline});
     }
   }
 
-  Future<void> _restoreSuiteOriginalOfflineState({
-    bool clearSavedState = true,
-  }) async {
+  Future<void> _restoreSuiteOriginalOfflineState({bool clearSavedState = true}) async {
     final recorder = PerformanceBenchmarkService.instance;
     final originalOffline = await recorder.getOriginalOfflineState();
     if (originalOffline == null) return;
@@ -347,10 +296,7 @@ class PerformanceBenchmarkSuiteRunner {
     if (await _benchmarkOfflineState() != originalOffline) {
       await _setBenchmarkOfflineState(originalOffline);
     }
-    recorder.diagnostic(
-      "suite-original-offline-state-restored",
-      values: {"offline": originalOffline},
-    );
+    recorder.diagnostic("suite-original-offline-state-restored", values: {"offline": originalOffline});
     if (clearSavedState) {
       await recorder.clearOriginalOfflineState();
     }
@@ -358,25 +304,18 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _bestEffortTerminalCleanupAndRestore() async {
     final recorder = PerformanceBenchmarkService.instance;
-    GetIt.instance<KeepScreenOnHelper>()
-        .setPerformanceBenchmarkOverride(false);
+    GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
 
     try {
       await _recoverPendingDownloadCleanup();
     } catch (error) {
-      recorder.diagnostic(
-        "terminal-cleanup-failed",
-        values: {"errorType": error.runtimeType.toString()},
-      );
+      recorder.diagnostic("terminal-cleanup-failed", values: {"errorType": error.runtimeType.toString()});
     }
 
     try {
       await _restoreSuiteOriginalOfflineState();
     } catch (error) {
-      recorder.diagnostic(
-        "terminal-offline-state-restore-failed",
-        values: {"errorType": error.runtimeType.toString()},
-      );
+      recorder.diagnostic("terminal-offline-state-restore-failed", values: {"errorType": error.runtimeType.toString()});
     }
   }
 
@@ -392,11 +331,7 @@ class PerformanceBenchmarkSuiteRunner {
     // realistic startup is not accidentally measuring old benchmark state.
     await GetIt.instance<QueueService>().clearPerformanceBenchmarkQueueState();
 
-    const aliases = <String, int>{
-      "bench-10": 10,
-      "bench-100": 100,
-      "bench-1000": 1000,
-    };
+    const aliases = <String, int>{"bench-10": 10, "bench-100": 100, "bench-1000": 1000};
     final remaining = aliases.keys.toSet();
     const pageSize = 200;
     var startIndex = 0;
@@ -416,22 +351,17 @@ class PerformanceBenchmarkSuiteRunner {
 
         String? matchedAlias;
         for (final alias in remaining) {
-          if (normalized == alias ||
-              normalized == "$alias [smart]") {
+          if (normalized == alias || normalized == "$alias [smart]") {
             matchedAlias = alias;
             break;
           }
         }
         if (matchedAlias == null) continue;
 
-        final stub = DownloadStub.fromItem(
-          type: DownloadItemType.collection,
-          item: item,
-        );
+        final stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
         final expectedTracks = aliases[matchedAlias]!;
         final status = downloads.getStatus(stub, expectedTracks);
-        final progress =
-            downloads.getPerformanceBenchmarkCollectionProgress(stub);
+        final progress = downloads.getPerformanceBenchmarkCollectionProgress(stub);
         final graphTracks = progress["totalTracks"] ?? 0;
         if (status.isDownloaded || graphTracks > 0) {
           recorder.diagnostic(
@@ -444,10 +374,7 @@ class PerformanceBenchmarkSuiteRunner {
             },
           );
           await downloads.deleteDownload(stub: stub);
-          await downloads.waitForPerformanceBenchmarkCleanup(
-            stub: stub,
-            timeout: const Duration(minutes: 30),
-          );
+          await downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 30));
         }
         remaining.remove(matchedAlias);
       }
@@ -463,9 +390,7 @@ class PerformanceBenchmarkSuiteRunner {
     // deadlock: the stale task cannot drain and its cleanup has not run yet.
     recorder.diagnostic(
       "suite-preconditioning-artifact-cleanup-complete",
-      values: {
-        "unresolvedBenchmarkAliases": remaining.length,
-      },
+      values: {"unresolvedBenchmarkAliases": remaining.length},
     );
   }
 
@@ -494,9 +419,7 @@ class PerformanceBenchmarkSuiteRunner {
 
       final downloads = GetIt.instance<DownloadsService>();
       final metadataStub = DownloadStub.fromFinampCollection(
-        FinampCollection(
-          type: FinampCollectionType.allPlaylistsMetadata,
-        ),
+        FinampCollection(type: FinampCollectionType.allPlaylistsMetadata),
       );
 
       recorder.diagnostic(
@@ -508,10 +431,7 @@ class PerformanceBenchmarkSuiteRunner {
       // This cleanup must happen before waiting for global idle because stale
       // metadata work may itself be the reason the global system is not idle.
       await downloads.deleteDownload(stub: metadataStub);
-      await downloads.waitForPerformanceBenchmarkCleanup(
-        stub: metadataStub,
-        timeout: const Duration(minutes: 30),
-      );
+      await downloads.waitForPerformanceBenchmarkCleanup(stub: metadataStub, timeout: const Duration(minutes: 30));
       recorder.diagnostic(
         "suite-preconditioning-global-download-idle-wait-start",
         values: downloads.getPerformanceBenchmarkQueueState(),
@@ -525,28 +445,20 @@ class PerformanceBenchmarkSuiteRunner {
         values: downloads.getPerformanceBenchmarkQueueState(),
       );
 
-      await _settleUi(
-        schedulerCooldown: Duration.zero,
-      );
+      await _settleUi(schedulerCooldown: Duration.zero);
       await clearPerformanceBenchmarkImageCache();
 
       await recorder.setSuiteStage("realistic-startup-prepared");
       recorder.diagnostic(
         "host-restart-requested",
-        values: {
-          "reason": "fresh-suite-preconditioned",
-          "nextStage": "realistic-startup-prepared",
-        },
+        values: {"reason": "fresh-suite-preconditioned", "nextStage": "realistic-startup-prepared"},
       );
       await recorder.flushHostStream();
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
-        values: {
-          "phase": "suite-preconditioning",
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"phase": "suite-preconditioning", "errorType": error.runtimeType.toString()},
       );
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
@@ -566,45 +478,27 @@ class PerformanceBenchmarkSuiteRunner {
       // This process exists specifically to measure Finamp's real first-start
       // playlist metadata workload. A cleanup marker here is current-suite
       // ownership, not stale state; do not delete it while startup is running.
-      await _waitForStartupReady(
-        phase: "realistic-first-startup",
-      );
-      if (!recorder.startupPlaylistMetadataWorkRan ||
-          recorder.startupPlaylistMetadataWorkSucceeded != true) {
-        throw StateError(
-          "Realistic first-start playlist metadata workload did not complete successfully",
-        );
+      await _waitForStartupReady(phase: "realistic-first-startup");
+      if (!recorder.startupPlaylistMetadataWorkRan || recorder.startupPlaylistMetadataWorkSucceeded != true) {
+        throw StateError("Realistic first-start playlist metadata workload did not complete successfully");
       }
 
       final downloads = GetIt.instance<DownloadsService>();
       final metadataStub = DownloadStub.fromFinampCollection(
-        FinampCollection(
-          type: FinampCollectionType.allPlaylistsMetadata,
-        ),
+        FinampCollection(type: FinampCollectionType.allPlaylistsMetadata),
       );
       recorder.diagnostic(
         "startup-playlist-metadata-cleanup-start",
-        values: {
-          "startupWorkObserved":
-              recorder.startupPlaylistMetadataWorkRan,
-        },
+        values: {"startupWorkObserved": recorder.startupPlaylistMetadataWorkRan},
       );
       await downloads.deleteDownload(stub: metadataStub);
-      await downloads.waitForPerformanceBenchmarkCleanup(
-        stub: metadataStub,
-        timeout: const Duration(minutes: 30),
-      );
+      await downloads.waitForPerformanceBenchmarkCleanup(stub: metadataStub, timeout: const Duration(minutes: 30));
       await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
         stableFor: const Duration(seconds: 5),
         timeout: const Duration(minutes: 30),
       );
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: "all-playlists-metadata",
-        required: false,
-      );
-      recorder.diagnostic(
-        "startup-playlist-metadata-cleanup-complete",
-      );
+      await recorder.setDownloadCleanupRequired(targetAlias: "all-playlists-metadata", required: false);
+      recorder.diagnostic("startup-playlist-metadata-cleanup-complete");
 
       // Prepare a reproducible cold image-cache process while preserving auth,
       // settings and download configuration in the isolated benchmark app.
@@ -617,20 +511,14 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.setSuiteStage("cold-start-prepared");
       recorder.diagnostic(
         "host-restart-requested",
-        values: {
-          "reason": "cold-process-prepared",
-          "nextStage": "main-running",
-        },
+        values: {"reason": "cold-process-prepared", "nextStage": "main-running"},
       );
       await recorder.flushHostStream();
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
-        values: {
-          "phase": "cold-process-preparation",
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"phase": "cold-process-preparation", "errorType": error.runtimeType.toString()},
       );
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
@@ -652,11 +540,7 @@ class PerformanceBenchmarkSuiteRunner {
       await _waitForStartupReady(phase: phase);
       recorder.diagnostic(
         "startup-repeat-complete",
-        values: {
-          "repeat": repeat,
-          "phase": phase,
-          "processElapsedMs": recorder.processElapsedMs,
-        },
+        values: {"repeat": repeat, "phase": phase, "processElapsedMs": recorder.processElapsedMs},
       );
 
       if (repeat < _startupRepeatCount) {
@@ -665,20 +549,13 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.setSuiteStage(nextStage);
         recorder.diagnostic(
           "host-restart-requested",
-          values: {
-            "reason": "persistent-cache-startup-repeat",
-            "nextStage": nextStage,
-            "repeat": nextRepeat,
-          },
+          values: {"reason": "persistent-cache-startup-repeat", "nextStage": nextStage, "repeat": nextRepeat},
         );
       } else {
         await recorder.setSuiteStage("awaiting-host-restart");
         recorder.diagnostic(
           "host-restart-requested",
-          values: {
-            "reason": "persistent-cache-startup-repeats-complete",
-            "nextStage": "post-restart-cache",
-          },
+          values: {"reason": "persistent-cache-startup-repeats-complete", "nextStage": "post-restart-cache"},
         );
       }
 
@@ -687,10 +564,7 @@ class PerformanceBenchmarkSuiteRunner {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
-        values: {
-          "phase": "persistent-cache-startup-repeat-$repeat",
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"phase": "persistent-cache-startup-repeat-$repeat", "errorType": error.runtimeType.toString()},
       );
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
@@ -706,27 +580,18 @@ class PerformanceBenchmarkSuiteRunner {
       throw StateError("Suite cannot complete with an active benchmark run");
     }
     if (await recorder.getDownloadCleanupRequirement() != null) {
-      throw StateError(
-        "Suite cannot complete while benchmark download cleanup is pending",
-      );
+      throw StateError("Suite cannot complete while benchmark download cleanup is pending");
     }
     if (await recorder.getOriginalOfflineState() != null) {
-      throw StateError(
-        "Suite cannot complete before the original offline state is restored",
-      );
+      throw StateError("Suite cannot complete before the original offline state is restored");
     }
 
     final stage = await recorder.getSuiteStage();
     if (stage != "post-metadata-done") {
-      throw StateError(
-        "Suite reached terminal verification from an unexpected stage",
-      );
+      throw StateError("Suite reached terminal verification from an unexpected stage");
     }
 
-    recorder.diagnostic(
-      "suite-terminal-state-verified",
-      values: {"stage": stage},
-    );
+    recorder.diagnostic("suite-terminal-state-verified", values: {"stage": stage});
     await recorder.flushHostStream();
   }
 
@@ -740,19 +605,14 @@ class PerformanceBenchmarkSuiteRunner {
       await _recoverPendingDownloadCleanup();
       recorder.diagnostic("post-restart-phase-start");
 
-      await _waitForStartupReady(
-        phase: "post-restart",
-      );
+      await _waitForStartupReady(phase: "post-restart");
       recorder.diagnostic("post-restart-startup-quiescent");
 
       var stage = await recorder.getSuiteStage();
 
       if (!_postStageAtOrAfter(stage, "post-api-done")) {
         await _runCollectionFirstPageBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "post-restart-api-cache"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "post-restart-api-cache"});
         await recorder.setSuiteStage("post-api-done");
         stage = "post-api-done";
       }
@@ -760,36 +620,14 @@ class PerformanceBenchmarkSuiteRunner {
       if (!_postStageAtOrAfter(stage, "post-ui-done")) {
         final tabs = _smoke
             ? const <String>["albums", "tracks"]
-            : const <String>[
-                "home",
-                "albums",
-                "artists",
-                "playlists",
-                "tracks",
-                "genres",
-              ];
+            : const <String>["home", "albums", "artists", "playlists", "tracks", "genres"];
         for (final tab in tabs) {
-          await _runUiTabBaseline(
-            tab,
-            mode: "post-restart-refreshed",
-            round: 1,
-          );
-          await _settleUi(
-            schedulerCooldown: const Duration(seconds: 2),
-          );
-          await _runUiTabBaseline(
-            tab,
-            mode: "post-restart-warm",
-            round: 1,
-          );
-          await _settleUi(
-            schedulerCooldown: const Duration(seconds: 2),
-          );
+          await _runUiTabBaseline(tab, mode: "post-restart-refreshed", round: 1);
+          await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+          await _runUiTabBaseline(tab, mode: "post-restart-warm", round: 1);
+          await _settleUi(schedulerCooldown: const Duration(seconds: 2));
         }
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "post-restart-ui-cache"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "post-restart-ui-cache"});
         await recorder.setSuiteStage("post-ui-done");
         stage = "post-ui-done";
       }
@@ -797,12 +635,7 @@ class PerformanceBenchmarkSuiteRunner {
       if (!_postStageAtOrAfter(stage, "post-detail-done")) {
         final aliases = _smoke
             ? const <String>["detail-album", "bench-10"]
-            : const <String>[
-                "detail-album",
-                "detail-artist",
-                "detail-genre",
-                "bench-100",
-              ];
+            : const <String>["detail-album", "detail-artist", "detail-genre", "bench-100"];
         for (final alias in aliases) {
           final detailType = alias == "detail-album"
               ? "album"
@@ -826,43 +659,27 @@ class PerformanceBenchmarkSuiteRunner {
           );
           await _settleUi();
         }
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "post-restart-detail-cache"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "post-restart-detail-cache"});
         await recorder.setSuiteStage("post-detail-done");
         stage = "post-detail-done";
       }
 
       if (!_postStageAtOrAfter(stage, "post-metadata-done")) {
         await _runOneTimePlaylistMetadataBaseline();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "one-time-playlist-metadata-sync"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "one-time-playlist-metadata-sync"});
         await recorder.setSuiteStage("post-metadata-done");
       }
 
       await _restoreSuiteOriginalOfflineState();
       await _verifySuiteTerminalState();
       await recorder.setSuiteStage("complete");
-      recorder.diagnostic(
-        "suite-complete",
-        values: {"phase": _smoke ? "smoke" : "full-baseline"},
-      );
-      GetIt.instance<KeepScreenOnHelper>()
-          .setPerformanceBenchmarkOverride(false);
+      recorder.diagnostic("suite-complete", values: {"phase": _smoke ? "smoke" : "full-baseline"});
+      GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
-      recorder.diagnostic(
-        "suite-error",
-        values: {
-          "phase": "post-restart",
-          "errorType": error.runtimeType.toString(),
-        },
-      );
+      recorder.diagnostic("suite-error", values: {"phase": "post-restart", "errorType": error.runtimeType.toString()});
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } finally {
@@ -885,9 +702,7 @@ class PerformanceBenchmarkSuiteRunner {
       // then wait for Finamp's known asynchronous startup jobs to finish.
       await WidgetsBinding.instance.endOfFrame;
       recorder.diagnostic("suite-authenticated");
-      await _waitForStartupReady(
-        phase: "main-cold-process",
-      );
+      await _waitForStartupReady(phase: "main-cold-process");
       recorder.diagnostic("startup-baseline-complete");
 
       var stage = await recorder.getSuiteStage();
@@ -896,10 +711,7 @@ class PerformanceBenchmarkSuiteRunner {
         final targetsReady = await _discoverAndValidateTargets();
         if (!targetsReady) {
           await _bestEffortTerminalCleanupAndRestore();
-          recorder.diagnostic(
-            "suite-blocked",
-            values: {"reason": "benchmark-target-validation"},
-          );
+          recorder.diagnostic("suite-blocked", values: {"reason": "benchmark-target-validation"});
           recorder.stopHeartbeat();
           await recorder.flushHostStream();
           return;
@@ -910,90 +722,63 @@ class PerformanceBenchmarkSuiteRunner {
 
       if (!_stageAtOrAfter(stage, "main-network-done")) {
         await _runNetworkTargetBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "network-target-probes"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "network-target-probes"});
         await recorder.setSuiteStage("main-network-done");
         stage = "main-network-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-api-done")) {
         await _runCollectionFirstPageBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "authenticated-api-baseline"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "authenticated-api-baseline"});
         await recorder.setSuiteStage("main-api-done");
         stage = "main-api-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-ui-done")) {
         await _runUiTabBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "ui-tab-baseline"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "ui-tab-baseline"});
         await recorder.setSuiteStage("main-ui-done");
         stage = "main-ui-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-paging-done")) {
         await _runPagingBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "deep-paging"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "deep-paging"});
         await recorder.setSuiteStage("main-paging-done");
         stage = "main-paging-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-search-done")) {
         await _runSearchBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "search"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "search"});
         await recorder.setSuiteStage("main-search-done");
         stage = "main-search-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-alphabet-done")) {
         await _runAlphabetBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "alphabet-fast-scroller"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "alphabet-fast-scroller"});
         await recorder.setSuiteStage("main-alphabet-done");
         stage = "main-alphabet-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-details-done")) {
         await _runDetailBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "detail-screens"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "detail-screens"});
         await recorder.setSuiteStage("main-details-done");
         stage = "main-details-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-drilldown-done")) {
         await _runSearchDrilldownBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "artist-album-track-drilldown"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "artist-album-track-drilldown"});
         await recorder.setSuiteStage("main-drilldown-done");
         stage = "main-drilldown-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-playback-done")) {
         await _runPlaybackBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "queue-playback"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "queue-playback"});
         await recorder.setSuiteStage("main-playback-done");
         stage = "main-playback-done";
       }
@@ -1006,30 +791,21 @@ class PerformanceBenchmarkSuiteRunner {
           // request. Do not overwrite the durable offline continuation stage.
           return;
         }
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "download-offline"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "download-offline"});
         await recorder.setSuiteStage("main-download-done");
         stage = "main-download-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-queue-restore-done")) {
         await _runLargeQueueRestoreBaseline();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "large-queue-restore"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "large-queue-restore"});
         await recorder.setSuiteStage("main-queue-restore-done");
         stage = "main-queue-restore-done";
       }
 
       if (!_stageAtOrAfter(stage, "main-image-cache-done")) {
         await _runImageCacheBaselines();
-        recorder.diagnostic(
-          "suite-phase-complete",
-          values: {"phase": "image-cache"},
-        );
+        recorder.diagnostic("suite-phase-complete", values: {"phase": "image-cache"});
         await recorder.setSuiteStage("main-image-cache-done");
       }
 
@@ -1045,10 +821,7 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.flushHostStream();
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
-      recorder.diagnostic(
-        "suite-error",
-        values: {"errorType": error.runtimeType.toString()},
-      );
+      recorder.diagnostic("suite-error", values: {"errorType": error.runtimeType.toString()});
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
     } finally {
@@ -1064,8 +837,7 @@ class PerformanceBenchmarkSuiteRunner {
     if (stage != "main-download-bench100-done") return false;
 
     final requirement = await recorder.getDownloadCleanupRequirement();
-    if (requirement == null ||
-        requirement["targetAlias"] != "bench-1000") {
+    if (requirement == null || requirement["targetAlias"] != "bench-1000") {
       return false;
     }
 
@@ -1073,18 +845,12 @@ class PerformanceBenchmarkSuiteRunner {
     if (target == null) return false;
 
     final container = GetIt.instance<ProviderContainer>();
-    final item = await container.read(
-      itemByIdProvider(BaseItemId(target.itemId)).future,
-    );
+    final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
     if (item == null) return false;
 
     final downloads = GetIt.instance<DownloadsService>();
-    final stub = DownloadStub.fromItem(
-      type: DownloadItemType.collection,
-      item: item,
-    );
-    final progress =
-        downloads.getPerformanceBenchmarkCollectionProgress(stub);
+    final stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
+    final progress = downloads.getPerformanceBenchmarkCollectionProgress(stub);
     final completeTracks = progress["completeTracks"] ?? 0;
     final totalTracks = progress["totalTracks"] ?? 0;
     final failedTracks = progress["failedTracks"] ?? 0;
@@ -1099,62 +865,40 @@ class PerformanceBenchmarkSuiteRunner {
 
     recorder.diagnostic(
       "bench1000-offline-transition-recovery-start",
-      values: {
-        "completeTracks": completeTracks,
-        "failedTracks": failedTracks,
-      },
+      values: {"completeTracks": completeTracks, "failedTracks": failedTracks},
     );
     await _setBenchmarkOfflineState(true);
     await recorder.setSuiteStage("offline-bench1000-running");
     recorder.diagnostic(
       "offline-mode-forced",
-      values: {
-        "targetAlias": "bench-1000",
-        "processRestart": true,
-        "recoveredAfterInterruptedTransition": true,
-      },
+      values: {"targetAlias": "bench-1000", "processRestart": true, "recoveredAfterInterruptedTransition": true},
     );
     recorder.diagnostic(
       "host-restart-requested",
-      values: {
-        "reason": "recover-offline-bench1000-transition",
-        "nextStage": "offline-bench1000-running",
-      },
+      values: {"reason": "recover-offline-bench1000-transition", "nextStage": "offline-bench1000-running"},
     );
     await recorder.flushHostStream();
     return true;
   }
 
-  Future<void> _recoverPendingDownloadCleanup({
-    bool skipCurrentSuiteOwned = false,
-  }) async {
+  Future<void> _recoverPendingDownloadCleanup({bool skipCurrentSuiteOwned = false}) async {
     final recorder = PerformanceBenchmarkService.instance;
     final requirement = await recorder.getDownloadCleanupRequirement();
     if (requirement == null) return;
 
     final ownerSuiteRunId = requirement["ownerSuiteRunId"] as String?;
-    if (skipCurrentSuiteOwned &&
-        ownerSuiteRunId == PerformanceBenchmarkService.suiteRunId) {
-      recorder.diagnostic(
-        "download-cleanup-recovery-deferred",
-        values: {"reason": "current-suite-startup-work"},
-      );
+    if (skipCurrentSuiteOwned && ownerSuiteRunId == PerformanceBenchmarkService.suiteRunId) {
+      recorder.diagnostic("download-cleanup-recovery-deferred", values: {"reason": "current-suite-startup-work"});
       return;
     }
 
     final alias = requirement["targetAlias"] as String?;
     if (alias == null || alias.isEmpty) {
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: "",
-        required: false,
-      );
+      await recorder.setDownloadCleanupRequired(targetAlias: "", required: false);
       return;
     }
 
-    recorder.diagnostic(
-      "download-cleanup-recovery-start",
-      values: {"targetAlias": alias},
-    );
+    recorder.diagnostic("download-cleanup-recovery-start", values: {"targetAlias": alias});
 
     final previousOffline = await _benchmarkOfflineState();
     try {
@@ -1171,85 +915,48 @@ class PerformanceBenchmarkSuiteRunner {
       final storedItemId = requirement["targetItemId"] as String?;
       final storedItemType = requirement["targetItemType"] as String?;
       final target = storedItemId != null
-          ? PerformanceBenchmarkTarget(
-              alias: alias,
-              itemType: storedItemType ?? "",
-              itemId: storedItemId,
-            )
-          : await recorder.getTarget(alias) ??
-              await recorder.getLegacyTargetForCleanup(alias);
+          ? PerformanceBenchmarkTarget(alias: alias, itemType: storedItemType ?? "", itemId: storedItemId)
+          : await recorder.getTarget(alias) ?? await recorder.getLegacyTargetForCleanup(alias);
       if (target == null) {
-        recorder.diagnostic(
-          "download-cleanup-recovery-target-missing",
-          values: {"targetAlias": alias},
-        );
-        await recorder.setDownloadCleanupRequired(
-          targetAlias: alias,
-          required: false,
-        );
+        recorder.diagnostic("download-cleanup-recovery-target-missing", values: {"targetAlias": alias});
+        await recorder.setDownloadCleanupRequired(targetAlias: alias, required: false);
         return;
       }
 
       final downloads = GetIt.instance<DownloadsService>();
       final DownloadStub stub;
 
-      if ((target.itemType == "finampCollection" ||
-              storedItemType == DownloadItemType.finampCollection.name) &&
+      if ((target.itemType == "finampCollection" || storedItemType == DownloadItemType.finampCollection.name) &&
           alias == "all-playlists-metadata") {
-        stub = DownloadStub.fromFinampCollection(
-          FinampCollection(
-            type: FinampCollectionType.allPlaylistsMetadata,
-          ),
-        );
+        stub = DownloadStub.fromFinampCollection(FinampCollection(type: FinampCollectionType.allPlaylistsMetadata));
       } else {
         final container = GetIt.instance<ProviderContainer>();
-        final item = await container.read(
-          itemByIdProvider(BaseItemId(target.itemId)).future,
-        );
+        final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
         if (item == null) {
-          throw StateError(
-            "Benchmark cleanup target could not be resolved",
-          );
+          throw StateError("Benchmark cleanup target could not be resolved");
         }
-        stub = DownloadStub.fromItem(
-          type: DownloadItemType.collection,
-          item: item,
-        );
+        stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
       }
 
       await downloads.deleteDownload(stub: stub);
-      await downloads.waitForPerformanceBenchmarkCleanup(
-        stub: stub,
-        timeout: const Duration(minutes: 10),
-      );
+      await downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 10));
       await downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
         stableFor: const Duration(seconds: 2),
         timeout: const Duration(minutes: 10),
       );
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: alias,
-        required: false,
-      );
+      await recorder.setDownloadCleanupRequired(targetAlias: alias, required: false);
 
-      recorder.diagnostic(
-        "download-cleanup-recovery-complete",
-        values: {"targetAlias": alias},
-      );
+      recorder.diagnostic("download-cleanup-recovery-complete", values: {"targetAlias": alias});
     } finally {
       final currentOffline = await _benchmarkOfflineState();
       if (currentOffline != previousOffline) {
         await _setBenchmarkOfflineState(previousOffline);
-        recorder.diagnostic(
-          "download-cleanup-recovery-offline-restored",
-          values: {"offline": previousOffline},
-        );
+        recorder.diagnostic("download-cleanup-recovery-offline-restored", values: {"offline": previousOffline});
       }
     }
   }
 
-  Future<bool> _discoverAndValidateTargets({
-    Map<String, int>? targets,
-  }) async {
+  Future<bool> _discoverAndValidateTargets({Map<String, int>? targets}) async {
     final api = GetIt.instance<JellyfinApiHelper>();
     final recorder = PerformanceBenchmarkService.instance;
     var allValid = true;
@@ -1287,8 +994,7 @@ class PerformanceBenchmarkSuiteRunner {
               matches.addAll(
                 items.where((item) {
                   final normalizedName = item.name?.trim().toLowerCase();
-                  return normalizedName == normalizedAlias ||
-                      normalizedName == "$normalizedAlias [smart]";
+                  return normalizedName == normalizedAlias || normalizedName == "$normalizedAlias [smart]";
                 }),
               );
 
@@ -1310,31 +1016,18 @@ class PerformanceBenchmarkSuiteRunner {
         }
 
         final playlist = matches.single;
-        await recorder.saveTarget(
-          alias: alias,
-          itemType: "Playlist",
-          itemId: playlist.id.raw,
-        );
+        await recorder.saveTarget(alias: alias, itemType: "Playlist", itemId: playlist.id.raw);
 
         final children = await recorder.runStep(
           name: "playlist-track-resolution",
           timeout: const Duration(minutes: 5),
-          operation: () => api.getItems(
-            parentItem: playlist,
-            includeItemTypes: "Audio",
-            recursive: true,
-          ),
+          operation: () => api.getItems(parentItem: playlist, includeItemTypes: "Audio", recursive: true),
         );
 
         if (alias == "bench-100" && children != null && children.isNotEmpty) {
-          final deterministicChildren = [...children]
-            ..sort((a, b) => a.id.raw.compareTo(b.id.raw));
+          final deterministicChildren = [...children]..sort((a, b) => a.id.raw.compareTo(b.id.raw));
           final track = deterministicChildren.first;
-          await recorder.saveTarget(
-            alias: "detail-track",
-            itemType: "Audio",
-            itemId: track.id.raw,
-          );
+          await recorder.saveTarget(alias: "detail-track", itemType: "Audio", itemId: track.id.raw);
 
           BaseItemId? albumId;
           BaseItemId? artistId;
@@ -1354,25 +1047,13 @@ class PerformanceBenchmarkSuiteRunner {
           }
 
           if (albumId != null) {
-            await recorder.saveTarget(
-              alias: "detail-album",
-              itemType: "MusicAlbum",
-              itemId: albumId.raw,
-            );
+            await recorder.saveTarget(alias: "detail-album", itemType: "MusicAlbum", itemId: albumId.raw);
           }
           if (artistId != null) {
-            await recorder.saveTarget(
-              alias: "detail-artist",
-              itemType: "MusicArtist",
-              itemId: artistId.raw,
-            );
+            await recorder.saveTarget(alias: "detail-artist", itemType: "MusicArtist", itemId: artistId.raw);
           }
           if (genreId != null) {
-            await recorder.saveTarget(
-              alias: "detail-genre",
-              itemType: "MusicGenre",
-              itemId: genreId.raw,
-            );
+            await recorder.saveTarget(alias: "detail-genre", itemType: "MusicGenre", itemId: genreId.raw);
           }
         }
 
@@ -1409,41 +1090,24 @@ class PerformanceBenchmarkSuiteRunner {
     // Fixed delays are only stabilization boundaries and are deliberately
     // outside measured runs. "refreshed-view" means provider refresh inside
     // one running process; true cold-process measurements require relaunch.
-    recorder.diagnostic(
-      "ui-stabilization-start",
-      values: {"seconds": 3, "afterStartupQuiescence": true},
-    );
+    recorder.diagnostic("ui-stabilization-start", values: {"seconds": 3, "afterStartupQuiescence": true});
     await Future<void>.delayed(const Duration(seconds: 3));
     recorder.diagnostic("ui-stabilization-complete");
 
     for (var round = 0; round < rounds.length; round++) {
-      recorder.diagnostic(
-        "ui-round-start",
-        values: {"round": round + 1},
-      );
+      recorder.diagnostic("ui-round-start", values: {"round": round + 1});
 
       for (final tab in rounds[round]) {
-        await _runUiTabBaseline(
-          tab,
-          mode: "refreshed-view",
-          round: round + 1,
-        );
+        await _runUiTabBaseline(tab, mode: "refreshed-view", round: round + 1);
 
         await _uiCooldown(recorder, tab);
 
-        await _runUiTabBaseline(
-          tab,
-          mode: "warm-view",
-          round: round + 1,
-        );
+        await _runUiTabBaseline(tab, mode: "warm-view", round: round + 1);
 
         await _uiCooldown(recorder, tab);
       }
 
-      recorder.diagnostic(
-        "ui-round-complete",
-        values: {"round": round + 1},
-      );
+      recorder.diagnostic("ui-round-complete", values: {"round": round + 1});
     }
   }
 
@@ -1456,41 +1120,23 @@ class PerformanceBenchmarkSuiteRunner {
     // separate background tail: network/worker and image activity must all be
     // idle at the same time and remain generation-stable for one short guard
     // window. It avoids the old serial network/image/network 3 x 750 ms floor.
-    await PerformanceBenchmarkService.instance.waitForUiActivityQuiescence(
-      quietPeriod: quietPeriod,
-      timeout: timeout,
-    );
+    await PerformanceBenchmarkService.instance.waitForUiActivityQuiescence(quietPeriod: quietPeriod, timeout: timeout);
   }
 
   Future<void> _settleUi({
     Duration quietPeriod = const Duration(milliseconds: 200),
     Duration schedulerCooldown = const Duration(seconds: 1),
   }) async {
-    await _waitForUiQuiescence(
-      quietPeriod: quietPeriod,
-      timeout: const Duration(minutes: 15),
-    );
+    await _waitForUiQuiescence(quietPeriod: quietPeriod, timeout: const Duration(minutes: 15));
     if (schedulerCooldown > Duration.zero) {
       await Future<void>.delayed(schedulerCooldown);
     }
   }
 
-  Future<void> _uiCooldown(
-    PerformanceBenchmarkService recorder,
-    String tab,
-  ) async {
-    recorder.diagnostic(
-      "ui-tab-cooldown-start",
-      values: {"contentType": tab, "seconds": 5},
-    );
-    await _settleUi(
-      quietPeriod: const Duration(milliseconds: 750),
-      schedulerCooldown: const Duration(seconds: 5),
-    );
-    recorder.diagnostic(
-      "ui-tab-cooldown-complete",
-      values: {"contentType": tab},
-    );
+  Future<void> _uiCooldown(PerformanceBenchmarkService recorder, String tab) async {
+    recorder.diagnostic("ui-tab-cooldown-start", values: {"contentType": tab, "seconds": 5});
+    await _settleUi(quietPeriod: const Duration(milliseconds: 750), schedulerCooldown: const Duration(seconds: 5));
+    recorder.diagnostic("ui-tab-cooldown-complete", values: {"contentType": tab});
   }
 
   Future<void> _runUiTabBaseline(
@@ -1551,17 +1197,13 @@ class PerformanceBenchmarkSuiteRunner {
 
     const tabs = <String>["artists", "albums", "tracks"];
 
-    for (final (queryAlias, artistQuery, deriveTargetChain)
-        in configuredQueries) {
+    for (final (queryAlias, artistQuery, deriveTargetChain) in configuredQueries) {
       // The user-provided private query names an artist. Album and track search
       // must use real album/track names rather than reusing the artist name.
       // Those derived strings remain device-local and are never exported.
       final tabQueries = <String, String>{
         "artists": artistQuery,
-        if (!deriveTargetChain) ...{
-          "albums": artistQuery,
-          "tracks": artistQuery,
-        },
+        if (!deriveTargetChain) ...{"albums": artistQuery, "tracks": artistQuery},
       };
 
       final artistResult = await api.getItemsWithTotalRecordCount(
@@ -1571,34 +1213,21 @@ class PerformanceBenchmarkSuiteRunner {
         limit: 25,
       );
       final artistMatches = (artistResult.items ?? const <BaseItemDto>[])
-          .where(
-            (item) =>
-                item.name?.trim().toLowerCase() ==
-                artistQuery.trim().toLowerCase(),
-          )
+          .where((item) => item.name?.trim().toLowerCase() == artistQuery.trim().toLowerCase())
           .toList();
 
       recorder.diagnostic(
         "search-target-discovery",
-        values: {
-          "queryAlias": queryAlias,
-          "artistMatches": artistMatches.length,
-        },
+        values: {"queryAlias": queryAlias, "artistMatches": artistMatches.length},
       );
 
       if (deriveTargetChain) {
         if (artistMatches.length != 1) {
-          throw StateError(
-            "Benchmark private artist query did not resolve uniquely",
-          );
+          throw StateError("Benchmark private artist query did not resolve uniquely");
         }
 
         final artist = artistMatches.single;
-        await recorder.saveTarget(
-          alias: "$queryAlias-artist",
-          itemType: "MusicArtist",
-          itemId: artist.id.raw,
-        );
+        await recorder.saveTarget(alias: "$queryAlias-artist", itemType: "MusicArtist", itemId: artist.id.raw);
 
         final albums = await api.getItems(
           parentItem: artist,
@@ -1609,24 +1238,16 @@ class PerformanceBenchmarkSuiteRunner {
           sortOrder: "Ascending",
         );
         if (albums == null || albums.isEmpty) {
-          throw StateError(
-            "Benchmark artist has no album available for derived search",
-          );
+          throw StateError("Benchmark artist has no album available for derived search");
         }
 
         final album = albums.first;
         final albumQuery = album.name?.trim();
         if (albumQuery == null || albumQuery.isEmpty) {
-          throw StateError(
-            "Benchmark derived album has no searchable name",
-          );
+          throw StateError("Benchmark derived album has no searchable name");
         }
         tabQueries["albums"] = albumQuery;
-        await recorder.saveTarget(
-          alias: "$queryAlias-album",
-          itemType: "MusicAlbum",
-          itemId: album.id.raw,
-        );
+        await recorder.saveTarget(alias: "$queryAlias-album", itemType: "MusicAlbum", itemId: album.id.raw);
 
         final tracks = await api.getItems(
           parentItem: album,
@@ -1636,24 +1257,16 @@ class PerformanceBenchmarkSuiteRunner {
           sortOrder: "Ascending",
         );
         if (tracks == null || tracks.isEmpty) {
-          throw StateError(
-            "Benchmark derived album has no track available for search",
-          );
+          throw StateError("Benchmark derived album has no track available for search");
         }
 
         final track = tracks.first;
         final trackQuery = track.name?.trim();
         if (trackQuery == null || trackQuery.isEmpty) {
-          throw StateError(
-            "Benchmark derived track has no searchable name",
-          );
+          throw StateError("Benchmark derived track has no searchable name");
         }
         tabQueries["tracks"] = trackQuery;
-        await recorder.saveTarget(
-          alias: "$queryAlias-track",
-          itemType: "Audio",
-          itemId: track.id.raw,
-        );
+        await recorder.saveTarget(alias: "$queryAlias-track", itemType: "Audio", itemId: track.id.raw);
 
         recorder.diagnostic(
           "search-derived-query-chain-ready",
@@ -1669,12 +1282,9 @@ class PerformanceBenchmarkSuiteRunner {
       for (final tab in tabs) {
         final query = tabQueries[tab];
         if (query == null || query.isEmpty) {
-          throw StateError(
-            "Benchmark search query for $queryAlias/$tab is unavailable",
-          );
+          throw StateError("Benchmark search query for $queryAlias/$tab is unavailable");
         }
-        final resultAlias =
-            deriveTargetChain ? "$queryAlias-$tab" : queryAlias;
+        final resultAlias = deriveTargetChain ? "$queryAlias-$tab" : queryAlias;
         String? resolvedSearchTab;
 
         // Return to the unfiltered list first. This is outside the measured run
@@ -1716,9 +1326,7 @@ class PerformanceBenchmarkSuiteRunner {
           // runStep persists failures/timeouts.
         }
 
-        await _settleUi(
-          schedulerCooldown: const Duration(seconds: 1),
-        );
+        await _settleUi(schedulerCooldown: const Duration(seconds: 1));
 
         await recorder.startRun(
           scenario: "ui-search-$tab",
@@ -1783,15 +1391,11 @@ class PerformanceBenchmarkSuiteRunner {
             }
 
             if (!loadedPage) break;
-            await _settleUi(
-              schedulerCooldown: const Duration(seconds: 1),
-            );
+            await _settleUi(schedulerCooldown: const Duration(seconds: 1));
           }
         }
 
-        await _settleUi(
-          schedulerCooldown: const Duration(seconds: 2),
-        );
+        await _settleUi(schedulerCooldown: const Duration(seconds: 2));
       }
     }
 
@@ -1802,20 +1406,12 @@ class PerformanceBenchmarkSuiteRunner {
       query: "",
       timeout: const Duration(minutes: 10),
     );
-    await _settleUi(
-      schedulerCooldown: const Duration(seconds: 2),
-    );
+    await _settleUi(schedulerCooldown: const Duration(seconds: 2));
   }
 
   Future<void> _runPagingBaselines() async {
     final recorder = PerformanceBenchmarkService.instance;
-    const tabs = <String>[
-      "artists",
-      "albums",
-      "tracks",
-      "playlists",
-      "genres",
-    ];
+    const tabs = <String>["artists", "albums", "tracks", "playlists", "genres"];
 
     for (final requestedTab in tabs) {
       final resolvedTab = await recorder.requestUiTab(
@@ -1823,9 +1419,7 @@ class PerformanceBenchmarkSuiteRunner {
         refresh: true,
         timeout: const Duration(minutes: 10),
       );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
 
       final lastPage = _smoke ? 3 : 11;
       for (var page = 2; page <= lastPage; page++) {
@@ -1842,10 +1436,8 @@ class PerformanceBenchmarkSuiteRunner {
           loadedPage = await recorder.runStep(
             name: "next-page",
             timeout: const Duration(minutes: 10),
-            operation: () => recorder.requestNextPage(
-              contentType: resolvedTab,
-              timeout: const Duration(minutes: 9, seconds: 30),
-            ),
+            operation: () =>
+                recorder.requestNextPage(contentType: resolvedTab, timeout: const Duration(minutes: 9, seconds: 30)),
           );
           if (loadedPage) {
             await recorder.runStep(
@@ -1863,9 +1455,7 @@ class PerformanceBenchmarkSuiteRunner {
         await _settleUi();
       }
 
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
     }
   }
 
@@ -1900,9 +1490,7 @@ class PerformanceBenchmarkSuiteRunner {
       } else {
         await recorder.failActiveRun(
           result: PerformanceBenchmarkResult.failed,
-          error: StateError(
-            "Startup queue restore produced an unexpected track count",
-          ),
+          error: StateError("Startup queue restore produced an unexpected track count"),
           stackTrace: StackTrace.current,
           step: "verify-startup-queue-restore",
         );
@@ -1916,18 +1504,13 @@ class PerformanceBenchmarkSuiteRunner {
           quietPeriod: const Duration(milliseconds: 750),
           timeout: const Duration(minutes: 5),
         );
-        recorder.diagnostic(
-          "queue-restore-partial-autoload-cleared",
-          values: {"partialTrackCount": alreadyRestored},
-        );
+        recorder.diagnostic("queue-restore-partial-autoload-cleared", values: {"partialTrackCount": alreadyRestored});
       }
 
       await recorder.startRun(
         scenario: "persisted-queue-restore",
         variant: PerformanceBenchmarkService.variant,
-        mode: alreadyRestored == 0
-            ? "explicit-after-restart"
-            : "explicit-after-partial-autoload",
+        mode: alreadyRestored == 0 ? "explicit-after-restart" : "explicit-after-partial-autoload",
         targetAlias: expectedAlias,
         targetType: "queue",
       );
@@ -1935,15 +1518,12 @@ class PerformanceBenchmarkSuiteRunner {
         final restored = await recorder.runStep(
           name: "restore-persisted-queue",
           timeout: const Duration(minutes: 20),
-          operation:
-              queueService.restorePerformanceBenchmarkPersistedQueue,
+          operation: queueService.restorePerformanceBenchmarkPersistedQueue,
         );
         recorder.metric("expectedQueueLength", expectedTracks);
         recorder.metric("restoredQueueLength", restored);
         if (restored != expectedTracks) {
-          throw StateError(
-            "Persisted benchmark queue restored an unexpected track count",
-          );
+          throw StateError("Persisted benchmark queue restored an unexpected track count");
         }
         await recorder.finishRun();
       } catch (error, stackTrace) {
@@ -1959,9 +1539,7 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     await queueService.clearPerformanceBenchmarkQueueState();
-    await _settleUi(
-      schedulerCooldown: const Duration(seconds: 1),
-    );
+    await _settleUi(schedulerCooldown: const Duration(seconds: 1));
     recorder.diagnostic("queue-restore-benchmark-clean");
   }
 
@@ -1971,22 +1549,10 @@ class PerformanceBenchmarkSuiteRunner {
     await _settleUi(schedulerCooldown: Duration.zero);
     await clearPerformanceBenchmarkImageCache();
 
-    await _runUiTabBaseline(
-      "albums",
-      mode: "image-cache-cold-refreshed",
-      round: 1,
-    );
-    await _settleUi(
-      schedulerCooldown: const Duration(seconds: 2),
-    );
-    await _runUiTabBaseline(
-      "albums",
-      mode: "image-cache-warm-view",
-      round: 1,
-    );
-    await _settleUi(
-      schedulerCooldown: const Duration(seconds: 2),
-    );
+    await _runUiTabBaseline("albums", mode: "image-cache-cold-refreshed", round: 1);
+    await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+    await _runUiTabBaseline("albums", mode: "image-cache-warm-view", round: 1);
+    await _settleUi(schedulerCooldown: const Duration(seconds: 2));
 
     // The detail experiment needs its own guaranteed cold image state. The
     // albums list above may already have rendered the deterministic target.
@@ -1998,9 +1564,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: "image-cache-cold-detail",
       refresh: true,
     );
-    await _settleUi(
-      schedulerCooldown: const Duration(seconds: 2),
-    );
+    await _settleUi(schedulerCooldown: const Duration(seconds: 2));
     await _runDetailBaseline(
       targetAlias: "detail-album",
       detailType: "album",
@@ -2020,8 +1584,7 @@ class PerformanceBenchmarkSuiteRunner {
     _running = true;
 
     final recorder = PerformanceBenchmarkService.instance;
-    final bool bench1000 =
-        PerformanceBenchmarkService.targetedDownloadBench1000;
+    final bool bench1000 = PerformanceBenchmarkService.targetedDownloadBench1000;
     final String targetAlias = bench1000 ? "bench-1000" : "bench-100";
     final int expectedTracks = bench1000 ? 1000 : 100;
     try {
@@ -2033,67 +1596,45 @@ class PerformanceBenchmarkSuiteRunner {
       // has no suite stage. This keeps unrelated persisted/metadata work out of
       // the targeted measurement instead of waiting for or mixing it into the
       // bench-100 sync graph.
-      await recorder.waitForStartupScreenReady(
-        timeout: const Duration(minutes: 15),
-      );
+      await recorder.waitForStartupScreenReady(timeout: const Duration(minutes: 15));
       await recorder.waitForNetworkQuiescence(
         quietPeriod: const Duration(seconds: 2),
         timeout: const Duration(minutes: 10),
       );
 
-      final targetReady = await _discoverAndValidateTargets(
-        targets: <String, int>{targetAlias: expectedTracks},
-      );
+      final targetReady = await _discoverAndValidateTargets(targets: <String, int>{targetAlias: expectedTracks});
       if (!targetReady) {
-        recorder.diagnostic(
-          "suite-blocked",
-          values: {"reason": "target-validation", "targetAlias": targetAlias},
-        );
+        recorder.diagnostic("suite-blocked", values: {"reason": "target-validation", "targetAlias": targetAlias});
         return;
       }
 
-      final completed = await _runDownloadLifecycle(
-        targetAlias,
-        expectedTracks,
-        diagnosticsOnly: true,
-      );
+      final completed = await _runDownloadLifecycle(targetAlias, expectedTracks, diagnosticsOnly: true);
       if (!completed) {
         throw StateError("Targeted $targetAlias download did not complete");
       }
 
-      recorder.diagnostic(
-        "targeted-download-complete",
-        values: {"targetAlias": targetAlias},
-      );
+      recorder.diagnostic("targeted-download-complete", values: {"targetAlias": targetAlias});
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
-        values: {
-          "phase": "targeted-download",
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"phase": "targeted-download", "errorType": error.runtimeType.toString()},
       );
     } finally {
       await _restoreSuiteOriginalOfflineState();
-      GetIt.instance<KeepScreenOnHelper>()
-          .setPerformanceBenchmarkOverride(false);
+      GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
       _running = false;
     }
   }
 
-  Future<String> _runDownloadAndOfflineBaselines(
-    String? currentStage,
-  ) async {
+  Future<String> _runDownloadAndOfflineBaselines(String? currentStage) async {
     final recorder = PerformanceBenchmarkService.instance;
     var stage = currentStage ?? "main-playback-done";
 
     final entries = _smoke
-        ? const <(String, int, String)>[
-            ("bench-10", 10, "main-download-bench10-done"),
-          ]
+        ? const <(String, int, String)>[("bench-10", 10, "main-download-bench10-done")]
         : const <(String, int, String)>[
             ("bench-10", 10, "main-download-bench10-done"),
             ("bench-100", 100, "main-download-bench100-done"),
@@ -2114,10 +1655,7 @@ class PerformanceBenchmarkSuiteRunner {
       } catch (error) {
         recorder.diagnostic(
           "download-target-phase-error",
-          values: {
-            "targetAlias": alias,
-            "errorType": error.runtimeType.toString(),
-          },
+          values: {"targetAlias": alias, "errorType": error.runtimeType.toString()},
         );
         // A sub-run may fail explicitly and still return normally. Reaching
         // this catch means harness/lifecycle work failed outside that measured
@@ -2134,20 +1672,13 @@ class PerformanceBenchmarkSuiteRunner {
     return stage;
   }
 
-  Future<bool> _runDownloadLifecycle(
-    String targetAlias,
-    int expectedTracks, {
-    bool diagnosticsOnly = false,
-  }) async {
+  Future<bool> _runDownloadLifecycle(String targetAlias, int expectedTracks, {bool diagnosticsOnly = false}) async {
     final recorder = PerformanceBenchmarkService.instance;
     final downloads = GetIt.instance<DownloadsService>();
     final container = GetIt.instance<ProviderContainer>();
     final target = await recorder.getTarget(targetAlias);
     if (target == null) {
-      recorder.diagnostic(
-        "download-target-missing",
-        values: {"targetAlias": targetAlias},
-      );
+      recorder.diagnostic("download-target-missing", values: {"targetAlias": targetAlias});
       await _recordUnavailableTargetRun(
         scenario: "download-lifecycle",
         mode: "online-download",
@@ -2158,14 +1689,9 @@ class PerformanceBenchmarkSuiteRunner {
       return true;
     }
 
-    final item = await container.read(
-      itemByIdProvider(BaseItemId(target.itemId)).future,
-    );
+    final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
     if (item == null) {
-      recorder.diagnostic(
-        "download-target-unresolvable",
-        values: {"targetAlias": targetAlias},
-      );
+      recorder.diagnostic("download-target-unresolvable", values: {"targetAlias": targetAlias});
       await _recordUnavailableTargetRun(
         scenario: "download-lifecycle",
         mode: "online-download",
@@ -2176,24 +1702,17 @@ class PerformanceBenchmarkSuiteRunner {
       return true;
     }
 
-    final stub = DownloadStub.fromItem(
-      type: DownloadItemType.collection,
-      item: item,
-    );
+    final stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
 
     // The benchmark owns these three downloads in its isolated app bundle.
     // Always start from a verified clean state.
     final existingStatus = downloads.getStatus(stub, expectedTracks);
     if (existingStatus.isDownloaded) {
       await downloads.deleteDownload(stub: stub);
-      await downloads.waitForPerformanceBenchmarkCleanup(
-        stub: stub,
-        timeout: const Duration(minutes: 10),
-      );
+      await downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 10));
     }
 
-    final internalLocation =
-        FinampSettingsHelper.finampSettings.internalTrackDir;
+    final internalLocation = FinampSettingsHelper.finampSettings.internalTrackDir;
     final profile = DownloadProfile(
       transcodeCodec: FinampTranscodingCodec.original,
       downloadLocationId: internalLocation.id,
@@ -2209,14 +1728,8 @@ class PerformanceBenchmarkSuiteRunner {
 
     try {
       recorder.metric("expectedTrackCount", expectedTracks);
-      recorder.metric(
-        "downloadMaxConcurrentTransfers",
-        FinampSettingsHelper.finampSettings.maxConcurrentDownloads,
-      );
-      recorder.metric(
-        "downloadSyncWorkers",
-        FinampSettingsHelper.finampSettings.downloadWorkers,
-      );
+      recorder.metric("downloadMaxConcurrentTransfers", FinampSettingsHelper.finampSettings.maxConcurrentDownloads);
+      recorder.metric("downloadSyncWorkers", FinampSettingsHelper.finampSettings.downloadWorkers);
       recorder.metric("downloadUsesOriginalCodec", true);
       // Arm these before planning because transfers can begin while the sync
       // graph is still being expanded. Large collections can legitimately spend
@@ -2227,20 +1740,14 @@ class PerformanceBenchmarkSuiteRunner {
         "download-first-transfer-start",
         timeout: downloadLifecycleEventTimeout,
       );
-      final firstTrack = recorder.waitForEvent(
-        "download-first-track-complete",
-        timeout: downloadLifecycleEventTimeout,
-      );
+      final firstTrack = recorder.waitForEvent("download-first-track-complete", timeout: downloadLifecycleEventTimeout);
       unawaited(firstTransfer.then<void>((_) {}, onError: (_) {}));
       unawaited(firstTrack.then<void>((_) {}, onError: (_) {}));
 
       await recorder.runStep(
         name: "download-plan-and-enqueue",
         timeout: const Duration(hours: 2),
-        operation: () => downloads.addDownload(
-          stub: stub,
-          transcodeProfile: profile,
-        ),
+        operation: () => downloads.addDownload(stub: stub, transcodeProfile: profile),
       );
 
       await recorder.runStep(
@@ -2256,18 +1763,12 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "wait-full-download",
         timeout: const Duration(hours: 2),
-        operation: () => _waitForDownloadComplete(
-          downloads,
-          stub,
-          expectedTracks,
-          targetAlias,
-        ),
+        operation: () => _waitForDownloadComplete(downloads, stub, expectedTracks, targetAlias),
       );
       await recorder.runStep(
         name: "wait-download-system-idle",
         timeout: const Duration(minutes: 30),
-        operation: () =>
-            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
           stableFor: const Duration(seconds: 5),
           timeout: const Duration(minutes: 25),
         ),
@@ -2296,13 +1797,9 @@ class PerformanceBenchmarkSuiteRunner {
         if (transferStartMicros != null &&
             transferCompleteMicros != null &&
             transferCompleteMicros > transferStartMicros) {
-          final transferMicros =
-              transferCompleteMicros - transferStartMicros;
+          final transferMicros = transferCompleteMicros - transferStartMicros;
           recorder.metric("downloadTransferMicros", transferMicros);
-          recorder.metric(
-            "downloadBytesPerSecond",
-            bytes * 1000000.0 / transferMicros,
-          );
+          recorder.metric("downloadBytesPerSecond", bytes * 1000000.0 / transferMicros);
         }
       }
 
@@ -2312,11 +1809,7 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     if (diagnosticsOnly) {
-      await _cleanupDownloadedBenchmarkTarget(
-        targetAlias: targetAlias,
-        stub: stub,
-        downloads: downloads,
-      );
+      await _cleanupDownloadedBenchmarkTarget(targetAlias: targetAlias, stub: stub, downloads: downloads);
       return true;
     }
 
@@ -2341,10 +1834,7 @@ class PerformanceBenchmarkSuiteRunner {
       recorder.metric("filesystemBytesRead", readBytes);
       recorder.metric("filesystemReadMicros", durationMicros);
       if (durationMicros > 0) {
-        recorder.metric(
-          "filesystemBytesPerSecond",
-          readBytes * 1000000.0 / durationMicros,
-        );
+        recorder.metric("filesystemBytesPerSecond", readBytes * 1000000.0 / durationMicros);
       }
       await recorder.finishRun();
     } catch (error, stackTrace) {
@@ -2371,17 +1861,12 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.runStep(
           name: "resync",
           timeout: const Duration(minutes: 30),
-          operation: () => downloads.resync(
-            stub,
-            null,
-            forceSync: true,
-          ),
+          operation: () => downloads.resync(stub, null, forceSync: true),
         );
         await recorder.runStep(
           name: "wait-download-system-idle",
           timeout: const Duration(minutes: 30),
-          operation: () =>
-              downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
             stableFor: const Duration(seconds: 5),
             timeout: const Duration(minutes: 25),
           ),
@@ -2424,8 +1909,7 @@ class PerformanceBenchmarkSuiteRunner {
         await recorder.runStep(
           name: "wait-download-system-idle",
           timeout: const Duration(minutes: 30),
-          operation: () =>
-              downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+          operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
             stableFor: const Duration(seconds: 5),
             timeout: const Duration(minutes: 25),
           ),
@@ -2458,27 +1942,17 @@ class PerformanceBenchmarkSuiteRunner {
       recursive: true,
       limit: 1,
     );
-    final privateOfflineSearchQuery =
-        (onlineTracks?.isNotEmpty ?? false) ? onlineTracks!.first.name : null;
+    final privateOfflineSearchQuery = (onlineTracks?.isNotEmpty ?? false) ? onlineTracks!.first.name : null;
 
     final previousOffline = await _benchmarkOfflineState();
 
     if (targetAlias == "bench-1000") {
       await _setBenchmarkOfflineState(true);
       await recorder.setSuiteStage("offline-bench1000-running");
-      recorder.diagnostic(
-        "offline-mode-forced",
-        values: {
-          "targetAlias": targetAlias,
-          "processRestart": true,
-        },
-      );
+      recorder.diagnostic("offline-mode-forced", values: {"targetAlias": targetAlias, "processRestart": true});
       recorder.diagnostic(
         "host-restart-requested",
-        values: {
-          "reason": "offline-bench1000-cold-process",
-          "nextStage": "offline-bench1000-running",
-        },
+        values: {"reason": "offline-bench1000-cold-process", "nextStage": "offline-bench1000-running"},
       );
       await recorder.flushHostStream();
       return false;
@@ -2486,10 +1960,7 @@ class PerformanceBenchmarkSuiteRunner {
 
     try {
       await _setBenchmarkOfflineState(true);
-      recorder.diagnostic(
-        "offline-mode-forced",
-        values: {"targetAlias": targetAlias, "processRestart": false},
-      );
+      recorder.diagnostic("offline-mode-forced", values: {"targetAlias": targetAlias, "processRestart": false});
       await _settleUi();
 
       await _runOfflineDownloadedScenarios(
@@ -2502,38 +1973,25 @@ class PerformanceBenchmarkSuiteRunner {
       await _setBenchmarkOfflineState(previousOffline);
       recorder.diagnostic(
         "offline-mode-restored",
-        values: {
-          "targetAlias": targetAlias,
-          "restoredOffline": previousOffline,
-        },
+        values: {"targetAlias": targetAlias, "restoredOffline": previousOffline},
       );
       await Future<void>.delayed(const Duration(seconds: 1));
     }
 
     if (_smoke && targetAlias == "bench-10") {
-      final persistedQueueCount =
-          await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
+      final persistedQueueCount = await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
       recorder.diagnostic(
         "smoke-queue-persisted",
-        values: {
-          "targetAlias": targetAlias,
-          "trackCount": persistedQueueCount,
-        },
+        values: {"targetAlias": targetAlias, "trackCount": persistedQueueCount},
       );
       final preservedTracks = await GetIt.instance<QueueService>()
           .clearActiveQueuePreservingPerformanceBenchmarkSnapshot();
       if (preservedTracks != persistedQueueCount) {
-        throw StateError(
-          "Smoke queue snapshot changed while preparing explicit restore",
-        );
+        throw StateError("Smoke queue snapshot changed while preparing explicit restore");
       }
     }
 
-    await _cleanupDownloadedBenchmarkTarget(
-      targetAlias: targetAlias,
-      stub: stub,
-      downloads: downloads,
-    );
+    await _cleanupDownloadedBenchmarkTarget(targetAlias: targetAlias, stub: stub, downloads: downloads);
 
     return true;
   }
@@ -2545,29 +2003,13 @@ class PerformanceBenchmarkSuiteRunner {
     required bool coldProcess,
   }) async {
     final recorder = PerformanceBenchmarkService.instance;
-    final refreshedMode = coldProcess
-        ? "local-downloaded-cold-process-refreshed"
-        : "local-downloaded-refreshed";
-    final warmMode = coldProcess
-        ? "local-downloaded-cold-process-warm"
-        : "local-downloaded-warm";
-    final firstMode = coldProcess
-        ? "local-downloaded-cold-process"
-        : "local-downloaded-first";
+    final refreshedMode = coldProcess ? "local-downloaded-cold-process-refreshed" : "local-downloaded-refreshed";
+    final warmMode = coldProcess ? "local-downloaded-cold-process-warm" : "local-downloaded-warm";
+    final firstMode = coldProcess ? "local-downloaded-cold-process" : "local-downloaded-first";
 
-    await _runUiTabBaseline(
-      "tracks",
-      mode: refreshedMode,
-      round: 1,
-      allowPendingDownloadCleanup: true,
-    );
+    await _runUiTabBaseline("tracks", mode: refreshedMode, round: 1, allowPendingDownloadCleanup: true);
     await _settleUi();
-    await _runUiTabBaseline(
-      "tracks",
-      mode: warmMode,
-      round: 1,
-      allowPendingDownloadCleanup: true,
-    );
+    await _runUiTabBaseline("tracks", mode: warmMode, round: 1, allowPendingDownloadCleanup: true);
     await _settleUi();
 
     final offlineTracksTab = await recorder.requestUiTab(
@@ -2582,9 +2024,7 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.startRun(
         scenario: "offline-next-page-tracks",
         variant: PerformanceBenchmarkService.variant,
-        mode: coldProcess
-            ? "local-downloaded-cold-process"
-            : "local-downloaded",
+        mode: coldProcess ? "local-downloaded-cold-process" : "local-downloaded",
         targetAlias: targetAlias,
         targetType: offlineTracksTab,
         allowPendingDownloadCleanup: true,
@@ -2595,10 +2035,8 @@ class PerformanceBenchmarkSuiteRunner {
         loadedPage = await recorder.runStep(
           name: "next-page",
           timeout: const Duration(minutes: 10),
-          operation: () => recorder.requestNextPage(
-            contentType: offlineTracksTab,
-            timeout: const Duration(minutes: 9, seconds: 30),
-          ),
+          operation: () =>
+              recorder.requestNextPage(contentType: offlineTracksTab, timeout: const Duration(minutes: 9, seconds: 30)),
         );
         if (loadedPage) {
           await recorder.runStep(
@@ -2625,9 +2063,7 @@ class PerformanceBenchmarkSuiteRunner {
     );
     await _settleUi();
 
-    final offlineLetters = _smoke
-        ? const <String>["A", "Z"]
-        : const <String>["#", "A", "G", "M", "Z"];
+    final offlineLetters = _smoke ? const <String>["A", "Z"] : const <String>["#", "A", "G", "M", "Z"];
     for (final letter in offlineLetters) {
       await recorder.startRun(
         scenario: "offline-alphabet-jump-tracks-$letter",
@@ -2659,18 +2095,14 @@ class PerformanceBenchmarkSuiteRunner {
       } catch (_) {
         // runStep persists failures/timeouts.
       }
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 1),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 1));
     }
 
     for (final letter in offlineLetters) {
       await recorder.startRun(
         scenario: "offline-alphabet-jump-tracks-$letter",
         variant: PerformanceBenchmarkService.variant,
-        mode: coldProcess
-            ? "local-downloaded-cold-process-warm-loaded"
-            : "local-downloaded-warm-loaded",
+        mode: coldProcess ? "local-downloaded-cold-process-warm-loaded" : "local-downloaded-warm-loaded",
         targetAlias: targetAlias,
         targetType: offlineAlphabetTab,
         allowPendingDownloadCleanup: true,
@@ -2695,13 +2127,10 @@ class PerformanceBenchmarkSuiteRunner {
       } catch (_) {
         // runStep persists failures/timeouts.
       }
-      await _settleUi(
-        schedulerCooldown: const Duration(milliseconds: 750),
-      );
+      await _settleUi(schedulerCooldown: const Duration(milliseconds: 750));
     }
 
-    if (privateOfflineSearchQuery != null &&
-        privateOfflineSearchQuery.trim().isNotEmpty) {
+    if (privateOfflineSearchQuery != null && privateOfflineSearchQuery.trim().isNotEmpty) {
       await recorder.startRun(
         scenario: "offline-search-tracks",
         variant: PerformanceBenchmarkService.variant,
@@ -2793,9 +2222,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: firstMode,
       allowPendingDownloadCleanup: true,
     );
-    await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-      disableFade: true,
-    );
+    await GetIt.instance<MusicPlayerBackgroundTask>().pause(disableFade: true);
     await Future<void>.delayed(const Duration(seconds: 1));
 
     await _runPlaybackBaseline(
@@ -2804,9 +2231,7 @@ class PerformanceBenchmarkSuiteRunner {
       mode: warmMode,
       allowPendingDownloadCleanup: true,
     );
-    await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-      disableFade: true,
-    );
+    await GetIt.instance<MusicPlayerBackgroundTask>().pause(disableFade: true);
   }
 
   Future<void> _cleanupDownloadedBenchmarkTarget({
@@ -2832,16 +2257,12 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "verify-download-removed",
         timeout: const Duration(minutes: 10),
-        operation: () => downloads.waitForPerformanceBenchmarkCleanup(
-          stub: stub,
-          timeout: const Duration(minutes: 9),
-        ),
+        operation: () => downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 9)),
       );
       await recorder.runStep(
         name: "cleanup-download-system-idle",
         timeout: const Duration(minutes: 15),
-        operation: () =>
-            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
           stableFor: const Duration(seconds: 3),
           timeout: const Duration(minutes: 14),
         ),
@@ -2851,10 +2272,7 @@ class PerformanceBenchmarkSuiteRunner {
       if (remainingBytes != 0) {
         throw StateError("Benchmark download cleanup left local bytes");
       }
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: targetAlias,
-        required: false,
-      );
+      await recorder.setDownloadCleanupRequired(targetAlias: targetAlias, required: false);
       await recorder.finishRun();
     } catch (_) {
       rethrow;
@@ -2869,8 +2287,7 @@ class PerformanceBenchmarkSuiteRunner {
     const targetAlias = "bench-1000";
 
     try {
-      var stage =
-          await recorder.getSuiteStage() ?? "offline-bench1000-running";
+      var stage = await recorder.getSuiteStage() ?? "offline-bench1000-running";
 
       final target = await recorder.getTarget(targetAlias);
       if (target == null) {
@@ -2887,33 +2304,20 @@ class PerformanceBenchmarkSuiteRunner {
         await _setBenchmarkOfflineState(true);
 
         await WidgetsBinding.instance.endOfFrame;
-        await _waitForStartupReady(
-          phase: "offline-bench1000-cold-process",
-        );
-  
-        final item = await container.read(
-          itemByIdProvider(BaseItemId(target.itemId)).future,
-        );
+        await _waitForStartupReady(phase: "offline-bench1000-cold-process");
+
+        final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
         if (item == null) {
           throw StateError("Offline benchmark item is unavailable");
         }
 
-        final stub = DownloadStub.fromItem(
-          type: DownloadItemType.collection,
-          item: item,
-        );
+        final stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
         if (!downloads.getStatus(stub, 1000).isDownloaded) {
-          throw StateError(
-            "Offline benchmark download is incomplete after process restart",
-          );
+          throw StateError("Offline benchmark download is incomplete after process restart");
         }
 
-        final tracks = await downloads.getCollectionTracks(
-          item,
-          playable: true,
-        );
-        final privateOfflineSearchQuery =
-            tracks.isNotEmpty ? tracks.first.name : null;
+        final tracks = await downloads.getCollectionTracks(item, playable: true);
+        final privateOfflineSearchQuery = tracks.isNotEmpty ? tracks.first.name : null;
 
         await _runOfflineDownloadedScenarios(
           targetAlias: targetAlias,
@@ -2922,14 +2326,10 @@ class PerformanceBenchmarkSuiteRunner {
           coldProcess: true,
         );
 
-        final persistedQueueCount = await GetIt.instance<QueueService>()
-            .persistPerformanceBenchmarkQueue();
+        final persistedQueueCount = await GetIt.instance<QueueService>().persistPerformanceBenchmarkQueue();
         recorder.diagnostic(
           "offline-large-queue-persisted",
-          values: {
-            "targetAlias": targetAlias,
-            "trackCount": persistedQueueCount,
-          },
+          values: {"targetAlias": targetAlias, "trackCount": persistedQueueCount},
         );
 
         await recorder.setSuiteStage("offline-bench1000-cleanup");
@@ -2948,32 +2348,18 @@ class PerformanceBenchmarkSuiteRunner {
           },
         );
 
-        final item = await container.read(
-          itemByIdProvider(BaseItemId(target.itemId)).future,
-        );
+        final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
         if (item == null) {
-          throw StateError(
-            "Benchmark target could not be resolved for cleanup",
-          );
+          throw StateError("Benchmark target could not be resolved for cleanup");
         }
-        final stub = DownloadStub.fromItem(
-          type: DownloadItemType.collection,
-          item: item,
-        );
+        final stub = DownloadStub.fromItem(type: DownloadItemType.collection, item: item);
 
-        await _cleanupDownloadedBenchmarkTarget(
-          targetAlias: targetAlias,
-          stub: stub,
-          downloads: downloads,
-        );
+        await _cleanupDownloadedBenchmarkTarget(targetAlias: targetAlias, stub: stub, downloads: downloads);
         await recorder.setSuiteStage("main-download-bench1000-done");
         await recorder.setSuiteStage("main-download-done");
         recorder.diagnostic(
           "host-restart-requested",
-          values: {
-            "reason": "return-online-after-offline-cold-process",
-            "nextStage": "main-download-done",
-          },
+          values: {"reason": "return-online-after-offline-cold-process", "nextStage": "main-download-done"},
         );
         await recorder.flushHostStream();
       }
@@ -2981,10 +2367,7 @@ class PerformanceBenchmarkSuiteRunner {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
-        values: {
-          "phase": "offline-bench1000-cold-process",
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"phase": "offline-bench1000-cold-process", "errorType": error.runtimeType.toString()},
       );
       recorder.stopHeartbeat();
       await recorder.flushHostStream();
@@ -3018,31 +2401,21 @@ class PerformanceBenchmarkSuiteRunner {
   }
 
   Future<void> _runSearchDrilldownBaselines() async {
-    final queryAliases = _smoke
-        ? const <String>["query-1"]
-        : const <String>["query-1", "query-2", "query-3"];
+    final queryAliases = _smoke ? const <String>["query-1"] : const <String>["query-1", "query-2", "query-3"];
     for (final queryAlias in queryAliases) {
       await _runSearchDrilldown(queryAlias);
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 4),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 4));
     }
   }
 
   Future<void> _runSearchDrilldown(String queryAlias) async {
     final recorder = PerformanceBenchmarkService.instance;
-    final artistTarget =
-        await recorder.getTarget("$queryAlias-artist");
-    final albumTarget =
-        await recorder.getTarget("$queryAlias-album");
-    final trackTarget =
-        await recorder.getTarget("$queryAlias-track");
+    final artistTarget = await recorder.getTarget("$queryAlias-artist");
+    final albumTarget = await recorder.getTarget("$queryAlias-album");
+    final trackTarget = await recorder.getTarget("$queryAlias-track");
 
     if (artistTarget == null || albumTarget == null || trackTarget == null) {
-      recorder.diagnostic(
-        "search-drilldown-target-missing",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.diagnostic("search-drilldown-target-missing", values: {"queryAlias": queryAlias});
       await _recordUnavailableTargetRun(
         scenario: "artist-album-track-drilldown",
         mode: "online-sequential",
@@ -3054,20 +2427,11 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     final container = GetIt.instance<ProviderContainer>();
-    final artist = await container.read(
-      itemByIdProvider(BaseItemId(artistTarget.itemId)).future,
-    );
-    final album = await container.read(
-      itemByIdProvider(BaseItemId(albumTarget.itemId)).future,
-    );
-    final track = await container.read(
-      itemByIdProvider(BaseItemId(trackTarget.itemId)).future,
-    );
+    final artist = await container.read(itemByIdProvider(BaseItemId(artistTarget.itemId)).future);
+    final album = await container.read(itemByIdProvider(BaseItemId(albumTarget.itemId)).future);
+    final track = await container.read(itemByIdProvider(BaseItemId(trackTarget.itemId)).future);
     if (artist == null || album == null || track == null) {
-      recorder.diagnostic(
-        "search-drilldown-target-unresolvable",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.diagnostic("search-drilldown-target-unresolvable", values: {"queryAlias": queryAlias});
       await _recordUnavailableTargetRun(
         scenario: "artist-album-track-drilldown",
         mode: "online-sequential",
@@ -3080,10 +2444,7 @@ class PerformanceBenchmarkSuiteRunner {
 
     final navigator = GlobalSnackbar.navigatorState;
     if (navigator == null) {
-      recorder.diagnostic(
-        "search-drilldown-navigator-missing",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.diagnostic("search-drilldown-navigator-missing", values: {"queryAlias": queryAlias});
       await _recordUnavailableTargetRun(
         scenario: "artist-album-track-drilldown",
         mode: "online-sequential",
@@ -3113,18 +2474,11 @@ class PerformanceBenchmarkSuiteRunner {
           refresh: true,
           timeout: const Duration(minutes: 14, seconds: 30),
           open: () {
-            navigator.push(
-              MaterialPageRoute<ArtistScreen>(
-                builder: (_) => ArtistScreen(widgetArtist: artist),
-              ),
-            );
+            navigator.push(MaterialPageRoute<ArtistScreen>(builder: (_) => ArtistScreen(widgetArtist: artist)));
           },
         ),
       );
-      recorder.mark(
-        "drilldown-artist-ready",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.mark("drilldown-artist-ready", values: {"queryAlias": queryAlias});
       await _waitForUiQuiescence();
 
       await recorder.runStep(
@@ -3137,40 +2491,22 @@ class PerformanceBenchmarkSuiteRunner {
           refresh: true,
           timeout: const Duration(minutes: 14, seconds: 30),
           open: () {
-            navigator.push(
-              MaterialPageRoute<AlbumScreen>(
-                builder: (_) => AlbumScreen(parent: album),
-              ),
-            );
+            navigator.push(MaterialPageRoute<AlbumScreen>(builder: (_) => AlbumScreen(parent: album)));
           },
         ),
       );
-      recorder.mark(
-        "drilldown-album-ready",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.mark("drilldown-album-ready", values: {"queryAlias": queryAlias});
       await _waitForUiQuiescence();
 
       final playable = Track.fromItem(track);
       final slice = await recorder.runStep(
         name: "track-playable-slice",
         timeout: const Duration(minutes: 5),
-        operation: () => container.read(
-          getPlayableSliceProvider(
-            item: playable,
-            startingOffset: 0,
-          ).future,
-        ),
+        operation: () => container.read(getPlayableSliceProvider(item: playable, startingOffset: 0).future),
       );
 
-      final readyFuture = recorder.waitForEvent(
-        "player-processing-ready",
-        timeout: const Duration(minutes: 3),
-      );
-      final playingFuture = recorder.waitForEvent(
-        "player-playing",
-        timeout: const Duration(minutes: 3),
-      );
+      final readyFuture = recorder.waitForEvent("player-processing-ready", timeout: const Duration(minutes: 3));
+      final playingFuture = recorder.waitForEvent("player-playing", timeout: const Duration(minutes: 3));
       final usefulBufferFuture = recorder.waitForEvent(
         "player-useful-buffer-ready",
         timeout: const Duration(minutes: 3),
@@ -3187,14 +2523,9 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "track-start",
         timeout: const Duration(minutes: 10),
-        operation: () =>
-            GetIt.instance<QueueService>().startSlicePlayback(slice),
+        operation: () => GetIt.instance<QueueService>().startSlicePlayback(slice),
       );
-      await recorder.runStep(
-        name: "track-ready",
-        timeout: const Duration(minutes: 3),
-        operation: () => readyFuture,
-      );
+      await recorder.runStep(name: "track-ready", timeout: const Duration(minutes: 3), operation: () => readyFuture);
       await recorder.runStep(
         name: "track-playing",
         timeout: const Duration(minutes: 3),
@@ -3210,10 +2541,7 @@ class PerformanceBenchmarkSuiteRunner {
         timeout: const Duration(minutes: 3),
         operation: () => firstPositionFuture,
       );
-      recorder.mark(
-        "drilldown-track-playing",
-        values: {"queryAlias": queryAlias},
-      );
+      recorder.mark("drilldown-track-playing", values: {"queryAlias": queryAlias});
       await recorder.finishRun();
     } catch (error, stackTrace) {
       if (recorder.activeRun != null) {
@@ -3225,9 +2553,7 @@ class PerformanceBenchmarkSuiteRunner {
         );
       }
     } finally {
-      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-        disableFade: true,
-      );
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(disableFade: true);
       while (navigator.canPop()) {
         navigator.pop();
         await WidgetsBinding.instance.endOfFrame;
@@ -3262,10 +2588,7 @@ class PerformanceBenchmarkSuiteRunner {
 
   Future<void> _runPlaybackBaselines() async {
     final targets = _smoke
-        ? const <(String, String)>[
-            ("detail-track", "track"),
-            ("bench-10", "playlist"),
-          ]
+        ? const <(String, String)>[("detail-track", "track"), ("bench-10", "playlist")]
         : const <(String, String)>[
             ("detail-track", "track"),
             ("detail-album", "album"),
@@ -3288,31 +2611,14 @@ class PerformanceBenchmarkSuiteRunner {
 
     for (final entry in targets) {
       final (alias, type) = entry;
-      await _runPlaybackBaseline(
-        targetAlias: alias,
-        playableType: type,
-        mode: "online-first",
-      );
-      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-        disableFade: true,
-      );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
-      await _runPlaybackBaseline(
-        targetAlias: alias,
-        playableType: type,
-        mode: "online-warm",
-      );
-      await GetIt.instance<MusicPlayerBackgroundTask>().pause(
-        disableFade: true,
-      );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _runPlaybackBaseline(targetAlias: alias, playableType: type, mode: "online-first");
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(disableFade: true);
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+      await _runPlaybackBaseline(targetAlias: alias, playableType: type, mode: "online-warm");
+      await GetIt.instance<MusicPlayerBackgroundTask>().pause(disableFade: true);
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
 
-      if (type == "playlist" &&
-          (alias == "bench-1000" || alias == "bench-10000")) {
+      if (type == "playlist" && (alias == "bench-1000" || alias == "bench-10000")) {
         await _runQueueMemoryRecoveryBaseline(alias);
       }
     }
@@ -3332,10 +2638,7 @@ class PerformanceBenchmarkSuiteRunner {
     try {
       final rssBefore = ProcessInfo.currentRss;
       recorder.metric("rssBeforeQueueClearBytes", rssBefore);
-      recorder.metric(
-        "queueLengthBeforeClear",
-        queueService.getQueue().trackCount,
-      );
+      recorder.metric("queueLengthBeforeClear", queueService.getQueue().trackCount);
 
       await recorder.runStep(
         name: "clear-queue",
@@ -3350,10 +2653,7 @@ class PerformanceBenchmarkSuiteRunner {
 
       final rssAfter = ProcessInfo.currentRss;
       recorder.metric("rssAfterQueueClearBytes", rssAfter);
-      recorder.metric(
-        "rssRecoveredAfterQueueClearBytes",
-        rssBefore - rssAfter,
-      );
+      recorder.metric("rssRecoveredAfterQueueClearBytes", rssBefore - rssAfter);
       await recorder.finishRun();
     } catch (_) {
       // runStep persists failures/timeouts.
@@ -3369,13 +2669,7 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final target = await recorder.getTarget(targetAlias);
     if (target == null) {
-      recorder.diagnostic(
-        "playback-target-missing",
-        values: {
-          "targetAlias": targetAlias,
-          "targetType": playableType,
-        },
-      );
+      recorder.diagnostic("playback-target-missing", values: {"targetAlias": targetAlias, "targetType": playableType});
       await _recordUnavailableTargetRun(
         scenario: "playback-startup-$playableType",
         mode: mode,
@@ -3388,16 +2682,11 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     final container = GetIt.instance<ProviderContainer>();
-    final item = await container.read(
-      itemByIdProvider(BaseItemId(target.itemId)).future,
-    );
+    final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
     if (item == null) {
       recorder.diagnostic(
         "playback-target-unresolvable",
-        values: {
-          "targetAlias": targetAlias,
-          "targetType": playableType,
-        },
+        values: {"targetAlias": targetAlias, "targetType": playableType},
       );
       await _recordUnavailableTargetRun(
         scenario: "playback-startup-$playableType",
@@ -3419,17 +2708,10 @@ class PerformanceBenchmarkSuiteRunner {
       _ => throw UnsupportedError("Unsupported playback type $playableType"),
     };
 
-    final isVeryLargePlaylist =
-        playableType == "playlist" && targetAlias == "bench-10000";
-    final sliceTimeout = isVeryLargePlaylist
-        ? const Duration(minutes: 15)
-        : const Duration(minutes: 5);
-    final queueStartTimeout = isVeryLargePlaylist
-        ? const Duration(minutes: 30)
-        : const Duration(minutes: 10);
-    final playerStateTimeout = isVeryLargePlaylist
-        ? const Duration(minutes: 5)
-        : const Duration(minutes: 3);
+    final isVeryLargePlaylist = playableType == "playlist" && targetAlias == "bench-10000";
+    final sliceTimeout = isVeryLargePlaylist ? const Duration(minutes: 15) : const Duration(minutes: 5);
+    final queueStartTimeout = isVeryLargePlaylist ? const Duration(minutes: 30) : const Duration(minutes: 10);
+    final playerStateTimeout = isVeryLargePlaylist ? const Duration(minutes: 5) : const Duration(minutes: 3);
 
     await recorder.startRun(
       scenario: "playback-startup-$playableType",
@@ -3444,33 +2726,16 @@ class PerformanceBenchmarkSuiteRunner {
       final slice = await recorder.runStep(
         name: "playable-slice-provider",
         timeout: sliceTimeout,
-        operation: () => container.read(
-          getPlayableSliceProvider(
-            item: playable,
-            startingOffset: 0,
-          ).future,
-        ),
+        operation: () => container.read(getPlayableSliceProvider(item: playable, startingOffset: 0).future),
       );
 
       // Subscribe immediately before the action that can emit these events.
       // Attach a secondary error consumer so an earlier queue failure does not
       // leave an unobserved timeout behind.
-      final readyFuture = recorder.waitForEvent(
-        "player-processing-ready",
-        timeout: playerStateTimeout,
-      );
-      final playingFuture = recorder.waitForEvent(
-        "player-playing",
-        timeout: playerStateTimeout,
-      );
-      final usefulBufferFuture = recorder.waitForEvent(
-        "player-useful-buffer-ready",
-        timeout: playerStateTimeout,
-      );
-      final firstPositionFuture = recorder.waitForEvent(
-        "player-first-position-advance",
-        timeout: playerStateTimeout,
-      );
+      final readyFuture = recorder.waitForEvent("player-processing-ready", timeout: playerStateTimeout);
+      final playingFuture = recorder.waitForEvent("player-playing", timeout: playerStateTimeout);
+      final usefulBufferFuture = recorder.waitForEvent("player-useful-buffer-ready", timeout: playerStateTimeout);
+      final firstPositionFuture = recorder.waitForEvent("player-first-position-advance", timeout: playerStateTimeout);
       unawaited(readyFuture.then<void>((_) {}, onError: (_) {}));
       unawaited(playingFuture.then<void>((_) {}, onError: (_) {}));
       unawaited(usefulBufferFuture.then<void>((_) {}, onError: (_) {}));
@@ -3482,16 +2747,8 @@ class PerformanceBenchmarkSuiteRunner {
         operation: () => GetIt.instance<QueueService>().startSlicePlayback(slice),
       );
 
-      await recorder.runStep(
-        name: "wait-player-ready",
-        timeout: playerStateTimeout,
-        operation: () => readyFuture,
-      );
-      await recorder.runStep(
-        name: "wait-player-playing",
-        timeout: playerStateTimeout,
-        operation: () => playingFuture,
-      );
+      await recorder.runStep(name: "wait-player-ready", timeout: playerStateTimeout, operation: () => readyFuture);
+      await recorder.runStep(name: "wait-player-playing", timeout: playerStateTimeout, operation: () => playingFuture);
       await recorder.runStep(
         name: "wait-useful-buffer",
         timeout: playerStateTimeout,
@@ -3542,24 +2799,10 @@ class PerformanceBenchmarkSuiteRunner {
 
     for (final entry in aliases) {
       final (alias, detailType) = entry;
-      await _runDetailBaseline(
-        targetAlias: alias,
-        detailType: detailType,
-        mode: "refreshed-detail",
-        refresh: true,
-      );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
-      await _runDetailBaseline(
-        targetAlias: alias,
-        detailType: detailType,
-        mode: "warm-detail",
-        refresh: false,
-      );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _runDetailBaseline(targetAlias: alias, detailType: detailType, mode: "refreshed-detail", refresh: true);
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+      await _runDetailBaseline(targetAlias: alias, detailType: detailType, mode: "warm-detail", refresh: false);
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
     }
   }
 
@@ -3573,13 +2816,7 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
     final target = await recorder.getTarget(targetAlias);
     if (target == null) {
-      recorder.diagnostic(
-        "detail-target-missing",
-        values: {
-          "targetAlias": targetAlias,
-          "targetType": detailType,
-        },
-      );
+      recorder.diagnostic("detail-target-missing", values: {"targetAlias": targetAlias, "targetType": detailType});
       await _recordUnavailableTargetRun(
         scenario: "detail-first-rendered-content-$detailType",
         mode: mode,
@@ -3592,17 +2829,9 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     final container = GetIt.instance<ProviderContainer>();
-    final item = await container.read(
-      itemByIdProvider(BaseItemId(target.itemId)).future,
-    );
+    final item = await container.read(itemByIdProvider(BaseItemId(target.itemId)).future);
     if (item == null) {
-      recorder.diagnostic(
-        "detail-target-unresolvable",
-        values: {
-          "targetAlias": targetAlias,
-          "targetType": detailType,
-        },
-      );
+      recorder.diagnostic("detail-target-unresolvable", values: {"targetAlias": targetAlias, "targetType": detailType});
       await _recordUnavailableTargetRun(
         scenario: "detail-first-rendered-content-$detailType",
         mode: mode,
@@ -3640,27 +2869,13 @@ class PerformanceBenchmarkSuiteRunner {
           timeout: const Duration(minutes: 14, seconds: 30),
           open: () {
             if (detailType == "artist") {
-              navigator.push(
-                MaterialPageRoute<ArtistScreen>(
-                  builder: (_) => ArtistScreen(widgetArtist: item),
-                ),
-              );
+              navigator.push(MaterialPageRoute<ArtistScreen>(builder: (_) => ArtistScreen(widgetArtist: item)));
             } else if (detailType == "genre") {
-              navigator.push(
-                MaterialPageRoute<GenreScreen>(
-                  builder: (_) => GenreScreen(widgetGenre: item),
-                ),
-              );
+              navigator.push(MaterialPageRoute<GenreScreen>(builder: (_) => GenreScreen(widgetGenre: item)));
             } else if (detailType == "album" || detailType == "playlist") {
-              navigator.push(
-                MaterialPageRoute<AlbumScreen>(
-                  builder: (_) => AlbumScreen(parent: item),
-                ),
-              );
+              navigator.push(MaterialPageRoute<AlbumScreen>(builder: (_) => AlbumScreen(parent: item)));
             } else {
-              throw UnsupportedError(
-                "Unsupported benchmark detail type",
-              );
+              throw UnsupportedError("Unsupported benchmark detail type");
             }
           },
         ),
@@ -3697,9 +2912,7 @@ class PerformanceBenchmarkSuiteRunner {
     final recorder = PerformanceBenchmarkService.instance;
 
     const tabs = <String>["tracks", "artists", "albums"];
-    final letters = _smoke
-        ? const <String>["A", "Z"]
-        : const <String>["#", "A", "G", "M", "Z"];
+    final letters = _smoke ? const <String>["A", "Z"] : const <String>["#", "A", "G", "M", "Z"];
 
     for (final requestedTab in tabs) {
       // Refresh once outside the measured jump runs. The first sequence then
@@ -3709,9 +2922,7 @@ class PerformanceBenchmarkSuiteRunner {
         refresh: true,
         timeout: const Duration(minutes: 10),
       );
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
 
       for (final letter in letters) {
         await recorder.startRun(
@@ -3773,37 +2984,24 @@ class PerformanceBenchmarkSuiteRunner {
         } catch (_) {
           // runStep finalized the failed run.
         }
-        await _settleUi(
-          schedulerCooldown: const Duration(milliseconds: 750),
-        );
+        await _settleUi(schedulerCooldown: const Duration(milliseconds: 750));
       }
 
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 2),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
     }
   }
 
   Future<void> _runOneTimePlaylistMetadataBaseline() async {
     final recorder = PerformanceBenchmarkService.instance;
     final downloads = GetIt.instance<DownloadsService>();
-    final stub = DownloadStub.fromFinampCollection(
-      FinampCollection(type: FinampCollectionType.allPlaylistsMetadata),
-    );
+    final stub = DownloadStub.fromFinampCollection(FinampCollection(type: FinampCollectionType.allPlaylistsMetadata));
     const targetAlias = "all-playlists-metadata";
 
-    await recorder.saveTarget(
-      alias: targetAlias,
-      itemType: "finampCollection",
-      itemId: stub.id,
-    );
+    await recorder.saveTarget(alias: targetAlias, itemType: "finampCollection", itemId: stub.id);
 
     if (downloads.getStatus(stub, null).isDownloaded) {
       await downloads.deleteDownload(stub: stub);
-      await downloads.waitForPerformanceBenchmarkCleanup(
-        stub: stub,
-        timeout: const Duration(minutes: 20),
-      );
+      await downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 20));
     }
 
     await recorder.startRun(
@@ -3823,8 +3021,7 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "metadata-transfer-until-idle",
         timeout: const Duration(hours: 3),
-        operation: () =>
-            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
           stableFor: const Duration(seconds: 5),
           timeout: const Duration(hours: 2, minutes: 55),
         ),
@@ -3851,24 +3048,17 @@ class PerformanceBenchmarkSuiteRunner {
       await recorder.runStep(
         name: "metadata-cleanup-verify",
         timeout: const Duration(minutes: 30),
-        operation: () => downloads.waitForPerformanceBenchmarkCleanup(
-          stub: stub,
-          timeout: const Duration(minutes: 25),
-        ),
+        operation: () => downloads.waitForPerformanceBenchmarkCleanup(stub: stub, timeout: const Duration(minutes: 25)),
       );
       await recorder.runStep(
         name: "metadata-cleanup-idle",
         timeout: const Duration(minutes: 30),
-        operation: () =>
-            downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
+        operation: () => downloads.waitForPerformanceBenchmarkDownloadSystemIdle(
           stableFor: const Duration(seconds: 5),
           timeout: const Duration(minutes: 25),
         ),
       );
-      await recorder.setDownloadCleanupRequired(
-        targetAlias: "",
-        required: false,
-      );
+      await recorder.setDownloadCleanupRequired(targetAlias: "", required: false);
       await recorder.finishRun();
     } catch (_) {
       rethrow;
@@ -3891,10 +3081,7 @@ class PerformanceBenchmarkSuiteRunner {
     }
 
     final localUri = Uri.tryParse(user.localAddress);
-    final localConfigured =
-        localUri != null &&
-        localUri.host.isNotEmpty &&
-        localUri.host != "0.0.0.0";
+    final localConfigured = localUri != null && localUri.host.isNotEmpty && localUri.host != "0.0.0.0";
 
     final roundCount = _smoke ? 1 : 3;
     for (var round = 1; round <= roundCount; round++) {
@@ -3902,11 +3089,7 @@ class PerformanceBenchmarkSuiteRunner {
         if (target == "local" && !localConfigured) {
           recorder.diagnostic(
             "network-target-probe-skipped",
-            values: {
-              "target": "local",
-              "reason": "not-configured",
-              "round": round,
-            },
+            values: {"target": "local", "reason": "not-configured", "round": round},
           );
           continue;
         }
@@ -3958,9 +3141,7 @@ class PerformanceBenchmarkSuiteRunner {
           timeout: const Duration(seconds: 30),
         );
       }
-      await _settleUi(
-        schedulerCooldown: const Duration(seconds: 1),
-      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 1));
     }
   }
 
@@ -4007,20 +3188,13 @@ class PerformanceBenchmarkSuiteRunner {
           ];
 
     for (var round = 0; round < rounds.length; round++) {
-      recorder.diagnostic(
-        "api-reference-round-start",
-        values: {"round": round + 1},
-      );
+      recorder.diagnostic("api-reference-round-start", values: {"round": round + 1});
 
       for (final collection in rounds[round]) {
         final (scenarioName, itemType, artistType) = collection;
 
         final requests = _smoke
-            ? const <(int, String)>[
-                (25, "size-25"),
-                (100, "size-100-first"),
-                (100, "size-100-warm"),
-              ]
+            ? const <(int, String)>[(25, "size-25"), (100, "size-100-first"), (100, "size-100-warm")]
             : const <(int, String)>[
                 (25, "size-25"),
                 (100, "size-100-first"),
@@ -4069,14 +3243,8 @@ class PerformanceBenchmarkSuiteRunner {
 
       if (!_smoke) {
         final fieldVariants = round.isEven
-            ? const <(String, String?)>[
-                ("default-fields", null),
-                ("minimal-fields", "SortName"),
-              ]
-            : const <(String, String?)>[
-                ("minimal-fields", "SortName"),
-                ("default-fields", null),
-              ];
+            ? const <(String, String?)>[("default-fields", null), ("minimal-fields", "SortName")]
+            : const <(String, String?)>[("minimal-fields", "SortName"), ("default-fields", null)];
 
         for (final (mode, fields) in fieldVariants) {
           await recorder.startRun(
@@ -4113,10 +3281,7 @@ class PerformanceBenchmarkSuiteRunner {
         }
       }
 
-      recorder.diagnostic(
-        "api-reference-round-complete",
-        values: {"round": round + 1},
-      );
+      recorder.diagnostic("api-reference-round-complete", values: {"round": round + 1});
       await Future<void>.delayed(const Duration(seconds: 3));
     }
   }

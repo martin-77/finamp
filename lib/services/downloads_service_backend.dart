@@ -913,8 +913,7 @@ class DownloadsSyncService {
       }
     }
 
-    final benchmarkNodeStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final benchmarkNodeStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     final benchmarkNodeRole = asRequired ? "required" : "info";
     final benchmarkNodeType = parent.type.name;
 
@@ -1186,9 +1185,7 @@ class DownloadsSyncService {
     if (benchmarkNodeStopwatch != null) {
       benchmarkNodeStopwatch.stop();
       final benchmark = PerformanceBenchmarkService.instance;
-      benchmark.incrementMetricBuffered(
-        "downloadSyncNodeCount_${benchmarkNodeType}_$benchmarkNodeRole",
-      );
+      benchmark.incrementMetricBuffered("downloadSyncNodeCount_${benchmarkNodeType}_$benchmarkNodeRole");
       benchmark.incrementMetricBuffered(
         "downloadSyncNodeMicros_${benchmarkNodeType}_$benchmarkNodeRole",
         benchmarkNodeStopwatch.elapsedMicroseconds,
@@ -1209,8 +1206,7 @@ class DownloadsSyncService {
   /// Used within [_syncDownload].
   /// This should only be called inside an isar write transaction.
   (Set<int>, Set<int>, Set<int>) _updateChildren(DownloadItem parent, bool required, Set<DownloadStub> children) {
-    final benchmarkStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final benchmarkStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     IsarLinks<DownloadItem> links = required ? parent.requires : parent.info;
 
     var oldChildIds = (links.filter().isarIdProperty().findAllSync()).toSet();
@@ -1254,26 +1250,11 @@ class DownloadsSyncService {
       final benchmark = PerformanceBenchmarkService.instance;
       final role = required ? "required" : "info";
       benchmark.incrementMetricBuffered("downloadUpdateChildrenCount_$role");
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenMicros_$role",
-        benchmarkStopwatch.elapsedMicroseconds,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenInserted_$role",
-        insertedIds.length,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenLinkedExisting_$role",
-        linkedIds.length,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenUnlinked_$role",
-        childIdsToUnlink.length,
-      );
-      benchmark.maxMetricBuffered(
-        "downloadUpdateChildrenMicrosMax_$role",
-        benchmarkStopwatch.elapsedMicroseconds,
-      );
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenMicros_$role", benchmarkStopwatch.elapsedMicroseconds);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenInserted_$role", insertedIds.length);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenLinkedExisting_$role", linkedIds.length);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenUnlinked_$role", childIdsToUnlink.length);
+      benchmark.maxMetricBuffered("downloadUpdateChildrenMicrosMax_$role", benchmarkStopwatch.elapsedMicroseconds);
     }
     return (insertedIds, linkedIds, childIdsToUnlink);
   }
@@ -1283,14 +1264,10 @@ class DownloadsSyncService {
   /// to this method.  Used within [_syncDownload].
   Future<DownloadStub?> _getBaseItemInfo(BaseItemId id, DownloadItemType type, bool forceServer) async {
     if (_metadataCache.containsKey(id)) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "downloadMetadataCacheHit",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadMetadataCacheHit");
       return _metadataCache[id];
     }
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "downloadMetadataCacheMiss",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadMetadataCacheMiss");
     Completer<DownloadStub?> itemFetch = Completer();
     try {
       DownloadStub? item;
@@ -1346,17 +1323,13 @@ class DownloadsSyncService {
     var item = parent.baseItem!;
 
     if (_childCache.containsKey(item.id.raw)) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "downloadChildCacheHit",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadChildCacheHit");
       var childIds = await _childCache[item.id.raw]!;
       return Future.wait(
         childIds.map((e) => _metadataCache[BaseItemId(e)]).nonNulls,
       ).then((value) => value.nonNulls.toList());
     }
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "downloadChildCacheMiss",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadChildCacheMiss");
     Completer<List<String>> itemFetch = Completer();
     // This prevents errors in itemFetch being reported as unhandled.
     // They are handled by original caller in rethrow.
@@ -1539,8 +1512,7 @@ class DownloadsSyncService {
   /// of all know views.  Used by [_syncDownload] to assign libraries to items
   /// in playlists or finampCollections.
   Future<BaseItemId?> _getAlbumViewID(BaseItemId albumId) async {
-    final benchmarkStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final benchmarkStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     int viewsExamined = 0;
     int albumIdsScanned = 0;
     try {
@@ -1551,10 +1523,7 @@ class DownloadsSyncService {
           DownloadStub.fromItem(type: DownloadItemType.collection, item: view),
         );
         // Iterable.nonNulls does not seem to work here, I don't know why.
-        var childIds = children
-            .map<BaseItemId?>((e) => e.baseItem?.id)
-            .where((id) => id != null)
-            .toList();
+        var childIds = children.map<BaseItemId?>((e) => e.baseItem?.id).where((id) => id != null).toList();
         albumIdsScanned += childIds.length;
         if (childIds.contains(albumId)) {
           return view.id;
@@ -1566,22 +1535,10 @@ class DownloadsSyncService {
         benchmarkStopwatch.stop();
         final benchmark = PerformanceBenchmarkService.instance;
         benchmark.incrementMetricBuffered("downloadAlbumViewLookupCount");
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewLookupMicros",
-          benchmarkStopwatch.elapsedMicroseconds,
-        );
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewViewsExamined",
-          viewsExamined,
-        );
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewIdsScanned",
-          albumIdsScanned,
-        );
-        benchmark.maxMetricBuffered(
-          "downloadAlbumViewLookupMicrosMax",
-          benchmarkStopwatch.elapsedMicroseconds,
-        );
+        benchmark.incrementMetricBuffered("downloadAlbumViewLookupMicros", benchmarkStopwatch.elapsedMicroseconds);
+        benchmark.incrementMetricBuffered("downloadAlbumViewViewsExamined", viewsExamined);
+        benchmark.incrementMetricBuffered("downloadAlbumViewIdsScanned", albumIdsScanned);
+        benchmark.maxMetricBuffered("downloadAlbumViewLookupMicrosMax", benchmarkStopwatch.elapsedMicroseconds);
       }
     }
   }

@@ -59,10 +59,7 @@ class _GenreScreenContentState extends ConsumerState<GenreScreenContent> {
       _benchmarkDetailCommand = command;
       PerformanceBenchmarkService.instance.mark(
         "detail-screen-mounted",
-        values: {
-          "targetAlias": command.targetAlias,
-          "targetType": command.targetType,
-        },
+        values: {"targetAlias": command.targetAlias, "targetType": command.targetType},
       );
       if (command.refresh) {
         ref.invalidate(genreCuratedItemsProvider);
@@ -163,8 +160,7 @@ class _GenreScreenContentState extends ConsumerState<GenreScreenContent> {
     final benchmarkCommand = _benchmarkDetailCommand;
     if (benchmarkCommand != null && !isLoading) {
       final benchmark = PerformanceBenchmarkService.instance;
-      final visibleChildCount =
-          tracks!.length + albums!.length + artists!.length;
+      final visibleChildCount = tracks!.length + albums!.length + artists!.length;
       if (!_benchmarkDetailDataMarked) {
         _benchmarkDetailDataMarked = true;
         benchmark.mark(
@@ -180,11 +176,7 @@ class _GenreScreenContentState extends ConsumerState<GenreScreenContent> {
       if (!_benchmarkDetailFrameScheduled) {
         _benchmarkDetailFrameScheduled = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted ||
-              !identical(
-                PerformanceBenchmarkService.instance.activeDetailCommand,
-                benchmarkCommand,
-              )) {
+          if (!mounted || !identical(PerformanceBenchmarkService.instance.activeDetailCommand, benchmarkCommand)) {
             return;
           }
           benchmark.mark(

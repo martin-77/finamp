@@ -111,32 +111,23 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _downloadsRefreshStreamSubscription = _isarDownloader.offlineDeletesStream.listen((event) {
       _refresh();
     });
-    _benchmarkTabSubscription =
-        PerformanceBenchmarkService.instance.tabCommands.listen(_activateBenchmarkTab);
-    final pendingTabCommand =
-        PerformanceBenchmarkService.instance.activeTabCommand;
+    _benchmarkTabSubscription = PerformanceBenchmarkService.instance.tabCommands.listen(_activateBenchmarkTab);
+    final pendingTabCommand = PerformanceBenchmarkService.instance.activeTabCommand;
     if (pendingTabCommand != null) {
       _activateBenchmarkTab(pendingTabCommand);
     }
 
-    _benchmarkPageSubscription =
-        PerformanceBenchmarkService.instance.pageCommands.listen((command) {
+    _benchmarkPageSubscription = PerformanceBenchmarkService.instance.pageCommands.listen((command) {
       if (widget.contentType?.name != command.contentType) return;
       if (_activeBenchmarkPage != null) {
-        command.completeError(
-          StateError("Another benchmark page command is already active"),
-          StackTrace.current,
-        );
+        command.completeError(StateError("Another benchmark page command is already active"), StackTrace.current);
         return;
       }
       final state = ref.read(pageControl);
       if (!state.hasNextPage) {
         PerformanceBenchmarkService.instance.mark(
           "page-no-next-page",
-          values: {
-            "contentType": command.contentType,
-            "loadedItems": state.items?.length ?? 0,
-          },
+          values: {"contentType": command.contentType, "loadedItems": state.items?.length ?? 0},
         );
         command.complete(false);
         return;
@@ -147,10 +138,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       _benchmarkPageFrameScheduled = false;
       PerformanceBenchmarkService.instance.mark(
         "page-load-start",
-        values: {
-          "contentType": command.contentType,
-          "loadedItems": _benchmarkPageInitialCount,
-        },
+        values: {"contentType": command.contentType, "loadedItems": _benchmarkPageInitialCount},
       );
       ref.read(pageControl.notifier).newPage();
     });
@@ -158,20 +146,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _benchmarkJumpSubscription = PerformanceBenchmarkService.instance.jumpCommands.listen((command) {
       if (widget.contentType?.name != command.contentType) return;
       if (_activeBenchmarkJump != null) {
-        command.completeError(
-          StateError("Another benchmark alphabet jump is already active"),
-          StackTrace.current,
-        );
+        command.completeError(StateError("Another benchmark alphabet jump is already active"), StackTrace.current);
         return;
       }
       final sortBy = widget.sortConfig.sortBy;
-      final fastScrollerAvailable =
-          sortBy == SortBy.sortName || sortBy == SortBy.albumArtist;
+      final fastScrollerAvailable = sortBy == SortBy.sortName || sortBy == SortBy.albumArtist;
       _recordBenchmarkSortConfiguration();
       if (!fastScrollerAvailable) {
-        final error = StateError(
-          "Fast scroller is not available for the current sort configuration",
-        );
+        final error = StateError("Fast scroller is not available for the current sort configuration");
         PerformanceBenchmarkService.instance.mark(
           "alphabet-jump-unavailable",
           values: {
@@ -187,13 +169,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
       _activeBenchmarkJump = command;
       final benchmark = PerformanceBenchmarkService.instance;
-      benchmark.mark(
-        "alphabet-jump-start",
-        values: {
-          "contentType": command.contentType,
-          "letter": command.letter,
-        },
-      );
+      benchmark.mark("alphabet-jump-start", values: {"contentType": command.contentType, "letter": command.letter});
       benchmark.metric("alphabetJumpPagesLoaded", 0);
       unawaited(scrollToLetter(command.letter));
     });
@@ -203,14 +179,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   void _recordBenchmarkSortConfiguration() {
     final benchmark = PerformanceBenchmarkService.instance;
-    benchmark.metric(
-      "sortBy",
-      widget.sortConfig.sortBy?.name ?? "none",
-    );
-    benchmark.metric(
-      "sortOrder",
-      widget.sortConfig.sortOrder?.name ?? "none",
-    );
+    benchmark.metric("sortBy", widget.sortConfig.sortBy?.name ?? "none");
+    benchmark.metric("sortOrder", widget.sortConfig.sortOrder?.name ?? "none");
   }
 
   bool _matchesBenchmarkTab(PerformanceBenchmarkTabCommand command) {
@@ -226,12 +196,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   void _activateBenchmarkTab(PerformanceBenchmarkTabCommand command) {
     if (!_matchesBenchmarkTab(command)) return;
-    if (_activeBenchmarkTab != null &&
-        !identical(_activeBenchmarkTab, command)) {
-      command.completeError(
-        StateError("Another benchmark tab command is already active"),
-        StackTrace.current,
-      );
+    if (_activeBenchmarkTab != null && !identical(_activeBenchmarkTab, command)) {
+      command.completeError(StateError("Another benchmark tab command is already active"), StackTrace.current);
       return;
     }
 
@@ -248,17 +214,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     } else {
       PerformanceBenchmarkService.instance.mark(
         "ui-tab-warm-state-reused",
-        values: {
-          "contentType": widget.contentType?.name,
-          "loadedItems": ref.read(pageControl).items?.length ?? 0,
-        },
+        values: {"contentType": widget.contentType?.name, "loadedItems": ref.read(pageControl).items?.length ?? 0},
       );
     }
   }
 
-  void _maybeReportStartupScreenReady(
-    PagingState<int, FinampDisplayableOrPlayable> state,
-  ) {
+  void _maybeReportStartupScreenReady(PagingState<int, FinampDisplayableOrPlayable> state) {
     if (!PerformanceBenchmarkService.enabled ||
         _startupReadyReported ||
         _startupReadyFrameScheduled ||
@@ -267,8 +228,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     final contentType = widget.contentType?.name;
-    final selected =
-        PerformanceBenchmarkService.instance.startupSelectedContentType;
+    final selected = PerformanceBenchmarkService.instance.startupSelectedContentType;
     if (contentType == null || selected != contentType) return;
 
     // A completed empty result is still a usable screen. Only an unresolved
@@ -281,21 +241,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       if (!mounted || _startupReadyReported) return;
 
       final current = ref.read(pageControl);
-      if (current.isLoading ||
-          (current.items == null && current.hasNextPage)) {
+      if (current.isLoading || (current.items == null && current.hasNextPage)) {
         return;
       }
 
       _startupReadyReported = true;
-      PerformanceBenchmarkService.instance.reportStartupScreenReady(
-        contentType,
-      );
+      PerformanceBenchmarkService.instance.reportStartupScreenReady(contentType);
     });
   }
 
-  void _maybeFailBenchmarkCommands(
-    PagingState<int, FinampDisplayableOrPlayable> state,
-  ) {
+  void _maybeFailBenchmarkCommands(PagingState<int, FinampDisplayableOrPlayable> state) {
     final error = state.error;
     if (error == null || state.isLoading) return;
 
@@ -307,10 +262,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (pageCommand != null) {
       benchmark.mark(
         "page-provider-error",
-        values: {
-          "contentType": pageCommand.contentType,
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"contentType": pageCommand.contentType, "errorType": error.runtimeType.toString()},
       );
       pageCommand.completeError(error, stackTrace);
       _activeBenchmarkPage = null;
@@ -337,10 +289,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (tabCommand != null && tabCommand.selected) {
       benchmark.mark(
         "ui-tab-provider-error",
-        values: {
-          "contentType": contentType,
-          "errorType": error.runtimeType.toString(),
-        },
+        values: {"contentType": contentType, "errorType": error.runtimeType.toString()},
       );
       tabCommand.completeError(error, stackTrace);
       _activeBenchmarkTab = null;
@@ -348,8 +297,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     final searchCommand = benchmark.activeSearchCommand;
-    if (searchCommand != null &&
-        searchCommand.selectedContentType == contentType) {
+    if (searchCommand != null && searchCommand.selectedContentType == contentType) {
       benchmark.mark(
         "search-provider-error",
         values: {
@@ -363,14 +311,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
   }
 
-  void _maybeCompleteBenchmarkTab(
-    PagingState<int, FinampDisplayableOrPlayable> state,
-  ) {
+  void _maybeCompleteBenchmarkTab(PagingState<int, FinampDisplayableOrPlayable> state) {
     final command = _activeBenchmarkTab;
-    if (command == null ||
-        !command.selected ||
-        state.isLoading ||
-        (state.items?.isEmpty ?? true)) {
+    if (command == null || !command.selected || state.isLoading || (state.items?.isEmpty ?? true)) {
       return;
     }
 
@@ -379,10 +322,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       _benchmarkTabDataMarked = true;
       benchmark.mark(
         "ui-tab-data-ready",
-        values: {
-          "contentType": widget.contentType?.name,
-          "loadedItems": state.items?.length ?? 0,
-        },
+        values: {"contentType": widget.contentType?.name, "loadedItems": state.items?.length ?? 0},
       );
     }
 
@@ -393,10 +333,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       final currentState = ref.read(pageControl);
       benchmark.mark(
         "ui-tab-first-rendered-content",
-        values: {
-          "contentType": widget.contentType?.name,
-          "loadedItems": currentState.items?.length ?? 0,
-        },
+        values: {"contentType": widget.contentType?.name, "loadedItems": currentState.items?.length ?? 0},
       );
       command.complete();
       _activeBenchmarkTab = null;
@@ -404,9 +341,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
   }
 
-  void _maybeCompleteBenchmarkPage(
-    PagingState<int, FinampDisplayableOrPlayable> state,
-  ) {
+  void _maybeCompleteBenchmarkPage(PagingState<int, FinampDisplayableOrPlayable> state) {
     final command = _activeBenchmarkPage;
     if (command == null || state.isLoading) return;
 
@@ -425,8 +360,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         values: {
           "contentType": command.contentType,
           "loadedItems": current.items?.length ?? 0,
-          "itemsAdded":
-              (current.items?.length ?? 0) - _benchmarkPageInitialCount,
+          "itemsAdded": (current.items?.length ?? 0) - _benchmarkPageInitialCount,
           "hasNextPage": current.hasNextPage,
         },
       );
@@ -440,9 +374,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     });
   }
 
-  void _maybeCompleteBenchmarkSearch(
-    PagingState<int, FinampDisplayableOrPlayable> state,
-  ) {
+  void _maybeCompleteBenchmarkSearch(PagingState<int, FinampDisplayableOrPlayable> state) {
     final command = PerformanceBenchmarkService.instance.activeSearchCommand;
     if (command == null ||
         identical(_lastCompletedSearchCommand, command) ||
@@ -458,22 +390,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _recordBenchmarkSortConfiguration();
     benchmark.mark(
       "search-data-ready",
-      values: {
-        "contentType": widget.contentType?.name,
-        "queryAlias": command.queryAlias,
-        "resultCount": resultCount,
-      },
+      values: {"contentType": widget.contentType?.name, "queryAlias": command.queryAlias, "resultCount": resultCount},
     );
     benchmark.metric("searchResultCount", resultCount);
 
     if (_benchmarkSearchFrameScheduled) return;
     _benchmarkSearchFrameScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          !identical(
-            PerformanceBenchmarkService.instance.activeSearchCommand,
-            command,
-          )) {
+      if (!mounted || !identical(PerformanceBenchmarkService.instance.activeSearchCommand, command)) {
         _benchmarkSearchFrameScheduled = false;
         return;
       }
@@ -501,10 +425,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final pageWait = _benchmarkAlphabetPageWait;
     if (pageWait != null) {
       pageWait.stop();
-      benchmark.incrementMetric(
-        "alphabetPageWaitMicros",
-        pageWait.elapsedMicroseconds,
-      );
+      benchmark.incrementMetric("alphabetPageWaitMicros", pageWait.elapsedMicroseconds);
       benchmark.mark("alphabet-jump-page-ready");
       _benchmarkAlphabetPageWait = null;
     }
@@ -554,10 +475,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       final comparisonResult = itemCodePoint - codePointToScrollTo;
       if (comparisonResult == 0) {
         localScan.stop();
-        benchmark.incrementMetric(
-          "alphabetLocalScanMicros",
-          localScan.elapsedMicroseconds,
-        );
+        benchmark.incrementMetric("alphabetLocalScanMicros", localScan.elapsedMicroseconds);
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
@@ -567,10 +485,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           preferPosition: AutoScrollPosition.begin,
         );
         targetScroll.stop();
-        benchmark.incrementMetric(
-          "alphabetTargetScrollMicros",
-          targetScroll.elapsedMicroseconds,
-        );
+        benchmark.incrementMetric("alphabetTargetScrollMicros", targetScroll.elapsedMicroseconds);
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
@@ -580,10 +495,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
         // scroll to the previous item instead
         localScan.stop();
-        benchmark.incrementMetric(
-          "alphabetLocalScanMicros",
-          localScan.elapsedMicroseconds,
-        );
+        benchmark.incrementMetric("alphabetLocalScanMicros", localScan.elapsedMicroseconds);
         benchmark.mark("alphabet-jump-target-located");
         timer?.cancel();
         final targetScroll = Stopwatch()..start();
@@ -594,10 +506,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           preferPosition: AutoScrollPosition.middle,
         );
         targetScroll.stop();
-        benchmark.incrementMetric(
-          "alphabetTargetScrollMicros",
-          targetScroll.elapsedMicroseconds,
-        );
+        benchmark.incrementMetric("alphabetTargetScrollMicros", targetScroll.elapsedMicroseconds);
         benchmark.mark("alphabet-jump-target-rendered");
 
         letterToSearch = null;
@@ -607,10 +516,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
 
     localScan.stop();
-    benchmark.incrementMetric(
-      "alphabetLocalScanMicros",
-      localScan.elapsedMicroseconds,
-    );
+    benchmark.incrementMetric("alphabetLocalScanMicros", localScan.elapsedMicroseconds);
 
     timer?.cancel();
     if (!state.hasNextPage) {
@@ -628,10 +534,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       }
 
       benchmark.incrementMetric("alphabetJumpPagesLoaded");
-      benchmark.mark(
-        "alphabet-jump-page-requested",
-        values: {"loadedItems": itemList.length},
-      );
+      benchmark.mark("alphabet-jump-page-requested", values: {"loadedItems": itemList.length});
       _benchmarkAlphabetPageWait = Stopwatch()..start();
       ref.read(pageControl.notifier).newPage();
     }
@@ -646,10 +549,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       );
     }
     pageEdgeScroll.stop();
-    benchmark.incrementMetric(
-      "alphabetPageEdgeScrollMicros",
-      pageEdgeScroll.elapsedMicroseconds,
-    );
+    benchmark.incrementMetric("alphabetPageEdgeScrollMicros", pageEdgeScroll.elapsedMicroseconds);
   }
 
   Duration _getAnimationDurationForOffsetToIndex(int index) {
