@@ -396,6 +396,9 @@ class JellyfinApiHelper {
             limit: limit,
             fields: fields,
             isFavorite: isFavorite,
+            nameStartsWith: nameStartsWith,
+            nameStartsWithOrGreater: nameStartsWithOrGreater,
+            nameLessThan: nameLessThan,
           );
         } else {
           //artistType == ArtistType.artist
@@ -416,6 +419,9 @@ class JellyfinApiHelper {
             limit: limit,
             fields: fields,
             isFavorite: isFavorite,
+            nameStartsWith: nameStartsWith,
+            nameStartsWithOrGreater: nameStartsWithOrGreater,
+            nameLessThan: nameLessThan,
           );
         }
       } else if (includeItemTypes == "MusicGenre") {
@@ -449,6 +455,9 @@ class JellyfinApiHelper {
           limit: limit,
           fields: fields,
           isFavorite: isFavorite,
+          nameStartsWith: nameStartsWith,
+          nameStartsWithOrGreater: nameStartsWithOrGreater,
+          nameLessThan: nameLessThan,
         );
       } else {
         // This will be run when getting albums, tracks in albums, and stuff like
