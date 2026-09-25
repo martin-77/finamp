@@ -78,6 +78,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   StreamSubscription<void>? _musicScreenRefreshStreamSubscription;
   StreamSubscription<void>? _downloadsRefreshStreamSubscription;
   StreamSubscription<PerformanceBenchmarkJumpCommand>? _benchmarkJumpSubscription;
+  StreamSubscription<PerformanceBenchmarkScrollCommand>? _benchmarkScrollSubscription;
   StreamSubscription<PerformanceBenchmarkTabCommand>? _benchmarkTabSubscription;
   StreamSubscription<PerformanceBenchmarkPageCommand>? _benchmarkPageSubscription;
   PerformanceBenchmarkJumpCommand? _activeBenchmarkJump;
@@ -166,6 +167,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         },
       );
       ref.read(pageControl.notifier).newPage();
+    });
+
+    _benchmarkScrollSubscription =
+        PerformanceBenchmarkService.instance.scrollCommands.listen((command) {
+      if (widget.contentType?.name != command.contentType) return;
+      unawaited(_runBenchmarkSparseScroll(command));
     });
 
     _benchmarkJumpSubscription = PerformanceBenchmarkService.instance.jumpCommands.listen((command) {
@@ -1162,6 +1169,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     _musicScreenRefreshStreamSubscription?.cancel();
     _downloadsRefreshStreamSubscription?.cancel();
     _benchmarkJumpSubscription?.cancel();
+    _benchmarkScrollSubscription?.cancel();
     _benchmarkTabSubscription?.cancel();
     _benchmarkPageSubscription?.cancel();
     _activeBenchmarkPage?.completeError(
@@ -1196,6 +1204,87 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     }
     ref.read(pageControl.notifier).refresh();
     // TODO test error cases?
+  }
+
+  Future<void> _runBenchmarkSparseScroll(
+    PerformanceBenchmarkScrollCommand command,
+  ) async {
+    final benchmark = PerformanceBenchmarkService.instance;
+    if (!_usingSparseAlbumGrid || !controller.hasClients) {
+      command.completeError(
+        StateError("Sparse album grid is not active for scroll benchmark"),
+        StackTrace.current,
+      );
+      return;
+    }
+
+    try {
+      benchmark.mark(
+        "sparse-scroll-start",
+        values: {
+          "steps": command.viewportDeltas.length,
+          "cachedItems": _sparseAlbumItems.length,
+        },
+      );
+
+      _sparseUserScrollActive = true;
+      for (var step = 0; step < command.viewportDeltas.length; step++) {
+        final delta = command.viewportDeltas[step];
+        final position = controller.position;
+        final target = (position.pixels + delta * position.viewportDimension)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+
+        benchmark.mark(
+          "sparse-scroll-step-start",
+          values: {
+            "step": step,
+            "viewportDelta": delta,
+            "pixels": position.pixels,
+            "targetPixels": target,
+            "cachedItems": _sparseAlbumItems.length,
+          },
+        );
+
+        await controller.animateTo(
+          target,
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+        );
+        await WidgetsBinding.instance.endOfFrame;
+
+        final deadline = DateTime.now().add(const Duration(seconds: 10));
+        while (_sparseAlbumWindowStartsLoading.isNotEmpty &&
+            DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        await WidgetsBinding.instance.endOfFrame;
+
+        benchmark.mark(
+          "sparse-scroll-step-complete",
+          values: {
+            "step": step,
+            "viewportDelta": delta,
+            "pixels": controller.position.pixels,
+            "cachedItems": _sparseAlbumItems.length,
+            "pendingWindows": _sparseAlbumWindowStartsLoading.length,
+            "renderedTags": controller.tagMap.length,
+          },
+        );
+      }
+      benchmark.mark(
+        "sparse-scroll-complete",
+        values: {
+          "cachedItems": _sparseAlbumItems.length,
+          "renderedTags": controller.tagMap.length,
+        },
+      );
+      command.complete();
+    } catch (error, stackTrace) {
+      command.completeError(error, stackTrace);
+    } finally {
+      _sparseUserScrollActive = false;
+    }
   }
 
   void _queueSparseAlbumWindowLoad(int index) {
