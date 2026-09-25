@@ -107,6 +107,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   final Map<int, FinampPlayableDto> _sparseAlbumItems = {};
   final Set<int> _sparseAlbumWindowStartsLoading = {};
   bool _sparseUserScrollActive = false;
+  int _sparseUserScrollDirection = 0;
 
   bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
 
@@ -1200,6 +1201,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _sparseAlbumItems.clear();
         _sparseAlbumWindowStartsLoading.clear();
         _sparseUserScrollActive = false;
+        _sparseUserScrollDirection = 0;
       });
     }
     ref.read(pageControl.notifier).refresh();
@@ -1518,8 +1520,13 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
               } else if (notification is ScrollUpdateNotification &&
                   notification.dragDetails != null) {
                 _sparseUserScrollActive = true;
+                final delta = notification.scrollDelta;
+                if (delta != null && delta.abs() > 0.5) {
+                  _sparseUserScrollDirection = delta > 0 ? 1 : -1;
+                }
               } else if (notification is ScrollEndNotification) {
                 _sparseUserScrollActive = false;
+                _sparseUserScrollDirection = 0;
               }
               return false;
             },
@@ -1552,6 +1559,20 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 }
                 return const SizedBox.shrink();
               }
+              if (!_alphabetSeekInProgress &&
+                  _sparseUserScrollActive &&
+                  _sparseUserScrollDirection != 0) {
+                const lookAheadItems = 40;
+                final probeIndex =
+                    index + (_sparseUserScrollDirection * lookAheadItems);
+                final total = _sparseAlbumTotalCount!;
+                if (probeIndex >= 0 &&
+                    probeIndex < total &&
+                    !_sparseAlbumItems.containsKey(probeIndex)) {
+                  _queueSparseAlbumWindowLoad(probeIndex);
+                }
+              }
+
               final baseItem = item.item;
               return CachedBuilder(
                 key: ValueKey(baseItem.id),
