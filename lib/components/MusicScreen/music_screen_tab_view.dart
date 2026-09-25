@@ -650,13 +650,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     );
 
     timer?.cancel();
-    if (!state.hasNextPage) {
-      letterToSearch = null;
-      _alphabetSeekAttemptedLetter = null;
-      _alphabetResolvedTargetIndex = null;
-      _completeBenchmarkJump();
-      return;
-    }
 
     Future<void> requestPage(int pageSize) async {
       benchmark.incrementMetric("alphabetJumpPagesLoaded");
@@ -774,6 +767,17 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       } finally {
         _alphabetSeekInProgress = false;
       }
+    }
+
+    // The sparse album seek does not depend on the legacy pager having a
+    // next page. Only stop here once the sparse path had a chance to resolve
+    // the requested letter.
+    if (!state.hasNextPage) {
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      _completeBenchmarkJump();
+      return;
     }
 
     if (!_alphabetSeekInProgress &&
