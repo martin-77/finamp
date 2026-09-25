@@ -72,25 +72,13 @@ step "Resolving Flutter dependencies"
 flutter pub get
 
 step "Static benchmark preflight"
-if ! dart format --output=none --set-exit-if-changed \
-  lib/services/performance_benchmark_service.dart \
-  lib/services/performance_benchmark_suite_runner.dart \
-  lib/services/queue_service.dart \
-  lib/services/downloads_service.dart \
-  lib/services/downloads_service_backend.dart \
-  lib/services/jellyfin_api_helper.dart \
-  lib/services/music_player_background_task.dart \
-  lib/services/album_image_provider.dart \
-  lib/services/http_aggregate_logging_interceptor.dart \
-  lib/main.dart \
-  lib/screens/music_screen.dart \
-  lib/components/MusicScreen/music_screen_tab_view.dart \
-  lib/components/AlbumScreen/album_screen_content.dart \
-  lib/components/ArtistScreen/artist_screen_content.dart \
-  lib/components/GenreScreen/genre_screen_content.dart \
-  lib/components/HomeScreen/home_screen_content.dart; then
-  printf 'WARNING: Dart formatter would change benchmark-touched files. Continuing because Finamp CI does not enforce dart format; analyzer/build remain hard gates.\n' >&2
-fi
+
+# Match the upstream formatting gate instead of checking only benchmark-touched
+# files. Formatting drift must fail locally before either benchmark or fix PR
+# is opened.
+dart format --output=none --set-exit-if-changed lib/l10n/
+dart format --output=none --set-exit-if-changed lib/
+
 analyze_log="$(mktemp)"
 if ! flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee "$analyze_log"; then
   printf '\n==> Analyzer errors\n' >&2
