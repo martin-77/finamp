@@ -292,6 +292,7 @@ class JellyfinApiHelper {
 
     final response = await _fetchGetItemsResponse(
       parentItem: parentItem,
+      parentId: parentId,
       libraryFilter: libraryFilter,
       includeItemTypes: includeItemTypes,
       sortBy: sortBy,
@@ -363,6 +364,7 @@ class JellyfinApiHelper {
 
   Future<QueryResult_BaseItemDto> getItemsWithTotalRecordCount({
     BaseItemDto? parentItem,
+    BaseItemId? parentId,
     BaseItemId? libraryFilter,
     String? includeItemTypes,
     String? sortBy,
@@ -406,6 +408,7 @@ class JellyfinApiHelper {
 
   Future<QueryResult_BaseItemDto> _fetchGetItemsResponse({
     BaseItemDto? parentItem,
+    BaseItemId? parentId,
     BaseItemId? libraryFilter,
     String? includeItemTypes,
     String? sortBy,
@@ -577,7 +580,7 @@ class JellyfinApiHelper {
         // that.
         response = await api.getItems(
           userId: currentUserId,
-          parentId: parentItem?.id,
+          parentId: parentItem?.id ?? parentId,
           includeItemTypes: includeItemTypes,
           recursive: recursive,
           sortBy: sortBy,
