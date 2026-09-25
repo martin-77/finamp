@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:finamp/main.dart';
 import 'package:finamp/models/jellyfin_models.dart';
 import 'package:finamp/services/feedback_helper.dart';
+import 'package:finamp/services/performance_benchmark_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_on_it/focus_on_it.dart';
@@ -17,6 +18,7 @@ class AlphabetList extends ConsumerStatefulWidget {
   final Widget child;
   final ScrollController scrollController;
   final bool inGridMode;
+  final String? benchmarkContentType;
 
   const AlphabetList({
     super.key,
@@ -25,6 +27,7 @@ class AlphabetList extends ConsumerStatefulWidget {
     required this.child,
     required this.scrollController,
     required this.inGridMode,
+    this.benchmarkContentType,
   });
 
   @override
@@ -32,6 +35,7 @@ class AlphabetList extends ConsumerStatefulWidget {
 }
 
 class _AlphabetListState extends ConsumerState<AlphabetList> {
+  StreamSubscription<PerformanceBenchmarkJumpCommand>? _benchmarkTapSubscription;
   List<String> alphabet =
       ['#'] +
       List.generate(26, (int index) {
@@ -43,7 +47,36 @@ class _AlphabetListState extends ConsumerState<AlphabetList> {
   @override
   void initState() {
     orderTheList(alphabet);
+    _benchmarkTapSubscription = PerformanceBenchmarkService.instance.alphabetTapCommands.listen(_handleBenchmarkTap);
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    _benchmarkTapSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _handleBenchmarkTap(PerformanceBenchmarkJumpCommand command) {
+    if (!mounted || widget.benchmarkContentType == null || widget.benchmarkContentType != command.contentType) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final index = alphabet.indexOf(command.letter.toUpperCase());
+      if (index < 0 || _letterHeight <= 0) {
+        command.completeError(StateError("Benchmark alphabet tap target is unavailable"), StackTrace.current);
+        return;
+      }
+
+      final position = Offset(0, (index + 0.5) * _letterHeight);
+      final benchmark = PerformanceBenchmarkService.instance;
+      benchmark.mark("alphabet-ui-tap-down", values: {"contentType": command.contentType, "letter": command.letter});
+      updateSelected(position, Drag.start);
+      benchmark.mark("alphabet-ui-tap-up", values: {"contentType": command.contentType, "letter": command.letter});
+      updateSelected(position, Drag.end);
+    });
   }
 
   String? _currentSelected;
