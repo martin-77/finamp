@@ -816,17 +816,6 @@ class DownloadsSyncService {
 
   Future<void> _prefillInfoAlbumChildren(
     List<IsarTaskData<dynamic>> wrappedSyncs,
-  ) {
-    final previous = _albumChildPrefillChain;
-    final next = previous
-        .catchError((_) {})
-        .then((_) => _prefillInfoAlbumChildrenImpl(wrappedSyncs));
-    _albumChildPrefillChain = next;
-    return next;
-  }
-
-  Future<void> _prefillInfoAlbumChildrenImpl(
-    List<IsarTaskData<dynamic>> wrappedSyncs,
   ) async {
     const albumBatchSize = 10;
     final albums = <DownloadStub>[];
@@ -911,6 +900,15 @@ class DownloadsSyncService {
     }
 
     benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
+    if (albums.length == albumBatchSize) {
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchFullRequestCount");
+    } else {
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestCount");
+      benchmark?.incrementMetricBuffered(
+        "downloadAlbumBatchPartialRequestedAlbums",
+        albums.length,
+      );
+    }
     benchmark?.incrementMetricBuffered(
       "downloadAlbumBatchRequestedAlbums",
       albums.length,
@@ -1689,12 +1687,6 @@ class DownloadsSyncService {
   // against the same small set of Jellyfin views; rebuilding/scanning those
   // album lists for every lookup is pure repeated work.
   Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
-
-  // Album child prefill is shared by all sync workers. Serializing only this
-  // network-prefill phase prevents workers from fragmenting the same pending
-  // album set into many undersized requests while leaving normal sync-node
-  // processing concurrent.
-  Future<void> _albumChildPrefillChain = Future.value();
 
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
