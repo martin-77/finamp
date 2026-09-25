@@ -91,7 +91,14 @@ if ! dart format --output=none --set-exit-if-changed \
   lib/components/HomeScreen/home_screen_content.dart; then
   printf 'WARNING: Dart formatter would change benchmark-touched files. Continuing because Finamp CI does not enforce dart format; analyzer/build remain hard gates.\n' >&2
 fi
-flutter analyze --no-fatal-infos --no-fatal-warnings
+analyze_log="$(mktemp)"
+if ! flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee "$analyze_log"; then
+  printf '\n==> Analyzer errors\n' >&2
+  grep -B 1 -A 1 -E '(^|[[:space:]])error[[:space:]]+•' "$analyze_log" >&2 || true
+  rm -f "$analyze_log"
+  fail "flutter analyze reported one or more errors"
+fi
+rm -f "$analyze_log"
 
 python3 -m py_compile \
   tool/summarize_performance_benchmark.py \
