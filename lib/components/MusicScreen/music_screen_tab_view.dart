@@ -542,12 +542,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
     //TODO use binary search to improve performance for already loaded pages
     final itemList = state.items ?? [];
-    final pageNotifier = ref.read(pageControl.notifier);
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
     for (var i = 0; i < itemList.length; i++) {
-      if (pageNotifier.isVirtualPlaceholderIndex(i)) continue;
-
       String sortName;
       switch (itemList[i]) {
         case FinampPlayableDto(item: var baseItem):
@@ -640,10 +637,32 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     );
 
     timer?.cancel();
+    if (!state.hasNextPage) {
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      _completeBenchmarkJump();
+      return;
+    }
 
-    // Always allow a fresh server-assisted seek before treating the current
-    // page state as terminal. Virtual-window states intentionally report
-    // hasNextPage=false because the unloaded range is represented virtually.
+    Future<void> requestPage(int pageSize) async {
+      benchmark.incrementMetric("alphabetJumpPagesLoaded");
+      benchmark.mark(
+        "alphabet-jump-page-requested",
+        values: {"loadedItems": itemList.length, "pageSize": pageSize},
+      );
+      _benchmarkAlphabetPageWait = Stopwatch()..start();
+      ref.read(pageControl.notifier).newPage(pageSize: pageSize);
+    }
+
+    if (_alphabetResolvedTargetIndex != null &&
+        _alphabetResolvedTargetIndex! >= itemList.length) {
+      final remaining =
+          _alphabetResolvedTargetIndex! - itemList.length + 1;
+      await requestPage(min(remaining, 5000));
+      return;
+    }
+
     if (!_alphabetSeekInProgress &&
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
@@ -651,9 +670,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       final seek = Stopwatch()..start();
       benchmark.mark("alphabet-jump-seek-start");
       try {
-        final targetIndex = await pageNotifier.beginVirtualAlbumAlphabetWindow(
-          letter,
-        );
+        final targetIndex = await ref
+            .read(pageControl.notifier)
+            .resolveAlbumAlphabetTargetIndex(letter);
         seek.stop();
         benchmark.incrementMetric(
           "alphabetSeekResolveMicros",
@@ -661,49 +680,20 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         );
         benchmark.mark(
           "alphabet-jump-seek-complete",
-          values: {"targetIndex": targetIndex, "mode": "virtual-window"},
+          values: {"targetIndex": targetIndex},
         );
 
         if (letterToSearch != letter) return;
 
         _alphabetResolvedTargetIndex = targetIndex;
-        if (targetIndex != null) {
-          benchmark.incrementMetric("alphabetJumpPagesLoaded");
-          benchmark.mark(
-            "alphabet-jump-page-requested",
-            values: {
-              "loadedItems": itemList.length,
-              "mode": "virtual-window",
-              "windowSize": 240,
-            },
-          );
-          _benchmarkAlphabetPageWait = Stopwatch()..start();
+        if (targetIndex != null && targetIndex >= itemList.length) {
+          final remaining = targetIndex - itemList.length + 1;
+          await requestPage(min(remaining, 5000));
           return;
         }
       } finally {
         _alphabetSeekInProgress = false;
       }
-    }
-
-    if (!state.hasNextPage) {
-      // A terminal state is only a successful alphabet jump if the target was
-      // actually located/rendered above. Reaching this point means the seek
-      // was unsupported or produced no target.
-      letterToSearch = null;
-      _alphabetSeekAttemptedLetter = null;
-      _alphabetResolvedTargetIndex = null;
-      if (_activeBenchmarkJump != null) {
-        benchmark.mark(
-          "alphabet-jump-target-missing",
-          values: {"letter": letter},
-        );
-        _activeBenchmarkJump!.completeError(
-          StateError("Alphabet target '$letter' was not located"),
-          StackTrace.current,
-        );
-        _activeBenchmarkJump = null;
-      }
-      return;
     }
 
     // Unsupported sort/filter combinations keep the existing paging behavior.
@@ -715,13 +705,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       });
     }
 
-    benchmark.incrementMetric("alphabetJumpPagesLoaded");
-    benchmark.mark(
-      "alphabet-jump-page-requested",
-      values: {"loadedItems": itemList.length, "pageSize": musicScreenPageSize},
-    );
-    _benchmarkAlphabetPageWait = Stopwatch()..start();
-    pageNotifier.newPage();
+    await requestPage(musicScreenPageSize);
     final pageEdgeScroll = Stopwatch()..start();
     if (MediaQuery.disableAnimationsOf(context)) {
       controller.jumpTo(controller.position.maxScrollExtent);
@@ -1137,10 +1121,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             physics: _DeferredLoadingAlwaysScrollableScrollPhysics(tabState: this),
             builderDelegate: PagedChildBuilderDelegate<FinampDisplayableOrPlayable>(
               itemBuilder: (context, item, index) {
-                if (ref.read(pageControl.notifier).isVirtualPlaceholderIndex(index)) {
-                  return const SizedBox.shrink();
-                }
-
                 // We only allow grid mode for FinampDisplayable<FinampPlayableItem>
                 final baseItem = (item as FinampPlayableDto).item;
                 return CachedBuilder(
