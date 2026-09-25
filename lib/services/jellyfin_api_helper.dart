@@ -420,9 +420,12 @@ class JellyfinApiHelper {
     bool? isFavorite,
     required String boundaryLetter,
   }) async {
+    assert(_verifyCallable());
     final currentUserId = _finampUserHelper.currentUser!.id;
     final fields = defaultFields;
 
+    // Keep this concurrency local to the two independent count queries. The
+    // worker queue remains serial for every other API operation.
     return runInIsolate((api) async {
       Future<QueryResult_BaseItemDto> query(String? boundary) async {
         final response = await api.getItems(
