@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
+import 'package:diacritic/diacritic.dart';
 import 'package:finamp/extensions/list.dart';
 import 'package:finamp/models/music_models.dart';
 import 'package:finamp/services/artist_content_provider.dart';
@@ -258,8 +259,30 @@ class PagedContent extends _$PagedContent {
     return (await _resolveAlbumAlphabetTarget(letter, musicRequest))?.targetIndex;
   }
 
+  int? _findAlphabetBoundaryInAlbumWindow(
+    List<FinampPlayableDto> items,
+    String letter,
+  ) {
+    if (items.isEmpty) return null;
+    if (letter == "#") return 0;
+
+    final targetCodePoint = removeDiacritics(letter.toLowerCase()).codeUnitAt(0);
+    for (var i = 0; i < items.length; i++) {
+      final sortName = removeDiacritics(
+        (items[i].item.nameForSorting ?? items[i].item.name ?? "").toLowerCase(),
+      );
+      if (sortName.isEmpty) continue;
+      final comparison = sortName.codeUnitAt(0) - targetCodePoint;
+      if (comparison >= 0) {
+        return comparison == 0 ? i : max(0, i - 1);
+      }
+    }
+    return items.length;
+  }
+
   Future<({
     int targetIndex,
+    int estimatedTargetIndex,
     int totalCount,
     int startIndex,
     List<FinampPlayableDto> items,
@@ -267,6 +290,7 @@ class PagedContent extends _$PagedContent {
     String letter, {
     int itemsBefore = 80,
     int windowSize = 240,
+    int maxCorrectionWindows = 4,
   }) async {
     if (letter.isEmpty || ref.read(finampSettingsProvider.isOffline)) {
       return null;
@@ -277,25 +301,93 @@ class PagedContent extends _$PagedContent {
     final target = await _resolveAlbumAlphabetTarget(letter, musicRequest);
     if (target == null || target.totalCount <= 0) return null;
 
-    final startIndex = max(0, target.targetIndex - itemsBefore);
-    final limit = min(windowSize, target.totalCount - startIndex);
-    final page = await ref.read(
-      loadHomeSectionItemsProvider(
-        request: musicRequest,
-        startIndex: startIndex,
-        limit: limit,
-      ).future,
-    );
-    final items = (page ?? const <BaseItemDto>[])
-        .map(FinampPlayableDto.fromItem)
-        .toList(growable: false);
+    final estimatedTargetIndex = target.targetIndex;
+    var startIndex = max(0, estimatedTargetIndex - itemsBefore);
 
-    return (
-      targetIndex: target.targetIndex,
-      totalCount: target.totalCount,
-      startIndex: startIndex,
-      items: items,
-    );
+    for (var attempt = 0; attempt < maxCorrectionWindows; attempt++) {
+      final limit = min(windowSize, target.totalCount - startIndex);
+      if (limit <= 0) return null;
+
+      final page = await ref.read(
+        loadHomeSectionItemsProvider(
+          request: musicRequest,
+          startIndex: startIndex,
+          limit: limit,
+        ).future,
+      );
+      final items = (page ?? const <BaseItemDto>[])
+          .map(FinampPlayableDto.fromItem)
+          .toList(growable: false);
+      if (items.isEmpty) return null;
+
+      final localBoundary = _findAlphabetBoundaryInAlbumWindow(items, letter);
+      if (localBoundary == null) return null;
+
+      if (letter == "#") {
+        return (
+          targetIndex: 0,
+          estimatedTargetIndex: estimatedTargetIndex,
+          totalCount: target.totalCount,
+          startIndex: startIndex,
+          items: items,
+        );
+      }
+
+      // The approximate server count can be biased because Jellyfin's
+      // NameStartsWithOrGreater semantics are not identical to SortName
+      // ordering. Verify against the actual SortName-sorted window.
+      if (localBoundary < items.length) {
+        final candidate = startIndex + localBoundary;
+        final candidateName = removeDiacritics(
+          (items[localBoundary].item.nameForSorting ??
+                  items[localBoundary].item.name ??
+                  "")
+              .toLowerCase(),
+        );
+        final targetCodePoint =
+            removeDiacritics(letter.toLowerCase()).codeUnitAt(0);
+
+        if (candidateName.isNotEmpty &&
+            candidateName.codeUnitAt(0) == targetCodePoint) {
+          return (
+            targetIndex: candidate,
+            estimatedTargetIndex: estimatedTargetIndex,
+            totalCount: target.totalCount,
+            startIndex: startIndex,
+            items: items,
+          );
+        }
+
+        // If the first candidate is already after the requested letter, the
+        // approximate count landed too late. Search one overlapping window
+        // further back.
+        if (localBoundary == 0 && startIndex > 0) {
+          startIndex = max(0, startIndex - (windowSize - 40));
+          continue;
+        }
+
+        // The requested letter is absent in this sorted region; preserve the
+        // existing fast-scroller behavior and stop at the previous item.
+        return (
+          targetIndex: candidate,
+          estimatedTargetIndex: estimatedTargetIndex,
+          totalCount: target.totalCount,
+          startIndex: startIndex,
+          items: items,
+        );
+      }
+
+      // Every item in the window sorts before the requested letter, so the
+      // count estimate landed too early. Continue with an overlapping window.
+      final nextStart = min(
+        target.totalCount - 1,
+        startIndex + windowSize - 40,
+      );
+      if (nextStart <= startIndex) break;
+      startIndex = nextStart;
+    }
+
+    return null;
   }
 
   Future<List<FinampPlayableDto>?> loadAlbumWindow({
