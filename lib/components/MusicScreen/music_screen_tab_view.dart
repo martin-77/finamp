@@ -827,7 +827,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             pendingLetter != null &&
             (pendingLetter != letter ||
                 seekGeneration != _contentGeneration)) {
-          unawaited(scrollToLetter(pendingLetter));
+          await scrollToLetter(pendingLetter);
         }
       }
     }
@@ -882,7 +882,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
             pendingLetter != null &&
             (pendingLetter != letter ||
                 seekGeneration != _contentGeneration)) {
-          unawaited(scrollToLetter(pendingLetter));
+          await scrollToLetter(pendingLetter);
         }
       }
     }
