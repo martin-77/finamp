@@ -416,6 +416,11 @@ PY
         generate_summary
         exit 0
       fi
+      if grep -q '"name":"targeted-alphabet-complete"' "$delta_file"; then
+        log "==> Targeted alphabet diagnostics completed"
+        generate_summary
+        exit 0
+      fi
       if grep -q '"name":"suite-complete"' "$delta_file"; then
         log "==> Benchmark suite completed"
         generate_summary
