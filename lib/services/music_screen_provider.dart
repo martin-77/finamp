@@ -192,50 +192,41 @@ class PagedContent extends _$PagedContent {
       (filter) => filter.type == ItemFilterType.searchTerm,
     );
 
-    Future<QueryResult_BaseItemDto> query({
-      String? nameStartsWithOrGreater,
-    }) {
-      return GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
-        parentId: libraryId,
-        includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
-        sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
-        sortOrder: musicRequest.sortConfig.sortOrder.toString(),
-        searchTerm: searchFilter?.extraString.trim(),
-        filters: musicRequest.sortConfig.filters
-            .map(
-              (filter) => switch (filter.type) {
-                ItemFilterType.isFavorite => "IsFavorite",
-                ItemFilterType.isFullyDownloaded => null,
-                ItemFilterType.startsWithCharacter => null,
-                ItemFilterType.genreFilter => null,
-                ItemFilterType.artistFilter => null,
-                ItemFilterType.searchTerm => null,
-                ItemFilterType.isUnplayed => "IsUnplayed",
-              },
-            )
-            .nonNulls
-            .join(","),
-        limit: 1,
-        isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
-          musicRequest.tab,
-          musicRequest.sortConfig.filters,
-        ),
-        genreFilter: genreFilter?.extraBaseItem.id,
-        nameStartsWithOrGreater: nameStartsWithOrGreater,
-      );
-    }
-
     if (letter == "#") {
       final total = (await query()).totalRecordCount ?? 0;
       return (targetIndex: 0, totalCount: total);
     }
 
-    final results = await Future.wait([
-      query(),
-      query(nameStartsWithOrGreater: letter),
-    ]);
-    final total = results[0].totalRecordCount ?? 0;
-    final boundaryCount = results[1].totalRecordCount;
+    final results =
+        await GetIt.instance<JellyfinApiHelper>().getAlbumAlphabetCountPair(
+      parentId: libraryId,
+      includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
+      sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
+      sortOrder: musicRequest.sortConfig.sortOrder.toString(),
+      searchTerm: searchFilter?.extraString.trim(),
+      filters: musicRequest.sortConfig.filters
+          .map(
+            (filter) => switch (filter.type) {
+              ItemFilterType.isFavorite => "IsFavorite",
+              ItemFilterType.isFullyDownloaded => null,
+              ItemFilterType.startsWithCharacter => null,
+              ItemFilterType.genreFilter => null,
+              ItemFilterType.artistFilter => null,
+              ItemFilterType.searchTerm => null,
+              ItemFilterType.isUnplayed => "IsUnplayed",
+            },
+          )
+          .nonNulls
+          .join(","),
+      genreFilter: genreFilter?.extraBaseItem.id,
+      isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
+        musicRequest.tab,
+        musicRequest.sortConfig.filters,
+      ),
+      boundaryLetter: letter,
+    );
+    final total = results.total.totalRecordCount ?? 0;
+    final boundaryCount = results.boundary.totalRecordCount;
     if (total <= 0) return (targetIndex: 0, totalCount: 0);
 
     return (
