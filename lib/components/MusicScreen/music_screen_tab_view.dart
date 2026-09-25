@@ -148,9 +148,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       final comparisonResult = itemCodePoint - codePointToScrollTo;
       if (comparisonResult == 0) {
         timer?.cancel();
-        await controller.scrollToIndex(
-          i,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: i,
           preferPosition: AutoScrollPosition.begin,
         );
 
@@ -160,10 +159,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
         // scroll to the previous item instead
         timer?.cancel();
-        await controller.scrollToIndex(
-          (i - 1).clamp(0, itemList.length - 1),
-          // duration: scrollDuration,
-          duration: _getAnimationDurationForOffsetToIndex(i),
+        await _scrollToTargetIndex(
+          targetIndex: (i - 1).clamp(0, itemList.length - 1),
           preferPosition: AutoScrollPosition.middle,
         );
 
@@ -192,6 +189,93 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         curve: Curves.ease,
       );
     }
+  }
+
+  bool _useListModeForCurrentContent() {
+    final contentType = widget.contentType;
+    if (contentType == null || contentType == ContentType.tracks) {
+      return true;
+    }
+    return ref.read(
+          finampSettingsProvider.perTabContentViewType(contentType),
+        ) !=
+        ContentViewType.grid;
+  }
+
+  Future<void> _scrollToTargetIndex({
+    required int targetIndex,
+    required AutoScrollPosition preferPosition,
+  }) async {
+    var duration = _getAnimationDurationForOffsetToIndex(targetIndex);
+
+    if (!_useListModeForCurrentContent() &&
+        controller.hasClients &&
+        !controller.tagMap.containsKey(targetIndex)) {
+      final position = controller.position;
+      final estimatedOffset = _estimateGridOffsetForIndex(
+        targetIndex,
+        position,
+      );
+
+      controller.jumpTo(estimatedOffset);
+      await WidgetsBinding.instance.endOfFrame;
+
+      if (MediaQuery.disableAnimationsOf(context)) {
+        duration = Duration.zero;
+      } else {
+        final refinedDurationMs = _getAnimationDurationForOffsetToIndex(
+          targetIndex,
+        ).inMilliseconds.clamp(120, 350);
+        duration = Duration(milliseconds: refinedDurationMs);
+      }
+    }
+
+    await controller.scrollToIndex(
+      targetIndex,
+      duration: duration,
+      preferPosition: preferPosition,
+    );
+  }
+
+  double _estimateGridOffsetForIndex(
+    int targetIndex,
+    ScrollPosition position,
+  ) {
+    final contentType = widget.contentType;
+    if (contentType == null) {
+      return position.pixels;
+    }
+
+    final widthData = calculateItemCollectionCardWidth(ref);
+    final itemWidth = widthData.$1;
+    final itemPadding = widthData.$2;
+    final itemHeight = calculateItemCollectionCardHeight(
+      ref: ref,
+      sectionInfo: null,
+      itemType: contentType.itemType ?? BaseItemDtoType.album,
+    );
+
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final crossAxisExtent = max(
+      1.0,
+      MediaQuery.sizeOf(context).width -
+          mediaPadding.left -
+          mediaPadding.right -
+          itemPadding,
+    );
+
+    var crossAxisCount =
+        ((crossAxisExtent + itemPadding) / (itemWidth + itemPadding)).round();
+    crossAxisCount = max(1, crossAxisCount);
+
+    final crossAxisSpacing = crossAxisExtent / crossAxisCount;
+    final mainAxisStride = itemHeight - itemWidth + crossAxisSpacing;
+    final targetRow = targetIndex ~/ crossAxisCount;
+    final estimatedOffset = itemPadding + targetRow * mainAxisStride;
+
+    return estimatedOffset
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
   }
 
   Duration _getAnimationDurationForOffsetToIndex(int index) {
