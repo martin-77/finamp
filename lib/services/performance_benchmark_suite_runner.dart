@@ -104,13 +104,18 @@ class PerformanceBenchmarkSuiteRunner {
         .setPerformanceBenchmarkOverride(true);
     final stage = await recorder.getSuiteStage();
 
-    if (PerformanceBenchmarkService.targetedDownloadBench100) {
+    if (PerformanceBenchmarkService.targetedDownloadBench100 ||
+        PerformanceBenchmarkService.targetedDownloadBench1000) {
+      final String targetAlias =
+          PerformanceBenchmarkService.targetedDownloadBench1000
+              ? "bench-1000"
+              : "bench-100";
       recorder.diagnostic(
         "suite-targeted-mode",
-        values: {"target": "bench-100", "scope": "download-diagnostics"},
+        values: {"target": targetAlias, "scope": "download-diagnostics"},
       );
       GetIt.instance<FinampUserHelper>().runUserHook(() {
-        unawaited(_runTargetedBench100DownloadDiagnostics());
+        unawaited(_runTargetedDownloadDiagnostics());
       });
       if (GetIt.instance<FinampUserHelper>().currentUser == null) {
         recorder.diagnostic("suite-waiting-for-login");
@@ -2010,11 +2015,15 @@ class PerformanceBenchmarkSuiteRunner {
     );
   }
 
-  Future<void> _runTargetedBench100DownloadDiagnostics() async {
+  Future<void> _runTargetedDownloadDiagnostics() async {
     if (_running) return;
     _running = true;
 
     final recorder = PerformanceBenchmarkService.instance;
+    final bool bench1000 =
+        PerformanceBenchmarkService.targetedDownloadBench1000;
+    final String targetAlias = bench1000 ? "bench-1000" : "bench-100";
+    final int expectedTracks = bench1000 ? 1000 : 100;
     try {
       await WidgetsBinding.instance.endOfFrame;
       await _ensureSuiteOnlineBaseline();
@@ -2033,35 +2042,35 @@ class PerformanceBenchmarkSuiteRunner {
       );
 
       final targetReady = await _discoverAndValidateTargets(
-        targets: const <String, int>{"bench-100": 100},
+        targets: <String, int>{targetAlias: expectedTracks},
       );
       if (!targetReady) {
         recorder.diagnostic(
           "suite-blocked",
-          values: {"reason": "bench100-target-validation"},
+          values: {"reason": "target-validation", "targetAlias": targetAlias},
         );
         return;
       }
 
       final completed = await _runDownloadLifecycle(
-        "bench-100",
-        100,
+        targetAlias,
+        expectedTracks,
         diagnosticsOnly: true,
       );
       if (!completed) {
-        throw StateError("Targeted bench100 download did not complete");
+        throw StateError("Targeted $targetAlias download did not complete");
       }
 
       recorder.diagnostic(
-        "targeted-bench100-download-complete",
-        values: {"targetAlias": "bench-100"},
+        "targeted-download-complete",
+        values: {"targetAlias": targetAlias},
       );
     } catch (error) {
       await _bestEffortTerminalCleanupAndRestore();
       recorder.diagnostic(
         "suite-error",
         values: {
-          "phase": "targeted-bench100-download",
+          "phase": "targeted-download",
           "errorType": error.runtimeType.toString(),
         },
       );
