@@ -1029,7 +1029,8 @@ class DownloadsSyncService {
     // genres and info albums share the same age-sorted task stream. Looking
     // ahead here lets album child requests be batched without changing task
     // ownership, priority or processing order.
-    if (albums.isNotEmpty && albums.length < albumBatchSize) { final Stopwatch? queueScanStopwatch =
+    if (albums.isNotEmpty && albums.length < albumBatchSize) {
+      final Stopwatch? queueScanStopwatch =
           PerformanceBenchmarkService.enabled
               ? (Stopwatch()..start())
               : null;
@@ -1632,7 +1633,7 @@ class DownloadsSyncService {
         benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
     final Stopwatch? benchmarkTrackDatabaseStopwatch =
         benchmarkTrackInfo ? (Stopwatch()..start()) : null;
-    await SchedulerBinding.instance.scheduleTask(() async {
+    Future<void> processDatabaseAndFiles() async {
       DownloadItem? canonParent;
       _isar.writeTxnSync(() {
         canonParent = _isar.downloadItems.getSync(parent.isarId);
@@ -1731,7 +1732,16 @@ class DownloadsSyncService {
         }
       }
       // Set priority high to prevent stalling, but lower than creating network requests
-    }, Priority.animation);
+    }
+
+    if (benchmarkTrackInfo) {
+      await processDatabaseAndFiles();
+    } else {
+      await SchedulerBinding.instance.scheduleTask(
+        processDatabaseAndFiles,
+        Priority.animation,
+      );
+    }
     recordAlbumInfoPhase("database", benchmarkAlbumDatabaseStopwatch);
     recordTrackInfoPhase("database", benchmarkTrackDatabaseStopwatch);
 
