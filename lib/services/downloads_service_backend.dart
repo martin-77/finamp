@@ -1371,7 +1371,7 @@ class DownloadsSyncService {
       }
 
       final imageChanges = _updateChildren(
-        canonTrack,
+        canonTrack!,
         true,
         requiredImages,
       );
@@ -1386,7 +1386,7 @@ class DownloadsSyncService {
               .getAllSync(imageChanges.$2.toList())
               .nonNulls) {
         if (image.syncTranscodingProfile !=
-            canonTrack.syncTranscodingProfile) {
+            canonTrack!.syncTranscodingProfile) {
           _downloadsService.syncItemDownloadSettings(image);
         }
       }
