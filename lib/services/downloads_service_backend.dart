@@ -1781,6 +1781,7 @@ class DownloadsSyncService {
         // these tracks. Materialize the exact info-track database/link work in
         // this album transaction rather than enqueueing one transaction per track.
         if (!asRequired &&
+            !_downloadsService.forceFullSync &&
             canonParent!.type == DownloadItemType.collection &&
             canonParent!.baseItemType == BaseItemDtoType.album &&
             infoSyncIds.isNotEmpty) {
