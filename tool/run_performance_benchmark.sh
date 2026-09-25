@@ -33,15 +33,26 @@ case "$targeted_download_define" in
   0|false|FALSE|False|no|NO|No|off|OFF|Off|"") targeted_download_define="false" ;;
   *) echo "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
 esac
-if [[ "$targeted_download_define" == "true" && "$smoke_define" == "true" ]]; then
-  echo "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY and FINAMP_BENCH_SMOKE are mutually exclusive" >&2
+
+targeted_download_1000_define="${FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY:-false}"
+case "$targeted_download_1000_define" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) targeted_download_1000_define="true" ;;
+  0|false|FALSE|False|no|NO|No|off|OFF|Off|"") targeted_download_1000_define="false" ;;
+  *) echo "FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY must be true/false, 1/0, yes/no, or on/off" >&2; exit 2 ;;
+esac
+if [[ "$targeted_download_define" == "true" && "$targeted_download_1000_define" == "true" ]]; then
+  echo "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY and FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY are mutually exclusive" >&2
+  exit 2
+fi
+if [[ "$smoke_define" == "true" && ( "$targeted_download_define" == "true" || "$targeted_download_1000_define" == "true" ) ]]; then
+  echo "Targeted download diagnostics and FINAMP_BENCH_SMOKE are mutually exclusive" >&2
   exit 2
 fi
 
 search_query_1="${FINAMP_BENCH_SEARCH_QUERY_1:-}"
 search_query_2="${FINAMP_BENCH_SEARCH_QUERY_2:-}"
 search_query_3="${FINAMP_BENCH_SEARCH_QUERY_3:-}"
-if [[ "$targeted_download_define" == "false" ]]; then
+if [[ "$targeted_download_define" == "false" && "$targeted_download_1000_define" == "false" ]]; then
   [[ -n "$search_query_1" ]] || {
     echo "FINAMP_BENCH_SEARCH_QUERY_1 must be set locally for smoke/full benchmark runs" >&2
     exit 2
@@ -86,7 +97,9 @@ printf 'Full log: %s\nBenchmark JSONL: %s\n' "$raw_log" "$jsonl"
 
 log ""
 log "==> Building PROFILE app with benchmark mode enabled"
-if [[ "$targeted_download_define" == "true" ]]; then
+if [[ "$targeted_download_1000_define" == "true" ]]; then
+  log "Benchmark suite mode: targeted bench-1000 download diagnostics"
+elif [[ "$targeted_download_define" == "true" ]]; then
   log "Benchmark suite mode: targeted bench-100 download diagnostics"
 elif [[ "$smoke_define" == "true" ]]; then
   log "Benchmark suite mode: smoke"
@@ -98,6 +111,7 @@ flutter build ios \
   --dart-define=FINAMP_PERFORMANCE_BENCHMARK=true \
   --dart-define=FINAMP_BENCH_SMOKE="$smoke_define" \
   --dart-define=FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY="$targeted_download_define" \
+  --dart-define=FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY="$targeted_download_1000_define" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_1="$search_query_1" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_2="$search_query_2" \
   --dart-define=FINAMP_BENCH_SEARCH_QUERY_3="$search_query_3" \
@@ -370,8 +384,9 @@ PY
         sleep 5
       fi
 
-      if grep -q '"name":"targeted-bench100-download-complete"' "$delta_file"; then
-        log "==> Targeted bench-100 download diagnostics completed"
+      if grep -q '"name":"targeted-download-complete"' "$delta_file"; then
+        target_alias="$(grep '"name":"targeted-download-complete"' "$delta_file" | tail -1 | sed -n 's/.*"targetAlias":"\([^"]*\)".*/\1/p')"
+        log "==> Targeted ${target_alias:-download} diagnostics completed"
         generate_summary
         exit 0
       fi
