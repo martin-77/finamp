@@ -95,11 +95,77 @@ log() {
   printf '%s\n' "$*" | tee -a "$raw_log"
 }
 
+validate_public_jsonl() {
+  python3 - "$jsonl" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+forbidden_keys = {
+    "cachedItems",
+    "estimatedOffset",
+    "estimatedTargetIndex",
+    "exactRevealOffset",
+    "firstRenderedTag",
+    "index",
+    "lastRenderedTag",
+    "maxScrollExtent",
+    "pixels",
+    "scrollPixels",
+    "startIndex",
+    "targetIndex",
+    "targetPixels",
+    "targetRow",
+    "totalCount",
+    "virtualItemCount",
+    "windowStartIndex",
+}
+
+violations = []
+
+def walk(value, path):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else key
+            if key in forbidden_keys:
+                violations.append(child_path)
+            walk(child, child_path)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            walk(child, f"{path}[{index}]")
+
+with open(path, "r", encoding="utf-8") as handle:
+    for line_number, raw in enumerate(handle, start=1):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        before = len(violations)
+        walk(record, "")
+        if len(violations) > before:
+            violations[-1] = f"line {line_number}: {violations[-1]}"
+
+if violations:
+    print("ERROR: benchmark JSONL contains privacy-sensitive sparse/cardinality fields:", file=sys.stderr)
+    for violation in violations[:20]:
+        print(f"  {violation}", file=sys.stderr)
+    if len(violations) > 20:
+        print(f"  ... and {len(violations) - 20} more", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
 generate_summary() {
   if [[ ! -s "$jsonl" ]]; then
     log "No benchmark JSONL available for summary."
     return 0
   fi
+
+  log "Validating benchmark export privacy..."
+  validate_public_jsonl
 
   log "Generating benchmark summary..."
   if python3 tool/summarize_performance_benchmark.py \
