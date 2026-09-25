@@ -854,9 +854,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         ? targetIndex
         : renderedIndices[renderedIndices.length ~/ 2];
     var duration = _getAnimationDurationForOffsetToIndex(targetIndex);
+    final useListMode = _useListModeForCurrentContent();
+    final useSparseDirectOffset = _usingSparseAlbumGrid && !useListMode;
 
     if (_activeBenchmarkJump != null) {
-      _benchmarkScrollToIndexInvocations++;
       benchmark.metric(
         "alphabetRequestedAnimationMs",
         duration.inMilliseconds,
@@ -871,8 +872,54 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       );
       benchmark.metric(
         "alphabetViewMode",
-        _useListModeForCurrentContent() ? "list" : "grid",
+        useListMode ? "list" : "grid",
       );
+    }
+
+    if (useSparseDirectOffset && controller.hasClients && itemCount > 1) {
+      final position = controller.position;
+      final estimatedOffset = _estimateGridOffsetForIndex(
+        targetIndex,
+        position,
+      );
+
+      benchmark.mark(
+        "alphabet-direct-offset-prejump",
+        values: {
+          "viewMode": "grid",
+          "offsetStrategy": "sparse-grid-geometry",
+          "estimatedOffset": estimatedOffset,
+          "maxScrollExtent": position.maxScrollExtent,
+        },
+      );
+
+      controller.jumpTo(estimatedOffset);
+      await WidgetsBinding.instance.endOfFrame;
+      await WidgetsBinding.instance.endOfFrame;
+
+      final visibleTags = controller.tagMap.keys.toList()..sort();
+      final crossAxisCount = _gridCrossAxisCount();
+      benchmark.mark(
+        "alphabet-grid-final-position",
+        values: {
+          "targetIndex": targetIndex,
+          "crossAxisCount": crossAxisCount,
+          "targetColumn": targetIndex % crossAxisCount,
+          "targetRow": targetIndex ~/ crossAxisCount,
+          "firstRenderedTag":
+              visibleTags.isEmpty ? null : visibleTags.first,
+          "lastRenderedTag":
+              visibleTags.isEmpty ? null : visibleTags.last,
+          "renderedTagCount": visibleTags.length,
+          "targetTagRendered": controller.tagMap.containsKey(targetIndex),
+          "firstRenderedDelta":
+              visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
+          "scrollPixels": controller.position.pixels,
+          "maxScrollExtent": controller.position.maxScrollExtent,
+          "mode": "sparse-direct-offset",
+        },
+      );
+      return;
     }
 
     if (PerformanceBenchmarkService.enabled &&
@@ -880,7 +927,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         controller.hasClients &&
         itemCount > 1) {
       final position = controller.position;
-      final useListMode = _useListModeForCurrentContent();
       final estimatedOffset = useListMode
           ? _estimateListOffsetForIndex(targetIndex, position)
           : _estimateGridOffsetForIndex(targetIndex, position);
@@ -913,13 +959,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       }
     }
 
+    if (_activeBenchmarkJump != null) {
+      _benchmarkScrollToIndexInvocations++;
+    }
     await controller.scrollToIndex(
       targetIndex,
       duration: duration,
       preferPosition: preferPosition,
     );
 
-    if (_activeBenchmarkJump != null && !_useListModeForCurrentContent()) {
+    if (_activeBenchmarkJump != null && !useListMode) {
       await WidgetsBinding.instance.endOfFrame;
       final visibleTags = controller.tagMap.keys.toList()..sort();
       final crossAxisCount = _gridCrossAxisCount();
