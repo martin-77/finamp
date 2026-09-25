@@ -193,7 +193,35 @@ class PagedContent extends _$PagedContent {
     );
 
     if (letter == "#") {
-      final total = (await query()).totalRecordCount ?? 0;
+      final totalResult =
+          await GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
+        parentId: libraryId,
+        includeItemTypes: musicRequest.tab.itemType?.jellyfinName,
+        sortBy: musicRequest.sortConfig.sortBy.jellyfinName(musicRequest.tab),
+        sortOrder: musicRequest.sortConfig.sortOrder.toString(),
+        searchTerm: searchFilter?.extraString.trim(),
+        filters: musicRequest.sortConfig.filters
+            .map(
+              (filter) => switch (filter.type) {
+                ItemFilterType.isFavorite => "IsFavorite",
+                ItemFilterType.isFullyDownloaded => null,
+                ItemFilterType.startsWithCharacter => null,
+                ItemFilterType.genreFilter => null,
+                ItemFilterType.artistFilter => null,
+                ItemFilterType.searchTerm => null,
+                ItemFilterType.isUnplayed => "IsUnplayed",
+              },
+            )
+            .nonNulls
+            .join(","),
+        genreFilter: genreFilter?.extraBaseItem.id,
+        isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
+          musicRequest.tab,
+          musicRequest.sortConfig.filters,
+        ),
+        limit: 1,
+      );
+      final total = totalResult.totalRecordCount ?? 0;
       return (targetIndex: 0, totalCount: total);
     }
 
