@@ -640,14 +640,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     );
 
     timer?.cancel();
-    if (!state.hasNextPage) {
-      letterToSearch = null;
-      _alphabetSeekAttemptedLetter = null;
-      _alphabetResolvedTargetIndex = null;
-      _completeBenchmarkJump();
-      return;
-    }
 
+    // Always allow a fresh server-assisted seek before treating the current
+    // page state as terminal. Virtual-window states intentionally report
+    // hasNextPage=false because the unloaded range is represented virtually.
     if (!_alphabetSeekInProgress &&
         _alphabetSeekAttemptedLetter != letter) {
       _alphabetSeekAttemptedLetter = letter;
@@ -687,6 +683,27 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       } finally {
         _alphabetSeekInProgress = false;
       }
+    }
+
+    if (!state.hasNextPage) {
+      // A terminal state is only a successful alphabet jump if the target was
+      // actually located/rendered above. Reaching this point means the seek
+      // was unsupported or produced no target.
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      if (_activeBenchmarkJump != null) {
+        benchmark.mark(
+          "alphabet-jump-target-missing",
+          values: {"letter": letter},
+        );
+        _activeBenchmarkJump!.completeError(
+          StateError("Alphabet target '$letter' was not located"),
+          StackTrace.current,
+        );
+        _activeBenchmarkJump = null;
+      }
+      return;
     }
 
     // Unsupported sort/filter combinations keep the existing paging behavior.
