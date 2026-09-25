@@ -897,6 +897,24 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       await WidgetsBinding.instance.endOfFrame;
       await WidgetsBinding.instance.endOfFrame;
 
+      double? exactRevealOffset;
+      double? exactCorrectionDelta;
+      final targetTagState = controller.tagMap[targetIndex];
+      final targetRenderObject = targetTagState?.context.findRenderObject();
+      if (targetRenderObject != null && targetRenderObject.attached) {
+        final viewport = RenderAbstractViewport.of(targetRenderObject);
+        final reveal = viewport.getOffsetToReveal(targetRenderObject, 0);
+        exactRevealOffset = reveal.offset
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+        exactCorrectionDelta = exactRevealOffset - controller.position.pixels;
+
+        if (exactCorrectionDelta.abs() > 0.5) {
+          controller.jumpTo(exactRevealOffset);
+          await WidgetsBinding.instance.endOfFrame;
+        }
+      }
+
       final visibleTags = controller.tagMap.keys.toList()..sort();
       final crossAxisCount = _gridCrossAxisCount();
       benchmark.mark(
@@ -914,9 +932,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           "targetTagRendered": controller.tagMap.containsKey(targetIndex),
           "firstRenderedDelta":
               visibleTags.isEmpty ? null : visibleTags.first - targetIndex,
+          "estimatedOffset": estimatedOffset,
+          "exactRevealOffset": exactRevealOffset,
+          "exactCorrectionDelta": exactCorrectionDelta,
           "scrollPixels": controller.position.pixels,
           "maxScrollExtent": controller.position.maxScrollExtent,
-          "mode": "sparse-direct-offset",
+          "mode": "sparse-direct-offset-exact-reveal",
         },
       );
       return;
