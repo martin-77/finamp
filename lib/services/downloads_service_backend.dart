@@ -857,7 +857,7 @@ class DownloadsSyncService {
       unawaited(
         completer.future.then<void>(
           (_) {},
-          onError: (Object _, StackTrace __) {},
+          onError: (Object _) {},
         ),
       );
       reservations[albumId] = completer;
@@ -953,7 +953,9 @@ class DownloadsSyncService {
             if (identical(_childCache[albumId.raw], reservation.future)) {
               _childCache.remove(albumId.raw);
             }
-            reservation.complete(<String>[]);
+            reservation.completeError(
+              StateError("Album child prefetch returned no tracks"),
+            );
             continue;
           }
 
