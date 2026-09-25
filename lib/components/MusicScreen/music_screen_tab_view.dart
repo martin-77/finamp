@@ -525,9 +525,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (letter.isEmpty) return;
 
     // A sparse alphabet seek calls setState before it finishes positioning the
-    // grid. That rebuild can re-enter scrollToLetter for the same letter. Do
-    // not let the re-entrant call fall through into the legacy paging path.
-    if (_alphabetSeekInProgress && letterToSearch == letter) return;
+    // grid. The same letter is just a rebuild; a different letter is a newer
+    // user intent. Queue that newer intent and let the in-flight seek finish
+    // without falling through into legacy paging.
+    if (_alphabetSeekInProgress) {
+      if (letterToSearch == letter) return;
+      letterToSearch = letter;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      return;
+    }
 
     final benchmark = PerformanceBenchmarkService.instance;
     if (_activeBenchmarkJump != null) {
@@ -774,6 +781,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         }
       } finally {
         _alphabetSeekInProgress = false;
+        final pendingLetter = letterToSearch;
+        if (mounted && pendingLetter != null && pendingLetter != letter) {
+          unawaited(scrollToLetter(pendingLetter));
+        }
       }
     }
 
@@ -818,6 +829,10 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         }
       } finally {
         _alphabetSeekInProgress = false;
+        final pendingLetter = letterToSearch;
+        if (mounted && pendingLetter != null && pendingLetter != letter) {
+          unawaited(scrollToLetter(pendingLetter));
+        }
       }
     }
 
@@ -1235,6 +1250,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         // re-arm it before the next synthetic segment.
         _sparseUserScrollActive = true;
         final delta = command.viewportDeltas[step];
+        _sparseUserScrollDirection = delta == 0 ? 0 : (delta > 0 ? 1 : -1);
         final position = controller.position;
         final target = (position.pixels + delta * position.viewportDimension)
             .clamp(position.minScrollExtent, position.maxScrollExtent)
@@ -1289,6 +1305,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       command.completeError(error, stackTrace);
     } finally {
       _sparseUserScrollActive = false;
+      _sparseUserScrollDirection = 0;
     }
   }
 
