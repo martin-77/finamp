@@ -113,6 +113,21 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
   bool get _usingSparseAlbumGrid => _sparseAlbumTotalCount != null;
 
+  void _clearSparseAlbumState({bool invalidateContent = false}) {
+    if (invalidateContent) {
+      _contentGeneration++;
+    }
+    _sparseAlbumGeneration++;
+    _sparseAlbumTotalCount = null;
+    _sparseAlbumItems.clear();
+    _sparseAlbumWindowStartsLoading.clear();
+    _sparseUserScrollActive = false;
+    _sparseUserScrollDirection = 0;
+    letterToSearch = null;
+    _alphabetSeekAttemptedLetter = null;
+    _alphabetResolvedTargetIndex = null;
+  }
+
   Timer? timer;
 
   @override
@@ -234,16 +249,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void didUpdateWidget(covariant MusicScreenTabView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.displayable != widget.displayable) {
-      _contentGeneration++;
-      _sparseAlbumGeneration++;
-      _sparseAlbumTotalCount = null;
-      _sparseAlbumItems.clear();
-      _sparseAlbumWindowStartsLoading.clear();
-      _sparseUserScrollActive = false;
-      _sparseUserScrollDirection = 0;
-      letterToSearch = null;
-      _alphabetSeekAttemptedLetter = null;
-      _alphabetResolvedTargetIndex = null;
+      _clearSparseAlbumState(invalidateContent: true);
     }
   }
 
@@ -1243,23 +1249,12 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   void _refresh() {
     // TODO this has ref.watch, does it explode?
     if (!context.mounted) return;
-    _contentGeneration++;
-    _sparseAlbumGeneration++;
-    letterToSearch = null;
-    _alphabetSeekAttemptedLetter = null;
-    _alphabetResolvedTargetIndex = null;
     if (_usingSparseAlbumGrid) {
       setState(() {
-        _sparseAlbumTotalCount = null;
-        _sparseAlbumItems.clear();
-        _sparseAlbumWindowStartsLoading.clear();
-        _sparseUserScrollActive = false;
-        _sparseUserScrollDirection = 0;
+        _clearSparseAlbumState(invalidateContent: true);
       });
     } else {
-      _sparseAlbumWindowStartsLoading.clear();
-      _sparseUserScrollActive = false;
-      _sparseUserScrollDirection = 0;
+      _clearSparseAlbumState(invalidateContent: true);
     }
     ref.read(pageControl.notifier).refresh();
     // TODO test error cases?
@@ -1481,16 +1476,15 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       );
     }
     final itemPadding = calculateItemCollectionCardWidth(ref).$2;
+    final isOffline = ref.watch(finampSettingsProvider.isOffline);
+    if (isOffline && _usingSparseAlbumGrid) {
+      _clearSparseAlbumState(invalidateContent: true);
+    }
     final useListMode = widget.contentType == null || widget.contentType == ContentType.tracks
         ? true
         : ref.watch(finampSettingsProvider.perTabContentViewType(widget.contentType!)) != ContentViewType.grid;
     if (useListMode && _usingSparseAlbumGrid) {
-      _sparseAlbumGeneration++;
-      _sparseAlbumTotalCount = null;
-      _sparseAlbumItems.clear();
-      _sparseAlbumWindowStartsLoading.clear();
-      _sparseUserScrollActive = false;
-      _sparseUserScrollDirection = 0;
+      _clearSparseAlbumState(invalidateContent: true);
     }
     var tabContent = useListMode
         ? SafeArea(
