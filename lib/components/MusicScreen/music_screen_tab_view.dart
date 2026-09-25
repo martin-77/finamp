@@ -1032,6 +1032,35 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       return _estimateListOffsetForIndex(targetIndex, position);
     }
 
+    final crossAxisCount = _gridCrossAxisCount();
+    final targetRow = targetIndex ~/ crossAxisCount;
+
+    // Sparse grids already expose the final global scroll extent because
+    // itemCount equals Jellyfin's total record count. Derive the row stride
+    // from Flutter's actual laid-out extent instead of trying to reconstruct
+    // GridView geometry from card dimensions. The previous reconstruction
+    // drifted by ~3-4%, which becomes hundreds of rows over large libraries.
+    final sparseTotal = _sparseAlbumTotalCount;
+    if (sparseTotal != null && sparseTotal > 0) {
+      final totalRows = (sparseTotal + crossAxisCount - 1) ~/ crossAxisCount;
+      if (totalRows > 0) {
+        final widthData = calculateItemCollectionCardWidth(ref);
+        final itemPadding = widthData.$2;
+        final laidOutContentExtent =
+            position.maxScrollExtent + position.viewportDimension;
+        final usableContentExtent = max(
+          1.0,
+          laidOutContentExtent - (2 * itemPadding),
+        );
+        final rowStride = usableContentExtent / totalRows;
+        final estimatedOffset = itemPadding + targetRow * rowStride;
+
+        return estimatedOffset
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+      }
+    }
+
     final widthData = calculateItemCollectionCardWidth(ref);
     final itemWidth = widthData.$1;
     final itemPadding = widthData.$2;
@@ -1050,10 +1079,8 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
           itemPadding,
     );
 
-    final crossAxisCount = _gridCrossAxisCount();
     final crossAxisSpacing = crossAxisExtent / crossAxisCount;
     final mainAxisStride = itemHeight - itemWidth + crossAxisSpacing;
-    final targetRow = targetIndex ~/ crossAxisCount;
     final estimatedOffset = itemPadding + targetRow * mainAxisStride;
 
     return estimatedOffset
