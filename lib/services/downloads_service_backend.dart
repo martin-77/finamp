@@ -1869,6 +1869,8 @@ class DownloadsSyncService {
   // against the same small set of Jellyfin views; rebuilding/scanning those
   // album lists for every lookup is pure repeated work.
   Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
+  final Map<BaseItemId, Future<BaseItemId?>> _albumViewMissingLookups =
+      <BaseItemId, Future<BaseItemId?>>{};
 
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
@@ -2091,27 +2093,74 @@ class DownloadsSyncService {
   /// Build one index lazily and share it between concurrent callers instead of
   /// repeatedly scanning the same cached view children for every track/album.
   Future<BaseItemId?> _getAlbumViewID(BaseItemId albumId) async {
-    final benchmarkStopwatch =
+    const int viewLookupChunkSize = 50;
+    final Stopwatch? benchmarkStopwatch =
         PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     int viewsExamined = 0;
     int albumIdsScanned = 0;
-    try {
-      var indexFuture = _albumViewIndex;
-      if (indexFuture == null) {
-        indexFuture = Future.sync(() async {
-          final index = <BaseItemId, BaseItemId>{};
-          final candidateAlbumIds = <BaseItemId>{};
 
-          // View resolution is only needed for albums referenced by this sync.
-          // Collect them from the still-pending task graph rather than loading
-          // every album in every user view.
-          final queuedSyncs = _isar.isarTaskDatas
-              .where()
-              .typeEqualTo(type)
-              .findAllSync();
-          for (final wrappedSync in queuedSyncs) {
-            final sync = wrappedSync.data as SyncNode;
-            final item = _isar.downloadItems.getSync(sync.stubIsarId);
+    Future<List<BaseItemDto>> fetchViewMatches(
+      BaseItemDto view,
+      List<BaseItemId> itemIds,
+    ) async {
+      final List<BaseItemDto> matches = <BaseItemDto>[];
+      for (int offset = 0;
+          offset < itemIds.length;
+          offset += viewLookupChunkSize) {
+        final int end =
+            (offset + viewLookupChunkSize < itemIds.length)
+                ? offset + viewLookupChunkSize
+                : itemIds.length;
+        final List<BaseItemId> chunk = itemIds.sublist(offset, end);
+        final Stopwatch? requestStopwatch =
+            PerformanceBenchmarkService.enabled
+                ? (Stopwatch()..start())
+                : null;
+        final List<BaseItemDto> chunkMatches =
+            await _jellyfinApiData.getItemsInParentByIds(
+              parentItem: view,
+              itemIds: chunk,
+              includeItemTypes: BaseItemDtoType.album.jellyfinName!,
+              fields: _jellyfinApiData.defaultFields,
+            );
+        if (requestStopwatch != null) {
+          requestStopwatch.stop();
+          final PerformanceBenchmarkService benchmark =
+              PerformanceBenchmarkService.instance;
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumViewRequestMicros",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          benchmark.maxMetricBuffered(
+            "downloadAlbumViewRequestMicrosMax",
+            requestStopwatch.elapsedMicroseconds,
+          );
+          benchmark.incrementMetricBuffered(
+            "downloadAlbumViewRequestCount",
+          );
+        }
+        matches.addAll(chunkMatches);
+      }
+      return matches;
+    }
+
+    try {
+      Future<Map<BaseItemId, BaseItemId>>? indexFuture = _albumViewIndex;
+      if (indexFuture == null) {
+        indexFuture = Future<Map<BaseItemId, BaseItemId>>.sync(() async {
+          final Map<BaseItemId, BaseItemId> index =
+              <BaseItemId, BaseItemId>{};
+          final Set<BaseItemId> candidateAlbumIds = <BaseItemId>{};
+
+          final List<IsarTaskData<dynamic>> queuedSyncs =
+              _isar.isarTaskDatas
+                  .where()
+                  .typeEqualTo(type)
+                  .findAllSync();
+          for (final IsarTaskData<dynamic> wrappedSync in queuedSyncs) {
+            final SyncNode sync = wrappedSync.data as SyncNode;
+            final DownloadItem? item =
+                _isar.downloadItems.getSync(sync.stubIsarId);
             if (item == null) {
               continue;
             }
@@ -2119,46 +2168,25 @@ class DownloadsSyncService {
                 item.baseItemType == BaseItemDtoType.album) {
               candidateAlbumIds.add(item.baseItem!.id);
             } else if (item.type == DownloadItemType.track) {
-              final albumId = item.baseItem?.albumId;
-              if (albumId != null) {
-                candidateAlbumIds.add(albumId);
+              final BaseItemId? queuedAlbumId = item.baseItem?.albumId;
+              if (queuedAlbumId != null) {
+                candidateAlbumIds.add(queuedAlbumId);
               }
             }
           }
           candidateAlbumIds.add(albumId);
 
-          final userHelper = GetIt.instance<FinampUserHelper>();
-          for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
+          final FinampUserHelper userHelper =
+              GetIt.instance<FinampUserHelper>();
+          final List<BaseItemId> candidates = candidateAlbumIds.toList();
+          for (final BaseItemDto view
+              in (userHelper.currentUser?.views.values ??
+                  <BaseItemDto>[])) {
             viewsExamined++;
-            final viewRequestStopwatch =
-                PerformanceBenchmarkService.enabled
-                    ? (Stopwatch()..start())
-                    : null;
-            final matchingAlbums =
-                await _jellyfinApiData.getItemsInParentByIds(
-                  parentItem: view,
-                  itemIds: candidateAlbumIds.toList(),
-                  includeItemTypes: BaseItemDtoType.album.jellyfinName!,
-                  fields: _jellyfinApiData.defaultFields,
-                );
-            if (viewRequestStopwatch != null) {
-              viewRequestStopwatch.stop();
-              final benchmark = PerformanceBenchmarkService.instance;
-              benchmark.incrementMetricBuffered(
-                "downloadAlbumViewRequestMicros",
-                viewRequestStopwatch.elapsedMicroseconds,
-              );
-              benchmark.maxMetricBuffered(
-                "downloadAlbumViewRequestMicrosMax",
-                viewRequestStopwatch.elapsedMicroseconds,
-              );
-              benchmark.incrementMetricBuffered(
-                "downloadAlbumViewRequestCount",
-              );
-            }
-            for (final album in matchingAlbums) {
+            final List<BaseItemDto> matchingAlbums =
+                await fetchViewMatches(view, candidates);
+            for (final BaseItemDto album in matchingAlbums) {
               albumIdsScanned++;
-              // Preserve the previous first-matching-view behavior.
               index.putIfAbsent(album.id, () => view.id);
             }
           }
@@ -2166,16 +2194,45 @@ class DownloadsSyncService {
         });
         _albumViewIndex = indexFuture;
       }
-      final index = await indexFuture;
-      return index[albumId];
+
+      final Map<BaseItemId, BaseItemId> index = await indexFuture;
+      final BaseItemId? indexedViewId = index[albumId];
+      if (indexedViewId != null) {
+        return indexedViewId;
+      }
+
+      // The initial index is intentionally scoped to the pending graph. If a
+      // later sync introduces another album, resolve only that missing ID and
+      // merge it into the existing index rather than rebuilding all views.
+      final Future<BaseItemId?> missingLookup =
+          _albumViewMissingLookups.putIfAbsent(albumId, () async {
+            final FinampUserHelper userHelper =
+                GetIt.instance<FinampUserHelper>();
+            for (final BaseItemDto view
+                in (userHelper.currentUser?.views.values ??
+                    <BaseItemDto>[])) {
+              viewsExamined++;
+              final List<BaseItemDto> matchingAlbums =
+                  await fetchViewMatches(view, <BaseItemId>[albumId]);
+              if (matchingAlbums.isEmpty) {
+                continue;
+              }
+              albumIdsScanned += matchingAlbums.length;
+              index.putIfAbsent(albumId, () => view.id);
+              return index[albumId];
+            }
+            return null;
+          });
+      return await missingLookup;
     } catch (_) {
-      // Do not retain a failed build; a later lookup should be able to retry.
       _albumViewIndex = null;
+      _albumViewMissingLookups.clear();
       rethrow;
     } finally {
       if (benchmarkStopwatch != null) {
         benchmarkStopwatch.stop();
-        final benchmark = PerformanceBenchmarkService.instance;
+        final PerformanceBenchmarkService benchmark =
+            PerformanceBenchmarkService.instance;
         benchmark.incrementMetricBuffered("downloadAlbumViewLookupCount");
         benchmark.incrementMetricBuffered(
           "downloadAlbumViewLookupMicros",
