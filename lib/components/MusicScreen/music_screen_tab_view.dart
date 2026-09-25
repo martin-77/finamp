@@ -80,6 +80,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
   late AutoScrollController controller;
   String? letterToSearch;
   String? _alphabetSeekAttemptedLetter;
+  int? _alphabetResolvedTargetIndex;
   bool _alphabetSeekInProgress = false;
 
   Timer? timer;
@@ -109,6 +110,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (letterToSearch != letter) {
       letterToSearch = letter;
       _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
     }
     var codePointToScrollTo = (widget.contentType == ContentType.tracks ? letter.toUpperCase() : letter.toLowerCase())
         .codeUnitAt(0);
@@ -161,6 +163,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
         letterToSearch = null;
         _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
         // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
@@ -173,6 +176,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
         letterToSearch = null;
         _alphabetSeekAttemptedLetter = null;
+        _alphabetResolvedTargetIndex = null;
         return;
       }
     }
@@ -181,6 +185,17 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     if (!state.hasNextPage) {
       letterToSearch = null;
       _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      return;
+    }
+
+    if (_alphabetResolvedTargetIndex != null &&
+        _alphabetResolvedTargetIndex! >= itemList.length) {
+      final missingItems =
+          _alphabetResolvedTargetIndex! - itemList.length + 1;
+      ref.read(pageControl.notifier).newPage(
+        pageSize: min(missingItems, 5000),
+      );
       return;
     }
 
@@ -189,12 +204,16 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       _alphabetSeekAttemptedLetter = letter;
       _alphabetSeekInProgress = true;
       try {
-        final targetIndex = await ref
+        _alphabetResolvedTargetIndex = await ref
             .read(pageControl.notifier)
             .resolveAlphabetTargetIndex(letter);
-        if (targetIndex != null && targetIndex >= itemList.length) {
-          final missingItems = targetIndex - itemList.length + 1;
-          ref.read(pageControl.notifier).newPage(pageSize: missingItems);
+        if (_alphabetResolvedTargetIndex != null &&
+            _alphabetResolvedTargetIndex! >= itemList.length) {
+          final missingItems =
+              _alphabetResolvedTargetIndex! - itemList.length + 1;
+          ref.read(pageControl.notifier).newPage(
+            pageSize: min(missingItems, 5000),
+          );
           return;
         }
       } finally {
@@ -206,6 +225,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       // If fallback page loading takes too long, cancel search and allow image loading.
       letterToSearch = null;
       _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
     });
 
     ref.read(pageControl.notifier).newPage();
