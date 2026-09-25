@@ -1396,7 +1396,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                 // trigger overlapping sparse-window fetches at the same time.
                 // Normal manual scrolling resumes indexed window loading as
                 // soon as the seek completes.
-                if (!_alphabetSeekInProgress) {
+                final userScrollInProgress = controller.hasClients &&
+                    controller.position.isScrollingNotifier.value;
+                if (!_alphabetSeekInProgress && userScrollInProgress) {
                   _queueSparseAlbumWindowLoad(index);
                 }
                 return const SizedBox.shrink();
