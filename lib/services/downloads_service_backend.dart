@@ -1869,22 +1869,47 @@ class DownloadsSyncService {
       if (indexFuture == null) {
         indexFuture = Future.sync(() async {
           final index = <BaseItemId, BaseItemId>{};
+          final candidateAlbumIds = <BaseItemId>{};
+
+          // View resolution is only needed for albums referenced by this sync.
+          // Collect them from the still-pending task graph rather than loading
+          // every album in every user view.
+          final queuedSyncs = _isar.isarTaskDatas
+              .where()
+              .typeEqualTo(type)
+              .findAllSync();
+          for (final wrappedSync in queuedSyncs) {
+            final sync = wrappedSync.data as SyncNode;
+            final item = _isar.downloadItems.getSync(sync.stubIsarId);
+            if (item == null) {
+              continue;
+            }
+            if (item.type == DownloadItemType.collection &&
+                item.baseItemType == BaseItemDtoType.album) {
+              candidateAlbumIds.add(item.baseItem!.id);
+            } else if (item.type == DownloadItemType.track) {
+              final albumId = item.baseItem?.albumId;
+              if (albumId != null) {
+                candidateAlbumIds.add(albumId);
+              }
+            }
+          }
+          candidateAlbumIds.add(albumId);
+
           final userHelper = GetIt.instance<FinampUserHelper>();
           for (var view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
             viewsExamined++;
-            final children = await _getCollectionChildren(
-              DownloadStub.fromItem(
-                type: DownloadItemType.collection,
-                item: view,
-              ),
-            );
-            for (final child in children) {
-              final childId = child.baseItem?.id;
-              if (childId != null) {
-                albumIdsScanned++;
-                // Preserve the previous first-matching-view behavior.
-                index.putIfAbsent(childId, () => view.id);
-              }
+            final matchingAlbums =
+                await _jellyfinApiData.getItemsInParentByIds(
+                  parentItem: view,
+                  itemIds: candidateAlbumIds.toList(),
+                  includeItemTypes: BaseItemDtoType.album.jellyfinName!,
+                  fields: _jellyfinApiData.defaultFields,
+                );
+            for (final album in matchingAlbums) {
+              albumIdsScanned++;
+              // Preserve the previous first-matching-view behavior.
+              index.putIfAbsent(album.id, () => view.id);
             }
           }
           return index;
