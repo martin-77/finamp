@@ -746,9 +746,7 @@ class DownloadsSyncService {
     }
   }
 
-  Future<void> _prefillPlaylistAlbumChildren(
-    List<DownloadStub> playlistTracks,
-  ) async {
+  Future<void> _prefillPlaylistAlbumChildren(List<DownloadStub> playlistTracks) async {
     const int albumBatchSize = 10;
     final Set<BaseItemId> uniqueAlbumIds = <BaseItemId>{};
 
@@ -768,110 +766,66 @@ class DownloadsSyncService {
     }
 
     final List<BaseItemId> albumIds = uniqueAlbumIds.toList();
-    final PerformanceBenchmarkService? benchmark =
-        PerformanceBenchmarkService.enabled
-            ? PerformanceBenchmarkService.instance
-            : null;
+    final PerformanceBenchmarkService? benchmark = PerformanceBenchmarkService.enabled
+        ? PerformanceBenchmarkService.instance
+        : null;
 
-    benchmark?.incrementMetricBuffered(
-      "downloadAlbumBatchCandidateAlbums",
-      albumIds.length,
-    );
+    benchmark?.incrementMetricBuffered("downloadAlbumBatchCandidateAlbums", albumIds.length);
     benchmark?.maxMetricBuffered(
       "downloadAlbumBatchCandidateAlbumsMax",
       albumIds.length >= albumBatchSize ? albumBatchSize : albumIds.length,
     );
 
-    final Map<BaseItemId, Completer<List<String>>> reservations =
-        <BaseItemId, Completer<List<String>>>{};
+    final Map<BaseItemId, Completer<List<String>>> reservations = <BaseItemId, Completer<List<String>>>{};
     for (final BaseItemId albumId in albumIds) {
       final Completer<List<String>> completer = Completer<List<String>>();
-      unawaited(
-        completer.future.then<void>(
-          (_) {},
-          onError: (Object _) {},
-        ),
-      );
+      unawaited(completer.future.then<void>((_) {}, onError: (Object _) {}));
       reservations[albumId] = completer;
       _childCache[albumId.raw] = completer.future;
     }
 
-    final String fields =
-        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+    final String fields = "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
 
     for (int offset = 0; offset < albumIds.length; offset += albumBatchSize) {
-      final int end =
-          (offset + albumBatchSize < albumIds.length)
-              ? offset + albumBatchSize
-              : albumIds.length;
+      final int end = (offset + albumBatchSize < albumIds.length) ? offset + albumBatchSize : albumIds.length;
       final List<BaseItemId> albumChunk = albumIds.sublist(offset, end);
 
       benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestCount");
       if (albumChunk.length == albumBatchSize) {
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchFullRequestCount",
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchFullRequestCount");
       } else {
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchPartialRequestCount",
-        );
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchPartialRequestedAlbums",
-          albumChunk.length,
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestCount");
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestedAlbums", albumChunk.length);
       }
-      benchmark?.incrementMetricBuffered(
-        "downloadAlbumBatchRequestedAlbums",
-        albumChunk.length,
-      );
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestedAlbums", albumChunk.length);
 
       try {
-        final Stopwatch? requestStopwatch =
-            PerformanceBenchmarkService.enabled
-                ? (Stopwatch()..start())
-                : null;
-        final List<BaseItemDto> childItems =
-            await _jellyfinApiData.getTracksForAlbumIds(
-              albumIds: albumChunk,
-              fields: fields,
-            );
+        final Stopwatch? requestStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+        final List<BaseItemDto> childItems = await _jellyfinApiData.getTracksForAlbumIds(
+          albumIds: albumChunk,
+          fields: fields,
+        );
         if (requestStopwatch != null) {
           requestStopwatch.stop();
-          final PerformanceBenchmarkService activeBenchmark =
-              PerformanceBenchmarkService.instance;
+          final PerformanceBenchmarkService activeBenchmark = PerformanceBenchmarkService.instance;
           activeBenchmark.incrementMetricBuffered(
             "downloadAlbumBatchRequestMicros",
             requestStopwatch.elapsedMicroseconds,
           );
-          activeBenchmark.maxMetricBuffered(
-            "downloadAlbumBatchRequestMicrosMax",
-            requestStopwatch.elapsedMicroseconds,
-          );
+          activeBenchmark.maxMetricBuffered("downloadAlbumBatchRequestMicrosMax", requestStopwatch.elapsedMicroseconds);
         }
         _downloadsService.resetConnectionErrors();
 
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchReturnedTracks",
-          childItems.length,
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchReturnedTracks", childItems.length);
 
-        final Map<BaseItemId, List<DownloadStub>> childrenByAlbum =
-            <BaseItemId, List<DownloadStub>>{};
+        final Map<BaseItemId, List<DownloadStub>> childrenByAlbum = <BaseItemId, List<DownloadStub>>{};
         for (final BaseItemDto childItem in childItems) {
           final BaseItemId? childAlbumId = childItem.albumId;
           if (childAlbumId == null) {
             continue;
           }
-          final List<DownloadStub> children = childrenByAlbum.putIfAbsent(
-            childAlbumId,
-            () => <DownloadStub>[],
-          );
-          children.add(
-            DownloadStub.fromItem(
-              type: DownloadItemType.track,
-              item: childItem,
-            ),
-          );
+          final List<DownloadStub> children = childrenByAlbum.putIfAbsent(childAlbumId, () => <DownloadStub>[]);
+          children.add(DownloadStub.fromItem(type: DownloadItemType.track, item: childItem));
         }
 
         int coveredAlbums = 0;
@@ -879,36 +833,23 @@ class DownloadsSyncService {
           final Completer<List<String>> reservation = reservations[albumId]!;
           final List<DownloadStub>? children = childrenByAlbum[albumId];
           if (children == null || children.isEmpty) {
-            benchmark?.incrementMetricBuffered(
-              "downloadAlbumBatchMissingAlbums",
-            );
+            benchmark?.incrementMetricBuffered("downloadAlbumBatchMissingAlbums");
             if (identical(_childCache[albumId.raw], reservation.future)) {
               _childCache.remove(albumId.raw);
             }
-            reservation.completeError(
-              StateError("Album child prefetch returned no tracks"),
-            );
+            reservation.completeError(StateError("Album child prefetch returned no tracks"));
             continue;
           }
 
           coveredAlbums++;
           for (final DownloadStub child in children) {
-            _metadataCache[child.baseItem!.id] = Future<DownloadStub?>.value(
-              child,
-            );
+            _metadataCache[child.baseItem!.id] = Future<DownloadStub?>.value(child);
           }
-          reservation.complete(
-            children.map((DownloadStub child) => child.id).toList(),
-          );
+          reservation.complete(children.map((DownloadStub child) => child.id).toList());
         }
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchCoveredAlbums",
-          coveredAlbums,
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchCoveredAlbums", coveredAlbums);
       } catch (error, stackTrace) {
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchRequestFailures",
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestFailures");
         for (final BaseItemId albumId in albumChunk) {
           final Completer<List<String>> reservation = reservations[albumId]!;
           if (identical(_childCache[albumId.raw], reservation.future)) {
@@ -918,16 +859,12 @@ class DownloadsSyncService {
             reservation.completeError(error, stackTrace);
           }
         }
-        _syncLogger.fine(
-          "Playlist album child prefetch failed; using normal album requests on retry: $error",
-        );
+        _syncLogger.fine("Playlist album child prefetch failed; using normal album requests on retry: $error");
       }
     }
   }
 
-  Future<void> _prefillInfoAlbumChildren(
-    List<IsarTaskData<dynamic>> wrappedSyncs,
-  ) async {
+  Future<void> _prefillInfoAlbumChildren(List<IsarTaskData<dynamic>> wrappedSyncs) async {
     const albumBatchSize = 10;
     final albums = <DownloadStub>[];
     final selectedAlbumIds = <String>{};
@@ -962,22 +899,12 @@ class DownloadsSyncService {
     // ahead here lets album child requests be batched without changing task
     // ownership, priority or processing order.
     if (albums.isNotEmpty && albums.length < albumBatchSize) {
-      final Stopwatch? queueScanStopwatch =
-          PerformanceBenchmarkService.enabled
-              ? (Stopwatch()..start())
-              : null;
-      final queuedSyncs = _isar.isarTaskDatas
-          .where()
-          .typeEqualTo(type)
-          .sortByAge()
-          .findAllSync();
+      final Stopwatch? queueScanStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+      final queuedSyncs = _isar.isarTaskDatas.where().typeEqualTo(type).sortByAge().findAllSync();
       if (queueScanStopwatch != null) {
         queueScanStopwatch.stop();
-        final PerformanceBenchmarkService activeBenchmark =
-            PerformanceBenchmarkService.instance;
-        activeBenchmark.incrementMetricBuffered(
-          "downloadAlbumLookaheadQueueScanCount",
-        );
+        final PerformanceBenchmarkService activeBenchmark = PerformanceBenchmarkService.instance;
+        activeBenchmark.incrementMetricBuffered("downloadAlbumLookaheadQueueScanCount");
         activeBenchmark.incrementMetricBuffered(
           "downloadAlbumLookaheadQueueScanMicros",
           queueScanStopwatch.elapsedMicroseconds,
@@ -986,10 +913,7 @@ class DownloadsSyncService {
           "downloadAlbumLookaheadQueueScanMicrosMax",
           queueScanStopwatch.elapsedMicroseconds,
         );
-        activeBenchmark.maxMetricBuffered(
-          "downloadAlbumLookaheadQueueSizeMax",
-          queuedSyncs.length,
-        );
+        activeBenchmark.maxMetricBuffered("downloadAlbumLookaheadQueueSizeMax", queuedSyncs.length);
       }
       for (final queuedSync in queuedSyncs) {
         addAlbumFromSync(queuedSync);
@@ -999,24 +923,13 @@ class DownloadsSyncService {
       }
     }
 
-    final benchmark =
-        PerformanceBenchmarkService.enabled
-            ? PerformanceBenchmarkService.instance
-            : null;
-    benchmark?.incrementMetricBuffered(
-      "downloadAlbumBatchCandidateAlbums",
-      albums.length,
-    );
-    benchmark?.maxMetricBuffered(
-      "downloadAlbumBatchCandidateAlbumsMax",
-      albums.length,
-    );
+    final benchmark = PerformanceBenchmarkService.enabled ? PerformanceBenchmarkService.instance : null;
+    benchmark?.incrementMetricBuffered("downloadAlbumBatchCandidateAlbums", albums.length);
+    benchmark?.maxMetricBuffered("downloadAlbumBatchCandidateAlbumsMax", albums.length);
 
     if (albums.length < 2) {
       if (albums.length == 1) {
-        benchmark?.incrementMetricBuffered(
-          "downloadAlbumBatchSingleAlbumFallbacks",
-        );
+        benchmark?.incrementMetricBuffered("downloadAlbumBatchSingleAlbumFallbacks");
       }
       return;
     }
@@ -1027,9 +940,7 @@ class DownloadsSyncService {
     final reservations = <String, Completer<List<String>>>{};
     for (final album in albums) {
       final completer = Completer<List<String>>();
-      unawaited(
-        completer.future.then((_) => null, onError: (_) => null),
-      );
+      unawaited(completer.future.then((_) => null, onError: (_) => null));
       reservations[album.id] = completer;
       _childCache[album.id] = completer.future;
     }
@@ -1039,45 +950,25 @@ class DownloadsSyncService {
       benchmark?.incrementMetricBuffered("downloadAlbumBatchFullRequestCount");
     } else {
       benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestCount");
-      benchmark?.incrementMetricBuffered(
-        "downloadAlbumBatchPartialRequestedAlbums",
-        albums.length,
-      );
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchPartialRequestedAlbums", albums.length);
     }
-    benchmark?.incrementMetricBuffered(
-      "downloadAlbumBatchRequestedAlbums",
-      albums.length,
-    );
+    benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestedAlbums", albums.length);
 
     final albumIds = albums.map((album) => album.baseItem!.id).toList();
-    final fields =
-        "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
+    final fields = "${_jellyfinApiData.defaultFields},MediaSources,SortName,People";
 
     try {
-      final albumBatchStopwatch =
-          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
-      final childItems = await _jellyfinApiData.getTracksForAlbumIds(
-        albumIds: albumIds,
-        fields: fields,
-      );
+      final albumBatchStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+      final childItems = await _jellyfinApiData.getTracksForAlbumIds(albumIds: albumIds, fields: fields);
       if (albumBatchStopwatch != null) {
         albumBatchStopwatch.stop();
         final benchmark = PerformanceBenchmarkService.instance;
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumBatchRequestMicros",
-          albumBatchStopwatch.elapsedMicroseconds,
-        );
-        benchmark.maxMetricBuffered(
-          "downloadAlbumBatchRequestMicrosMax",
-          albumBatchStopwatch.elapsedMicroseconds,
-        );
+        benchmark.incrementMetricBuffered("downloadAlbumBatchRequestMicros", albumBatchStopwatch.elapsedMicroseconds);
+        benchmark.maxMetricBuffered("downloadAlbumBatchRequestMicrosMax", albumBatchStopwatch.elapsedMicroseconds);
       }
       _downloadsService.resetConnectionErrors();
 
-      benchmark?.incrementMetricBuffered(
-        "downloadAlbumBatchReturnedTracks",
-        childItems.length,
-      );
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchReturnedTracks", childItems.length);
 
       final childrenByAlbum = <BaseItemId, List<DownloadStub>>{};
       for (final childItem in childItems) {
@@ -1088,12 +979,7 @@ class DownloadsSyncService {
 
         childrenByAlbum
             .putIfAbsent(albumId, () => <DownloadStub>[])
-            .add(
-              DownloadStub.fromItem(
-                type: DownloadItemType.track,
-                item: childItem,
-              ),
-            );
+            .add(DownloadStub.fromItem(type: DownloadItemType.track, item: childItem));
       }
 
       var coveredAlbums = 0;
@@ -1103,9 +989,7 @@ class DownloadsSyncService {
         final children = childrenByAlbum[albumId];
 
         if (children == null || children.isEmpty) {
-          benchmark?.incrementMetricBuffered(
-            "downloadAlbumBatchMissingAlbums",
-          );
+          benchmark?.incrementMetricBuffered("downloadAlbumBatchMissingAlbums");
 
           // Preserve the old per-album semantics for empty/missing results so a
           // missing server item can still surface as a 404 rather than being
@@ -1115,9 +999,7 @@ class DownloadsSyncService {
           }
           try {
             final fallbackChildren = await _getCollectionChildren(album);
-            reservation.complete(
-              fallbackChildren.map((child) => child.id).toList(),
-            );
+            reservation.complete(fallbackChildren.map((child) => child.id).toList());
           } catch (e, stack) {
             reservation.completeError(e, stack);
           }
@@ -1128,18 +1010,11 @@ class DownloadsSyncService {
         for (final child in children) {
           _metadataCache[child.baseItem!.id] = Future.value(child);
         }
-        reservation.complete(
-          children.map((child) => child.id).toList(),
-        );
+        reservation.complete(children.map((child) => child.id).toList());
       }
-      benchmark?.incrementMetricBuffered(
-        "downloadAlbumBatchCoveredAlbums",
-        coveredAlbums,
-      );
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchCoveredAlbums", coveredAlbums);
     } catch (e, stack) {
-      benchmark?.incrementMetricBuffered(
-        "downloadAlbumBatchRequestFailures",
-      );
+      benchmark?.incrementMetricBuffered("downloadAlbumBatchRequestFailures");
       for (final album in albums) {
         final reservation = reservations[album.id]!;
         if (identical(_childCache[album.id], reservation.future)) {
@@ -1149,9 +1024,7 @@ class DownloadsSyncService {
           reservation.completeError(e, stack);
         }
       }
-      _syncLogger.fine(
-        "Album child batch fetch failed; using normal per-album requests on retry: $e",
-      );
+      _syncLogger.fine("Album child batch fetch failed; using normal per-album requests on retry: $e");
     }
   }
 
@@ -1259,19 +1132,14 @@ class DownloadsSyncService {
   /// Must be called inside an Isar write transaction, after the album has linked
   /// the tracks into Isar. Existing DownloadItems are updated with [DownloadItem.copyWith]
   /// so file state, paths and transcoding profiles are preserved.
-  Set<int> _materializeInfoAlbumTracks(
-    Iterable<DownloadStub> tracks,
-    BaseItemId? viewId,
-  ) {
+  Set<int> _materializeInfoAlbumTracks(Iterable<DownloadStub> tracks, BaseItemId? viewId) {
     final requiredImageIds = <int>{};
 
     for (final track in tracks) {
       assert(track.type == DownloadItemType.track);
       var canonTrack = _isar.downloadItems.getSync(track.isarId);
       if (canonTrack == null) {
-        throw StateError(
-          "Album info track ${track.id} was not materialized before bulk linking",
-        );
+        throw StateError("Album info track ${track.id} was not materialized before bulk linking");
       }
 
       try {
@@ -1294,35 +1162,19 @@ class DownloadsSyncService {
       final requiredImages = <DownloadStub>{};
       final item = track.baseItem!;
       if ((item.blurHash ?? item.imageId) != null) {
-        requiredImages.add(
-          DownloadStub.fromItem(
-            type: DownloadItemType.image,
-            item: item,
-          ),
-        );
+        requiredImages.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
       }
 
-      final imageChanges = _updateChildren(
-        canonTrack!,
-        true,
-        requiredImages,
-      );
-      requiredImageIds.addAll(
-        requiredImages.map((image) => image.isarId),
-      );
+      final imageChanges = _updateChildren(canonTrack!, true, requiredImages);
+      requiredImageIds.addAll(requiredImages.map((image) => image.isarId));
 
       // This mirrors the existing info-track path for images that already
       // existed before becoming required by this track.
-      for (final image
-          in _isar.downloadItems
-              .getAllSync(imageChanges.$2.toList())
-              .nonNulls) {
-        if (image.syncTranscodingProfile !=
-            canonTrack!.syncTranscodingProfile) {
+      for (final image in _isar.downloadItems.getAllSync(imageChanges.$2.toList()).nonNulls) {
+        if (image.syncTranscodingProfile != canonTrack!.syncTranscodingProfile) {
           _downloadsService.syncItemDownloadSettings(image);
         }
       }
-
     }
 
     return requiredImageIds;
@@ -1402,8 +1254,7 @@ class DownloadsSyncService {
       }
     }
 
-    final benchmarkNodeStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final benchmarkNodeStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     final benchmarkNodeRole = asRequired ? "required" : "info";
     final benchmarkNodeType = parent.type.name;
     final benchmarkNodeSubtype = parent.baseItemType.name;
@@ -1412,10 +1263,8 @@ class DownloadsSyncService {
         parent.type == DownloadItemType.collection &&
         parent.baseItemType == BaseItemDtoType.album &&
         !asRequired;
-    final bool isInfoTrack =
-        parent.type == DownloadItemType.track && !asRequired;
-    final bool benchmarkTrackInfo =
-        PerformanceBenchmarkService.enabled && isInfoTrack;
+    final bool isInfoTrack = parent.type == DownloadItemType.track && !asRequired;
+    final bool benchmarkTrackInfo = PerformanceBenchmarkService.enabled && isInfoTrack;
 
     void recordAlbumInfoPhase(String phase, Stopwatch? stopwatch) {
       if (!benchmarkAlbumInfo || stopwatch == null) {
@@ -1424,14 +1273,8 @@ class DownloadsSyncService {
       stopwatch.stop();
       final elapsed = stopwatch.elapsedMicroseconds;
       final benchmark = PerformanceBenchmarkService.instance;
-      benchmark.incrementMetricBuffered(
-        "downloadAlbumInfoPhaseMicros_$phase",
-        elapsed,
-      );
-      benchmark.maxMetricBuffered(
-        "downloadAlbumInfoPhaseMicrosMax_$phase",
-        elapsed,
-      );
+      benchmark.incrementMetricBuffered("downloadAlbumInfoPhaseMicros_$phase", elapsed);
+      benchmark.maxMetricBuffered("downloadAlbumInfoPhaseMicrosMax_$phase", elapsed);
     }
 
     void recordTrackInfoPhase(String phase, Stopwatch? stopwatch) {
@@ -1440,16 +1283,9 @@ class DownloadsSyncService {
       }
       stopwatch.stop();
       final int elapsed = stopwatch.elapsedMicroseconds;
-      final PerformanceBenchmarkService benchmark =
-          PerformanceBenchmarkService.instance;
-      benchmark.incrementMetricBuffered(
-        "downloadTrackInfoPhaseMicros_$phase",
-        elapsed,
-      );
-      benchmark.maxMetricBuffered(
-        "downloadTrackInfoPhaseMicrosMax_$phase",
-        elapsed,
-      );
+      final PerformanceBenchmarkService benchmark = PerformanceBenchmarkService.instance;
+      benchmark.incrementMetricBuffered("downloadTrackInfoPhaseMicros_$phase", elapsed);
+      benchmark.maxMetricBuffered("downloadTrackInfoPhaseMicrosMax_$phase", elapsed);
     }
 
     _syncLogger.finer("Syncing ${parent.baseItemType.name} ${parent.name} with required:$asRequired viewId:$viewId");
@@ -1460,10 +1296,8 @@ class DownloadsSyncService {
     // newBaseItem must be calculated before children are determined so that the latest
     // metadata can be used, especially imageId and blurhash.
     BaseItemDto? newBaseItem;
-    final benchmarkAlbumMetadataStopwatch =
-        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
-    final Stopwatch? benchmarkTrackMetadataStopwatch =
-        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
+    final benchmarkAlbumMetadataStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackMetadataStopwatch = benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     //If we aren't quicksyncing, fetch the latest BaseItemDto to copy into Isar.
     if (parent.type.requiresItem) {
       bool expectNewItem = false;
@@ -1523,15 +1357,13 @@ class DownloadsSyncService {
             }
           }
           if (parent.baseItemType == BaseItemDtoType.album || parent.baseItemType == BaseItemDtoType.playlist) {
-            final benchmarkChildrenStopwatch =
-                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+            final benchmarkChildrenStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             orderedChildItems ??= await _getCollectionChildren(parent);
             recordAlbumInfoPhase("children", benchmarkChildrenStopwatch);
             infoChildren.addAll(orderedChildItems);
           }
           if (parent.baseItemType == BaseItemDtoType.album && viewId == null) {
-            final benchmarkViewStopwatch =
-                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+            final benchmarkViewStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
             isarParent ??= _isar.downloadItems.getSync(parent.isarId);
             if (isarParent?.viewId == null) {
               // If we are an album and have no viewId, attempt to fetch from server
@@ -1548,8 +1380,7 @@ class DownloadsSyncService {
           infoChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
         if (parent.baseItemType == BaseItemDtoType.album) {
-          final benchmarkArtistsStopwatch =
-              benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+          final benchmarkArtistsStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
           // If we are an album, add the album artists as info children
           try {
             var collectionChildren = await Future.wait(
@@ -1570,8 +1401,7 @@ class DownloadsSyncService {
         if ((item.blurHash ?? item.imageId) != null) {
           requiredChildren.add(DownloadStub.fromItem(type: DownloadItemType.image, item: item));
         }
-        final Stopwatch? benchmarkTrackViewStopwatch =
-            benchmarkTrackInfo ? (Stopwatch()..start()) : null;
+        final Stopwatch? benchmarkTrackViewStopwatch = benchmarkTrackInfo ? (Stopwatch()..start()) : null;
         if (viewId == null && item.albumId != null) {
           isarParent ??= _isar.downloadItems.getSync(parent.isarId);
           if (isarParent?.viewId == null) {
@@ -1637,10 +1467,8 @@ class DownloadsSyncService {
     //
     // Allow database work to be scheduled instead of immediately processing
     // once network requests come back.
-    final benchmarkAlbumDatabaseStopwatch =
-        benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
-    final Stopwatch? benchmarkTrackDatabaseStopwatch =
-        benchmarkTrackInfo ? (Stopwatch()..start()) : null;
+    final benchmarkAlbumDatabaseStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkTrackDatabaseStopwatch = benchmarkTrackInfo ? (Stopwatch()..start()) : null;
     Future<void> processDatabaseAndFiles() async {
       DownloadItem? canonParent;
       Set<int> bulkCompletedInfoTrackIds = <int>{};
@@ -1700,13 +1528,8 @@ class DownloadsSyncService {
           requiredSyncIds = requiredChanges.$1.union(requiredChanges.$2);
           infoSyncIds = infoChanges.$1.union(infoChanges.$2);
         } else {
-          requiredSyncIds =
-              requiredChildren.map((child) => child.isarId).toSet();
-          infoSyncIds =
-              infoChildren
-                  .difference(requiredChildren)
-                  .map((child) => child.isarId)
-                  .toSet();
+          requiredSyncIds = requiredChildren.map((child) => child.isarId).toSet();
+          infoSyncIds = infoChildren.difference(requiredChildren).map((child) => child.isarId).toSet();
         }
 
         // Album child batching already returned complete BaseItemDto metadata for
@@ -1721,15 +1544,10 @@ class DownloadsSyncService {
             for (final child in infoChildren)
               if (child.type == DownloadItemType.track) child.isarId: child,
           };
-          final bulkTrackIds =
-              infoSyncIds.intersection(tracksById.keys.toSet());
+          final bulkTrackIds = infoSyncIds.intersection(tracksById.keys.toSet());
           if (bulkTrackIds.isNotEmpty) {
-            final bulkTrackStopwatch =
-                benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
-            final requiredImageIds = _materializeInfoAlbumTracks(
-              bulkTrackIds.map((id) => tracksById[id]!),
-              viewId,
-            );
+            final bulkTrackStopwatch = benchmarkAlbumInfo ? (Stopwatch()..start()) : null;
+            final requiredImageIds = _materializeInfoAlbumTracks(bulkTrackIds.map((id) => tracksById[id]!), viewId);
             if (bulkTrackStopwatch != null) {
               bulkTrackStopwatch.stop();
               bulkTrackMicros = bulkTrackStopwatch.elapsedMicroseconds;
@@ -1741,11 +1559,7 @@ class DownloadsSyncService {
           }
         }
 
-        addAll(
-          requiredSyncIds,
-          infoSyncIds.difference(requiredSyncIds),
-          viewId,
-        );
+        addAll(requiredSyncIds, infoSyncIds.difference(requiredSyncIds), viewId);
         // If we are a collection, move out of syncFailed because we just completed a
         // successful sync.  tracks/images will be moved out by _initiateDownload.
         // If our linked children just changed, recalculate state with new children.
@@ -1776,22 +1590,10 @@ class DownloadsSyncService {
         _infoCompleted.addAll(bulkCompletedInfoTrackIds);
         if (bulkTrackMicros != null) {
           final benchmark = PerformanceBenchmarkService.instance;
-          benchmark.incrementMetricBuffered(
-            "downloadAlbumInfoPhaseMicros_bulk_tracks",
-            bulkTrackMicros!,
-          );
-          benchmark.maxMetricBuffered(
-            "downloadAlbumInfoPhaseMicrosMax_bulk_tracks",
-            bulkTrackMicros!,
-          );
-          benchmark.incrementMetricBuffered(
-            "downloadAlbumInfoBulkTrackCount",
-            bulkCompletedInfoTrackIds.length,
-          );
-          benchmark.incrementMetricBuffered(
-            "downloadAlbumInfoBulkImageCount",
-            bulkTrackImageCount,
-          );
+          benchmark.incrementMetricBuffered("downloadAlbumInfoPhaseMicros_bulk_tracks", bulkTrackMicros!);
+          benchmark.maxMetricBuffered("downloadAlbumInfoPhaseMicrosMax_bulk_tracks", bulkTrackMicros!);
+          benchmark.incrementMetricBuffered("downloadAlbumInfoBulkTrackCount", bulkCompletedInfoTrackIds.length);
+          benchmark.incrementMetricBuffered("downloadAlbumInfoBulkImageCount", bulkTrackImageCount);
         }
       }
 
@@ -1814,10 +1616,7 @@ class DownloadsSyncService {
     if (isInfoTrack) {
       await processDatabaseAndFiles();
     } else {
-      await SchedulerBinding.instance.scheduleTask(
-        processDatabaseAndFiles,
-        Priority.animation,
-      );
+      await SchedulerBinding.instance.scheduleTask(processDatabaseAndFiles, Priority.animation);
     }
     recordAlbumInfoPhase("database", benchmarkAlbumDatabaseStopwatch);
     recordTrackInfoPhase("database", benchmarkTrackDatabaseStopwatch);
@@ -1825,9 +1624,7 @@ class DownloadsSyncService {
     if (benchmarkNodeStopwatch != null) {
       benchmarkNodeStopwatch.stop();
       final benchmark = PerformanceBenchmarkService.instance;
-      benchmark.incrementMetricBuffered(
-        "downloadSyncNodeCount_${benchmarkNodeType}_$benchmarkNodeRole",
-      );
+      benchmark.incrementMetricBuffered("downloadSyncNodeCount_${benchmarkNodeType}_$benchmarkNodeRole");
       benchmark.incrementMetricBuffered(
         "downloadSyncNodeMicros_${benchmarkNodeType}_$benchmarkNodeRole",
         benchmarkNodeStopwatch.elapsedMicroseconds,
@@ -1840,11 +1637,8 @@ class DownloadsSyncService {
       // Keep the aggregate node metrics above for historical comparisons, and
       // also split them by BaseItemDtoType so broad buckets such as
       // collection_info can be attributed without exposing item identities.
-      final subtypeMetricSuffix =
-          "${benchmarkNodeType}_${benchmarkNodeSubtype}_$benchmarkNodeRole";
-      benchmark.incrementMetricBuffered(
-        "downloadSyncNodeCount_$subtypeMetricSuffix",
-      );
+      final subtypeMetricSuffix = "${benchmarkNodeType}_${benchmarkNodeSubtype}_$benchmarkNodeRole";
+      benchmark.incrementMetricBuffered("downloadSyncNodeCount_$subtypeMetricSuffix");
       benchmark.incrementMetricBuffered(
         "downloadSyncNodeMicros_$subtypeMetricSuffix",
         benchmarkNodeStopwatch.elapsedMicroseconds,
@@ -1865,8 +1659,7 @@ class DownloadsSyncService {
   /// Used within [_syncDownload].
   /// This should only be called inside an isar write transaction.
   (Set<int>, Set<int>, Set<int>) _updateChildren(DownloadItem parent, bool required, Set<DownloadStub> children) {
-    final benchmarkStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final benchmarkStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     IsarLinks<DownloadItem> links = required ? parent.requires : parent.info;
 
     var oldChildIds = (links.filter().isarIdProperty().findAllSync()).toSet();
@@ -1910,26 +1703,11 @@ class DownloadsSyncService {
       final benchmark = PerformanceBenchmarkService.instance;
       final role = required ? "required" : "info";
       benchmark.incrementMetricBuffered("downloadUpdateChildrenCount_$role");
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenMicros_$role",
-        benchmarkStopwatch.elapsedMicroseconds,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenInserted_$role",
-        insertedIds.length,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenLinkedExisting_$role",
-        linkedIds.length,
-      );
-      benchmark.incrementMetricBuffered(
-        "downloadUpdateChildrenUnlinked_$role",
-        childIdsToUnlink.length,
-      );
-      benchmark.maxMetricBuffered(
-        "downloadUpdateChildrenMicrosMax_$role",
-        benchmarkStopwatch.elapsedMicroseconds,
-      );
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenMicros_$role", benchmarkStopwatch.elapsedMicroseconds);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenInserted_$role", insertedIds.length);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenLinkedExisting_$role", linkedIds.length);
+      benchmark.incrementMetricBuffered("downloadUpdateChildrenUnlinked_$role", childIdsToUnlink.length);
+      benchmark.maxMetricBuffered("downloadUpdateChildrenMicrosMax_$role", benchmarkStopwatch.elapsedMicroseconds);
     }
     return (insertedIds, linkedIds, childIdsToUnlink);
   }
@@ -1939,14 +1717,10 @@ class DownloadsSyncService {
   /// to this method.  Used within [_syncDownload].
   Future<DownloadStub?> _getBaseItemInfo(BaseItemId id, DownloadItemType type, bool forceServer) async {
     if (_metadataCache.containsKey(id)) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "downloadMetadataCacheHit",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadMetadataCacheHit");
       return _metadataCache[id];
     }
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "downloadMetadataCacheMiss",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadMetadataCacheMiss");
     Completer<DownloadStub?> itemFetch = Completer();
     try {
       DownloadStub? item;
@@ -1957,21 +1731,14 @@ class DownloadsSyncService {
         }
       }
       _metadataCache[id] = itemFetch.future;
-      final metadataRequestStopwatch =
-          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+      final metadataRequestStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
       item = await _jellyfinApiData
-          .getItemByIdBatched(
-            id,
-            "${_jellyfinApiData.defaultFields},sortName,MediaSources,People",
-            Duration.zero,
-          )
+          .getItemByIdBatched(id, "${_jellyfinApiData.defaultFields},sortName,MediaSources,People", Duration.zero)
           .then((value) => value == null ? null : DownloadStub.fromItem(item: value, type: type));
       if (metadataRequestStopwatch != null) {
         metadataRequestStopwatch.stop();
         final benchmark = PerformanceBenchmarkService.instance;
-        benchmark.incrementMetricBuffered(
-          "downloadBaseItemServerRequestCount",
-        );
+        benchmark.incrementMetricBuffered("downloadBaseItemServerRequestCount");
         benchmark.incrementMetricBuffered(
           "downloadBaseItemServerRequestMicros",
           metadataRequestStopwatch.elapsedMicroseconds,
@@ -1981,9 +1748,7 @@ class DownloadsSyncService {
           metadataRequestStopwatch.elapsedMicroseconds,
         );
         if (forceServer) {
-          benchmark.incrementMetricBuffered(
-            "downloadBaseItemForcedServerRequestCount",
-          );
+          benchmark.incrementMetricBuffered("downloadBaseItemForcedServerRequestCount");
           benchmark.incrementMetricBuffered(
             "downloadBaseItemForcedServerRequestMicros",
             metadataRequestStopwatch.elapsedMicroseconds,
@@ -2010,8 +1775,7 @@ class DownloadsSyncService {
   // against the same small set of Jellyfin views; rebuilding/scanning those
   // album lists for every lookup is pure repeated work.
   Future<Map<BaseItemId, BaseItemId>>? _albumViewIndex;
-  final Map<BaseItemId, Future<BaseItemId?>> _albumViewMissingLookups =
-      <BaseItemId, Future<BaseItemId?>>{};
+  final Map<BaseItemId, Future<BaseItemId?>> _albumViewMissingLookups = <BaseItemId, Future<BaseItemId?>>{};
 
   /// Get ordered child items for the given collection DownloadStub.  Tries local
   /// cache, then requests data from jellyfin.  Used within [_syncDownload].
@@ -2039,17 +1803,13 @@ class DownloadsSyncService {
     var item = parent.baseItem!;
 
     if (_childCache.containsKey(item.id.raw)) {
-      PerformanceBenchmarkService.instance.incrementMetricBuffered(
-        "downloadChildCacheHit",
-      );
+      PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadChildCacheHit");
       var childIds = await _childCache[item.id.raw]!;
       return Future.wait(
         childIds.map((e) => _metadataCache[BaseItemId(e)]).nonNulls,
       ).then((value) => value.nonNulls.toList());
     }
-    PerformanceBenchmarkService.instance.incrementMetricBuffered(
-      "downloadChildCacheMiss",
-    );
+    PerformanceBenchmarkService.instance.incrementMetricBuffered("downloadChildCacheMiss");
     Completer<List<String>> itemFetch = Completer();
     // This prevents errors in itemFetch being reported as unhandled.
     // They are handled by original caller in rethrow.
@@ -2235,50 +1995,28 @@ class DownloadsSyncService {
   /// repeatedly scanning the same cached view children for every track/album.
   Future<BaseItemId?> _getAlbumViewID(BaseItemId albumId) async {
     const int viewLookupChunkSize = 50;
-    final Stopwatch? benchmarkStopwatch =
-        PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+    final Stopwatch? benchmarkStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
     int viewsExamined = 0;
     int albumIdsScanned = 0;
 
-    Future<List<BaseItemDto>> fetchViewMatches(
-      BaseItemDto view,
-      List<BaseItemId> itemIds,
-    ) async {
+    Future<List<BaseItemDto>> fetchViewMatches(BaseItemDto view, List<BaseItemId> itemIds) async {
       final List<BaseItemDto> matches = <BaseItemDto>[];
-      for (int offset = 0;
-          offset < itemIds.length;
-          offset += viewLookupChunkSize) {
-        final int end =
-            (offset + viewLookupChunkSize < itemIds.length)
-                ? offset + viewLookupChunkSize
-                : itemIds.length;
+      for (int offset = 0; offset < itemIds.length; offset += viewLookupChunkSize) {
+        final int end = (offset + viewLookupChunkSize < itemIds.length) ? offset + viewLookupChunkSize : itemIds.length;
         final List<BaseItemId> chunk = itemIds.sublist(offset, end);
-        final Stopwatch? requestStopwatch =
-            PerformanceBenchmarkService.enabled
-                ? (Stopwatch()..start())
-                : null;
-        final List<BaseItemDto> chunkMatches =
-            await _jellyfinApiData.getItemsInParentByIds(
-              parentItem: view,
-              itemIds: chunk,
-              includeItemTypes: BaseItemDtoType.album.jellyfinName!,
-              fields: _jellyfinApiData.defaultFields,
-            );
+        final Stopwatch? requestStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+        final List<BaseItemDto> chunkMatches = await _jellyfinApiData.getItemsInParentByIds(
+          parentItem: view,
+          itemIds: chunk,
+          includeItemTypes: BaseItemDtoType.album.jellyfinName!,
+          fields: _jellyfinApiData.defaultFields,
+        );
         if (requestStopwatch != null) {
           requestStopwatch.stop();
-          final PerformanceBenchmarkService benchmark =
-              PerformanceBenchmarkService.instance;
-          benchmark.incrementMetricBuffered(
-            "downloadAlbumViewRequestMicros",
-            requestStopwatch.elapsedMicroseconds,
-          );
-          benchmark.maxMetricBuffered(
-            "downloadAlbumViewRequestMicrosMax",
-            requestStopwatch.elapsedMicroseconds,
-          );
-          benchmark.incrementMetricBuffered(
-            "downloadAlbumViewRequestCount",
-          );
+          final PerformanceBenchmarkService benchmark = PerformanceBenchmarkService.instance;
+          benchmark.incrementMetricBuffered("downloadAlbumViewRequestMicros", requestStopwatch.elapsedMicroseconds);
+          benchmark.maxMetricBuffered("downloadAlbumViewRequestMicrosMax", requestStopwatch.elapsedMicroseconds);
+          benchmark.incrementMetricBuffered("downloadAlbumViewRequestCount");
         }
         matches.addAll(chunkMatches);
       }
@@ -2289,24 +2027,17 @@ class DownloadsSyncService {
       Future<Map<BaseItemId, BaseItemId>>? indexFuture = _albumViewIndex;
       if (indexFuture == null) {
         indexFuture = Future<Map<BaseItemId, BaseItemId>>.sync(() async {
-          final Map<BaseItemId, BaseItemId> index =
-              <BaseItemId, BaseItemId>{};
+          final Map<BaseItemId, BaseItemId> index = <BaseItemId, BaseItemId>{};
           final Set<BaseItemId> candidateAlbumIds = <BaseItemId>{};
 
-          final List<IsarTaskData<dynamic>> queuedSyncs =
-              _isar.isarTaskDatas
-                  .where()
-                  .typeEqualTo(type)
-                  .findAllSync();
+          final List<IsarTaskData<dynamic>> queuedSyncs = _isar.isarTaskDatas.where().typeEqualTo(type).findAllSync();
           for (final IsarTaskData<dynamic> wrappedSync in queuedSyncs) {
             final SyncNode sync = wrappedSync.data as SyncNode;
-            final DownloadItem? item =
-                _isar.downloadItems.getSync(sync.stubIsarId);
+            final DownloadItem? item = _isar.downloadItems.getSync(sync.stubIsarId);
             if (item == null) {
               continue;
             }
-            if (item.type == DownloadItemType.collection &&
-                item.baseItemType == BaseItemDtoType.album) {
+            if (item.type == DownloadItemType.collection && item.baseItemType == BaseItemDtoType.album) {
               candidateAlbumIds.add(item.baseItem!.id);
             } else if (item.type == DownloadItemType.track) {
               final BaseItemId? queuedAlbumId = item.baseItem?.albumId;
@@ -2317,15 +2048,11 @@ class DownloadsSyncService {
           }
           candidateAlbumIds.add(albumId);
 
-          final FinampUserHelper userHelper =
-              GetIt.instance<FinampUserHelper>();
+          final FinampUserHelper userHelper = GetIt.instance<FinampUserHelper>();
           final List<BaseItemId> candidates = candidateAlbumIds.toList();
-          for (final BaseItemDto view
-              in (userHelper.currentUser?.views.values ??
-                  <BaseItemDto>[])) {
+          for (final BaseItemDto view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
             viewsExamined++;
-            final List<BaseItemDto> matchingAlbums =
-                await fetchViewMatches(view, candidates);
+            final List<BaseItemDto> matchingAlbums = await fetchViewMatches(view, candidates);
             for (final BaseItemDto album in matchingAlbums) {
               albumIdsScanned++;
               index.putIfAbsent(album.id, () => view.id);
@@ -2345,25 +2072,20 @@ class DownloadsSyncService {
       // The initial index is intentionally scoped to the pending graph. If a
       // later sync introduces another album, resolve only that missing ID and
       // merge it into the existing index rather than rebuilding all views.
-      final Future<BaseItemId?> missingLookup =
-          _albumViewMissingLookups.putIfAbsent(albumId, () async {
-            final FinampUserHelper userHelper =
-                GetIt.instance<FinampUserHelper>();
-            for (final BaseItemDto view
-                in (userHelper.currentUser?.views.values ??
-                    <BaseItemDto>[])) {
-              viewsExamined++;
-              final List<BaseItemDto> matchingAlbums =
-                  await fetchViewMatches(view, <BaseItemId>[albumId]);
-              if (matchingAlbums.isEmpty) {
-                continue;
-              }
-              albumIdsScanned += matchingAlbums.length;
-              index.putIfAbsent(albumId, () => view.id);
-              return index[albumId];
-            }
-            return null;
-          });
+      final Future<BaseItemId?> missingLookup = _albumViewMissingLookups.putIfAbsent(albumId, () async {
+        final FinampUserHelper userHelper = GetIt.instance<FinampUserHelper>();
+        for (final BaseItemDto view in (userHelper.currentUser?.views.values ?? <BaseItemDto>[])) {
+          viewsExamined++;
+          final List<BaseItemDto> matchingAlbums = await fetchViewMatches(view, <BaseItemId>[albumId]);
+          if (matchingAlbums.isEmpty) {
+            continue;
+          }
+          albumIdsScanned += matchingAlbums.length;
+          index.putIfAbsent(albumId, () => view.id);
+          return index[albumId];
+        }
+        return null;
+      });
       return await missingLookup;
     } catch (_) {
       _albumViewIndex = null;
@@ -2372,25 +2094,12 @@ class DownloadsSyncService {
     } finally {
       if (benchmarkStopwatch != null) {
         benchmarkStopwatch.stop();
-        final PerformanceBenchmarkService benchmark =
-            PerformanceBenchmarkService.instance;
+        final PerformanceBenchmarkService benchmark = PerformanceBenchmarkService.instance;
         benchmark.incrementMetricBuffered("downloadAlbumViewLookupCount");
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewLookupMicros",
-          benchmarkStopwatch.elapsedMicroseconds,
-        );
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewViewsExamined",
-          viewsExamined,
-        );
-        benchmark.incrementMetricBuffered(
-          "downloadAlbumViewIdsScanned",
-          albumIdsScanned,
-        );
-        benchmark.maxMetricBuffered(
-          "downloadAlbumViewLookupMicrosMax",
-          benchmarkStopwatch.elapsedMicroseconds,
-        );
+        benchmark.incrementMetricBuffered("downloadAlbumViewLookupMicros", benchmarkStopwatch.elapsedMicroseconds);
+        benchmark.incrementMetricBuffered("downloadAlbumViewViewsExamined", viewsExamined);
+        benchmark.incrementMetricBuffered("downloadAlbumViewIdsScanned", albumIdsScanned);
+        benchmark.maxMetricBuffered("downloadAlbumViewLookupMicrosMax", benchmarkStopwatch.elapsedMicroseconds);
       }
     }
   }

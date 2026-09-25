@@ -603,10 +603,7 @@ abstract class JellyfinApi extends ChopperService {
       interceptors: [
         /// Gets baseUrl from SharedPreferences.
         JellyfinInterceptor(inForeground),
-        HttpAggregateLoggingInterceptor(
-          level: chopperHttpLogLevel,
-          benchmarkRelay: benchmarkRelay,
-        ),
+        HttpAggregateLoggingInterceptor(level: chopperHttpLogLevel, benchmarkRelay: benchmarkRelay),
       ],
     );
 

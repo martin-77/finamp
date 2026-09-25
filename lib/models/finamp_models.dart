@@ -99,8 +99,7 @@ class FinampUser {
   void update({bool? newIsLocal, String? newLocalAddress, String? newPublicAddress, bool? newPreferLocalNetwork}) {
     final previousIsLocal = isLocal;
     final previousPreferLocalNetwork = preferLocalNetwork;
-    final previousUsesLocal =
-        previousIsLocal && previousPreferLocalNetwork;
+    final previousUsesLocal = previousIsLocal && previousPreferLocalNetwork;
 
     isLocal = newIsLocal ?? isLocal;
     localAddress = newLocalAddress ?? localAddress;
@@ -4491,6 +4490,7 @@ enum FinampQuickActions {
   surpriseMe(true),
   @HiveField(9)
   playSpecificItem(true);
+
   // ID 10 moved upwards for more sensible user-facing ordering
   //TODO support album/artist shuffle (requires queue support)
 

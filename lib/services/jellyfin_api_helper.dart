@@ -86,8 +86,7 @@ class JellyfinApiHelper {
   /// This should only be run in a worker isolate
   /// Sets up singletons and listens for work.
   static Future<void> _processRequestsBackground(
-    (SendPort, RootIsolateToken, ClientCertificate?, String, SendPort, bool)
-        input,
+    (SendPort, RootIsolateToken, ClientCertificate?, String, SendPort, bool) input,
   ) async {
     BackgroundIsolateBinaryMessenger.ensureInitialized(input.$2);
     ReceivePort requestPort = ReceivePort();
@@ -133,47 +132,34 @@ class JellyfinApiHelper {
     jellyfin_api.JellyfinApi backgroundApi = jellyfin_api.JellyfinApi.create(
       inForeground: false,
       verboseLogging: input.$6,
-      benchmarkRelay:
-          PerformanceBenchmarkService.enabled ? benchmarkRelay : null,
+      benchmarkRelay: PerformanceBenchmarkService.enabled ? benchmarkRelay : null,
     );
     await for (var request in requestPort) {
-      var (func, outputPort, benchmarkPort) = request as (
-        Future<dynamic> Function(jellyfin_api.JellyfinApi),
-        SendPort,
-        SendPort?,
-      );
+      var (func, outputPort, benchmarkPort) =
+          request as (Future<dynamic> Function(jellyfin_api.JellyfinApi), SendPort, SendPort?);
       benchmarkRelay.sendPort = benchmarkPort;
       try {
         var output = await func(backgroundApi);
         outputPort.send(output);
       } catch (e, stack) {
-        _jellyfinApiHelperLogger.severe(
-          "Error processing background request - $e",
-          e,
-          stack,
-        );
+        _jellyfinApiHelperLogger.severe("Error processing background request - $e", e, stack);
         outputPort.send(e);
       } finally {
-        benchmarkRelay.send(
-          const <String, Object?>{"type": "operationDone"},
-        );
+        benchmarkRelay.send(const <String, Object?>{"type": "operationDone"});
         benchmarkRelay.sendPort = null;
       }
     }
   }
 
   /// Runs the given function in a background isolate, supplying a valid API instance.
-  Future<T> runInIsolate<T>(
-    Future<T> Function(jellyfin_api.JellyfinApi) func,
-  ) async {
+  Future<T> runInIsolate<T>(Future<T> Function(jellyfin_api.JellyfinApi) func) async {
     if (_workerIsolatePort == null) {
       return func(jellyfinApi);
     }
 
     final benchmark = PerformanceBenchmarkService.instance;
     final benchmarkEnabled = PerformanceBenchmarkService.enabled;
-    final benchmarkStopwatch =
-        benchmarkEnabled ? (Stopwatch()..start()) : null;
+    final benchmarkStopwatch = benchmarkEnabled ? (Stopwatch()..start()) : null;
     if (benchmarkEnabled) {
       benchmark.workerOperationStarted();
     }
@@ -194,8 +180,7 @@ class JellyfinApiHelper {
             durationMicros: raw["durationMicros"] as int?,
             statusCode: raw["statusCode"] as int?,
           );
-        } else if (type == "operationDone" &&
-            !benchmarkDone.isCompleted) {
+        } else if (type == "operationDone" && !benchmarkDone.isCompleted) {
           benchmarkDone.complete();
         }
       });
@@ -205,11 +190,7 @@ class JellyfinApiHelper {
 
     var workerReported = false;
     try {
-      _workerIsolatePort!.send((
-        func,
-        outputPort.sendPort,
-        benchmarkPort?.sendPort,
-      ));
+      _workerIsolatePort!.send((func, outputPort.sendPort, benchmarkPort?.sendPort));
 
       final dynamic output = await outputPort.first;
       await benchmarkDone.future;
@@ -232,10 +213,7 @@ class JellyfinApiHelper {
         if (benchmarkStopwatch?.isRunning ?? false) {
           benchmarkStopwatch!.stop();
         }
-        benchmark.workerOperationCompleted(
-          durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0,
-          failed: true,
-        );
+        benchmark.workerOperationCompleted(durationMicros: benchmarkStopwatch?.elapsedMicroseconds ?? 0, failed: true);
         workerReported = true;
       }
       rethrow;
@@ -339,16 +317,11 @@ class JellyfinApiHelper {
         recursive: true,
         fields: fields,
       );
-      return QueryResult_BaseItemDto.fromJson(
-        response as Map<String, dynamic>,
-      ).items ?? <BaseItemDto>[];
+      return QueryResult_BaseItemDto.fromJson(response as Map<String, dynamic>).items ?? <BaseItemDto>[];
     });
   }
 
-  Future<List<BaseItemDto>> getTracksForAlbumIds({
-    required List<BaseItemId> albumIds,
-    required String fields,
-  }) async {
+  Future<List<BaseItemDto>> getTracksForAlbumIds({required List<BaseItemId> albumIds, required String fields}) async {
     if (albumIds.isEmpty) {
       return <BaseItemDto>[];
     }
@@ -993,59 +966,39 @@ class JellyfinApiHelper {
     _getItemByIdBatchedRequests.add(itemId);
     if (_getItemByIdBatchedFuture == null) {
       _getItemByIdBatchedFields = fields;
-      final collectStopwatch =
-          PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+      final collectStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
 
-      _getItemByIdBatchedFuture = Future.delayed(
-        collectDelay,
-        () async {
-          collectStopwatch?.stop();
-          final batchFields = _getItemByIdBatchedFields ?? fields;
-          _getItemByIdBatchedFields = null;
-          _getItemByIdBatchedFuture = null;
+      _getItemByIdBatchedFuture = Future.delayed(collectDelay, () async {
+        collectStopwatch?.stop();
+        final batchFields = _getItemByIdBatchedFields ?? fields;
+        _getItemByIdBatchedFields = null;
+        _getItemByIdBatchedFuture = null;
 
-          var ids = _getItemByIdBatchedRequests.toList();
-          _getItemByIdBatchedRequests.clear();
+        var ids = _getItemByIdBatchedRequests.toList();
+        _getItemByIdBatchedRequests.clear();
 
-          if (collectStopwatch != null) {
-            benchmark.incrementMetricBuffered("downloadMetadataBatchCount");
+        if (collectStopwatch != null) {
+          benchmark.incrementMetricBuffered("downloadMetadataBatchCount");
+          benchmark.incrementMetricBuffered("downloadMetadataBatchIdsTotal", ids.length);
+          benchmark.maxMetricBuffered("downloadMetadataBatchIdsMax", ids.length);
+          benchmark.incrementMetricBuffered("downloadMetadataBatchCollectMicros", collectStopwatch.elapsedMicroseconds);
+        }
+
+        final requestStopwatch = PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
+        try {
+          var items = await getItems(itemIds: ids, fields: batchFields) ?? [];
+          return Map.fromIterable(items, key: (e) => (e as BaseItemDto).id);
+        } finally {
+          if (requestStopwatch != null) {
+            requestStopwatch.stop();
             benchmark.incrementMetricBuffered(
-              "downloadMetadataBatchIdsTotal",
-              ids.length,
+              "downloadMetadataBatchRequestMicros",
+              requestStopwatch.elapsedMicroseconds,
             );
-            benchmark.maxMetricBuffered(
-              "downloadMetadataBatchIdsMax",
-              ids.length,
-            );
-            benchmark.incrementMetricBuffered(
-              "downloadMetadataBatchCollectMicros",
-              collectStopwatch.elapsedMicroseconds,
-            );
+            benchmark.maxMetricBuffered("downloadMetadataBatchRequestMicrosMax", requestStopwatch.elapsedMicroseconds);
           }
-
-          final requestStopwatch =
-              PerformanceBenchmarkService.enabled ? (Stopwatch()..start()) : null;
-          try {
-            var items = await getItems(itemIds: ids, fields: batchFields) ?? [];
-            return Map.fromIterable(
-              items,
-              key: (e) => (e as BaseItemDto).id,
-            );
-          } finally {
-            if (requestStopwatch != null) {
-              requestStopwatch.stop();
-              benchmark.incrementMetricBuffered(
-                "downloadMetadataBatchRequestMicros",
-                requestStopwatch.elapsedMicroseconds,
-              );
-              benchmark.maxMetricBuffered(
-                "downloadMetadataBatchRequestMicrosMax",
-                requestStopwatch.elapsedMicroseconds,
-              );
-            }
-          }
-        },
-      );
+        }
+      });
     }
 
     final batchFuture = _getItemByIdBatchedFuture!;
@@ -1329,19 +1282,13 @@ class JellyfinApiHelper {
   Future<bool> pingLocalServer() async {
     FinampUser? user = GetIt.instance<FinampUserHelper>().currentUser;
     if (user == null) return false;
-    return _benchmarkPing(
-      target: "local",
-      operation: () => _pingSpecificServer(user.localAddress),
-    );
+    return _benchmarkPing(target: "local", operation: () => _pingSpecificServer(user.localAddress));
   }
 
   Future<bool> pingPublicServer() async {
     FinampUser? user = GetIt.instance<FinampUserHelper>().currentUser;
     if (user == null) return false;
-    return _benchmarkPing(
-      target: "public",
-      operation: () => _pingSpecificServer(user.publicAddress),
-    );
+    return _benchmarkPing(target: "public", operation: () => _pingSpecificServer(user.publicAddress));
   }
 
   Future<bool> pingActiveServer() async {
@@ -1362,10 +1309,7 @@ class JellyfinApiHelper {
     );
   }
 
-  Future<bool> _benchmarkPing({
-    required String target,
-    required Future<bool> Function() operation,
-  }) async {
+  Future<bool> _benchmarkPing({required String target, required Future<bool> Function() operation}) async {
     if (!PerformanceBenchmarkService.enabled) {
       return operation();
     }
@@ -1375,11 +1319,7 @@ class JellyfinApiHelper {
     stopwatch.stop();
     PerformanceBenchmarkService.instance.diagnostic(
       "network-target-ping",
-      values: {
-        "target": target,
-        "success": result,
-        "durationMs": stopwatch.elapsedMicroseconds / 1000.0,
-      },
+      values: {"target": target, "success": result, "durationMs": stopwatch.elapsedMicroseconds / 1000.0},
     );
     return result;
   }

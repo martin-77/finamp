@@ -507,10 +507,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     _player.errorStream.listen((error) {
       _audioServiceBackgroundTaskLogger.severe("Player error: $error", error);
-      PerformanceBenchmarkService.instance.mark(
-        "player-error",
-        values: {"errorType": error.runtimeType.toString()},
-      );
+      PerformanceBenchmarkService.instance.mark("player-error", values: {"errorType": error.runtimeType.toString()});
     });
 
     String? benchmarkReadyRunId;
@@ -520,13 +517,10 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
 
     PerformanceBenchmarkRun? activePlaybackBenchmarkRun() {
       final run = PerformanceBenchmarkService.instance.activeRun;
-      final isPlaybackBenchmark = run != null &&
-          (run.scenario.startsWith("playback-startup-") ||
-              run.scenario == "artist-album-track-drilldown");
-      if (!isPlaybackBenchmark ||
-          !run!.events.any(
-            (event) => event.name == "playback-action-received",
-          )) {
+      final isPlaybackBenchmark =
+          run != null &&
+          (run.scenario.startsWith("playback-startup-") || run.scenario == "artist-album-track-drilldown");
+      if (!isPlaybackBenchmark || !run!.events.any((event) => event.name == "playback-action-received")) {
         return null;
       }
       return run;
@@ -543,10 +537,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
         benchmarkUsefulBufferRunId = run.id;
         PerformanceBenchmarkService.instance.mark(
           "player-useful-buffer-ready",
-          values: {
-            "bufferedPositionMs": bufferedPosition.inMilliseconds,
-            "bufferAheadMs": usefulBuffer.inMilliseconds,
-          },
+          values: {"bufferedPositionMs": bufferedPosition.inMilliseconds, "bufferAheadMs": usefulBuffer.inMilliseconds},
         );
       }
     }
@@ -572,10 +563,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
     // trigger sleep timer early if we're almost at the end of the final track
     _player.positionStream.listen((position) {
       final run = activePlaybackBenchmarkRun();
-      if (_player.playing &&
-          position > Duration.zero &&
-          run != null &&
-          benchmarkPositionRunId != run.id) {
+      if (_player.playing && position > Duration.zero && run != null && benchmarkPositionRunId != run.id) {
         benchmarkPositionRunId = run.id;
         PerformanceBenchmarkService.instance.mark(
           "player-first-position-advance",
@@ -607,9 +595,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
         final run = activePlaybackBenchmarkRun();
         if (run != null && benchmarkReadyRunId != run.id) {
           benchmarkReadyRunId = run.id;
-          PerformanceBenchmarkService.instance.mark(
-            "player-processing-ready",
-          );
+          PerformanceBenchmarkService.instance.mark("player-processing-ready");
         }
       }
       if (event == ProcessingState.completed) {
@@ -1447,8 +1433,7 @@ class MusicPlayerBackgroundTask extends BaseAudioHandler with SeekHandler, Queue
         return Future.error("Offline mode enabled but downloaded track not found.");
       } else {
         final user = GetIt.instance<FinampUserHelper>().currentUser;
-        final usesLocalTarget =
-            user?.isLocal == true && user?.preferLocalNetwork == true;
+        final usesLocalTarget = user?.isLocal == true && user?.preferLocalNetwork == true;
         PerformanceBenchmarkService.instance.reportPlaybackSourceSelected(
           source: "server",
           serverTarget: usesLocalTarget ? "local" : "public",

@@ -18,10 +18,7 @@ class BenchmarkHttpMetricRelay {
 }
 
 class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
-  HttpAggregateLoggingInterceptor({
-    super.level = Level.body,
-    this.benchmarkRelay,
-  }) : super(logger: aggregateLogger);
+  HttpAggregateLoggingInterceptor({super.level = Level.body, this.benchmarkRelay}) : super(logger: aggregateLogger);
 
   final BenchmarkHttpMetricRelay? benchmarkRelay;
 
@@ -30,9 +27,7 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
     aggregateLogger.onStartRequest(chain.request);
     final benchmark = PerformanceBenchmarkService.instance;
     if (PerformanceBenchmarkService.enabled && benchmarkRelay?.sendPort != null) {
-      benchmarkRelay!.send(const <String, Object?>{
-        "type": "start",
-      });
+      benchmarkRelay!.send(const <String, Object?>{"type": "start"});
     } else {
       benchmark.networkRequestStarted();
     }
@@ -40,11 +35,8 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
     int? responseBytes;
     int? statusCode;
     try {
-      final Response<BodyType> response =
-          await super.intercept(HttpAggregateLoggingChain(chain));
-      responseBytes = int.tryParse(
-        response.base.headers["content-length"] ?? "",
-      );
+      final Response<BodyType> response = await super.intercept(HttpAggregateLoggingChain(chain));
+      responseBytes = int.tryParse(response.base.headers["content-length"] ?? "");
       statusCode = response.statusCode;
       // Request info isn't printed until after response completes
       aggregateLogger.onEndRequest(chain.request);
@@ -52,8 +44,7 @@ class HttpAggregateLoggingInterceptor extends HttpLoggingInterceptor {
       return response;
     } finally {
       stopwatch.stop();
-      if (PerformanceBenchmarkService.enabled &&
-          benchmarkRelay?.sendPort != null) {
+      if (PerformanceBenchmarkService.enabled && benchmarkRelay?.sendPort != null) {
         benchmarkRelay!.send(<String, Object?>{
           "type": "complete",
           "responseBytes": responseBytes,

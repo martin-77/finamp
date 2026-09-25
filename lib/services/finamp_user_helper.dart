@@ -71,20 +71,13 @@ class FinampUserHelper {
   /// Saves a new user to the Hive box and sets the CurrentUserId.
   Future<void> saveUser(FinampUser newUser) async {
     final previous = currentUser;
-    final previousUsesLocal =
-        previous?.isLocal == true && previous?.preferLocalNetwork == true;
-    final nextUsesLocal =
-        newUser.isLocal && newUser.preferLocalNetwork;
+    final previousUsesLocal = previous?.isLocal == true && previous?.preferLocalNetwork == true;
+    final nextUsesLocal = newUser.isLocal && newUser.preferLocalNetwork;
 
-    if (PerformanceBenchmarkService.enabled &&
-        previous != null &&
-        previousUsesLocal != nextUsesLocal) {
+    if (PerformanceBenchmarkService.enabled && previous != null && previousUsesLocal != nextUsesLocal) {
       PerformanceBenchmarkService.instance.diagnostic(
         "network-target-changed",
-        values: {
-          "from": previousUsesLocal ? "local" : "public",
-          "to": nextUsesLocal ? "local" : "public",
-        },
+        values: {"from": previousUsesLocal ? "local" : "public", "to": nextUsesLocal ? "local" : "public"},
       );
     }
 
