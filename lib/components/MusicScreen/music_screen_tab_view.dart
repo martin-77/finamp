@@ -1191,6 +1191,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _sparseAlbumTotalCount = null;
         _sparseAlbumItems.clear();
         _sparseAlbumWindowStartsLoading.clear();
+        _sparseUserScrollActive = false;
       });
     }
     ref.read(pageControl.notifier).refresh();
@@ -1404,8 +1405,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         : _usingSparseAlbumGrid
         ? NotificationListener<ScrollNotification>(
             onNotification: (notification) {
-              if (notification is ScrollStartNotification) {
-                _sparseUserScrollActive = notification.dragDetails != null;
+              if (notification is ScrollStartNotification &&
+                  notification.dragDetails != null) {
+                _sparseUserScrollActive = true;
               } else if (notification is ScrollUpdateNotification &&
                   notification.dragDetails != null) {
                 _sparseUserScrollActive = true;
