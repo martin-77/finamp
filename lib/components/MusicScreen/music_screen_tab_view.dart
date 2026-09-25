@@ -733,12 +733,14 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       controller.jumpTo(estimatedOffset);
       await WidgetsBinding.instance.endOfFrame;
 
-      duration = MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : _getAnimationDurationForOffsetToIndex(targetIndex).clamp(
-              const Duration(milliseconds: 120),
-              const Duration(milliseconds: 350),
-            );
+      if (MediaQuery.disableAnimationsOf(context)) {
+        duration = Duration.zero;
+      } else {
+        final refinedDurationMs = _getAnimationDurationForOffsetToIndex(
+          targetIndex,
+        ).inMilliseconds.clamp(120, 350);
+        duration = Duration(milliseconds: refinedDurationMs);
+      }
 
       if (_activeBenchmarkJump != null) {
         benchmark.metric(
