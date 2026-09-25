@@ -265,6 +265,10 @@ class PerformanceBenchmarkService {
     "FINAMP_BENCH_DOWNLOAD_BENCH100_ONLY",
     defaultValue: false,
   );
+  static const bool targetedDownloadBench1000 = bool.fromEnvironment(
+    "FINAMP_BENCH_DOWNLOAD_BENCH1000_ONLY",
+    defaultValue: false,
+  );
   static const String variant = String.fromEnvironment(
     "FINAMP_BENCH_VARIANT",
     defaultValue: "unknown",
