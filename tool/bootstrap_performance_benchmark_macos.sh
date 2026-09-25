@@ -55,6 +55,7 @@ fi
 
 step "Fetching benchmark branch"
 git fetch origin "$BRANCH"
+git fetch origin redesign
 
 if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   git switch "$BRANCH"
