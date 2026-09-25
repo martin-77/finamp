@@ -104,6 +104,23 @@ class PerformanceBenchmarkSuiteRunner {
         .setPerformanceBenchmarkOverride(true);
     final stage = await recorder.getSuiteStage();
 
+    if (PerformanceBenchmarkService.targetedAlphabet) {
+      recorder.diagnostic(
+        "suite-targeted-mode",
+        values: {
+          "scope": "alphabet-diagnostics",
+          "directOffset": PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic,
+        },
+      );
+      GetIt.instance<FinampUserHelper>().runUserHook(() {
+        unawaited(_runTargetedAlphabetDiagnostics());
+      });
+      if (GetIt.instance<FinampUserHelper>().currentUser == null) {
+        recorder.diagnostic("suite-waiting-for-login");
+      }
+      return;
+    }
+
     if (PerformanceBenchmarkService.targetedDownloadBench100 ||
         PerformanceBenchmarkService.targetedDownloadBench1000) {
       final String targetAlias =
@@ -2013,6 +2030,135 @@ class PerformanceBenchmarkSuiteRunner {
       quietPeriod: const Duration(seconds: 3),
       timeout: const Duration(minutes: 3),
     );
+  }
+
+  Future<void> _runTargetedAlphabetDiagnostics() async {
+    if (_running) return;
+    _running = true;
+
+    final recorder = PerformanceBenchmarkService.instance;
+    const requestedTab = "albums";
+    const letters = <String>["#", "A", "G", "M", "Z"];
+
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await _ensureSuiteOnlineBaseline();
+      await recorder.waitForStartupScreenReady(
+        timeout: const Duration(minutes: 15),
+      );
+      await recorder.waitForNetworkQuiescence(
+        quietPeriod: const Duration(seconds: 2),
+        timeout: const Duration(minutes: 10),
+      );
+
+      final resolvedTab = await recorder.requestUiTab(
+        contentType: requestedTab,
+        refresh: true,
+        timeout: const Duration(minutes: 10),
+      );
+      await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+
+      for (final letter in letters) {
+        await recorder.startRun(
+          scenario: "alphabet-jump-$requestedTab-$letter",
+          variant: PerformanceBenchmarkService.variant,
+          mode: PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic
+              ? "refreshed-direct-offset"
+              : "refreshed-scroll-to-index",
+          targetType: resolvedTab,
+        );
+        try {
+          recorder.metric("letter", letter);
+          recorder.metric(
+            "alphabetDirectOffsetDiagnostic",
+            PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic,
+          );
+          await recorder.runStep(
+            name: "alphabet-jump",
+            timeout: const Duration(minutes: 30),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedTab,
+              letter: letter,
+              timeout: const Duration(minutes: 29, seconds: 30),
+            ),
+          );
+          await recorder.runStep(
+            name: "wait-ui-quiescent",
+            timeout: const Duration(minutes: 16),
+            operation: _waitForUiQuiescence,
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+
+      for (final letter in letters) {
+        await recorder.startRun(
+          scenario: "alphabet-jump-$requestedTab-$letter",
+          variant: PerformanceBenchmarkService.variant,
+          mode: PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic
+              ? "warm-direct-offset"
+              : "warm-scroll-to-index",
+          targetType: resolvedTab,
+        );
+        try {
+          recorder.metric("letter", letter);
+          recorder.metric(
+            "alphabetDirectOffsetDiagnostic",
+            PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic,
+          );
+          await recorder.runStep(
+            name: "alphabet-jump",
+            timeout: const Duration(minutes: 5),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedTab,
+              letter: letter,
+              timeout: const Duration(minutes: 4, seconds: 30),
+            ),
+          );
+          await recorder.runStep(
+            name: "wait-ui-quiescent",
+            timeout: const Duration(minutes: 16),
+            operation: _waitForUiQuiescence,
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await _settleUi(schedulerCooldown: const Duration(milliseconds: 750));
+      }
+
+      recorder.diagnostic(
+        "targeted-alphabet-complete",
+        values: {
+          "contentType": requestedTab,
+          "directOffset": PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic,
+        },
+      );
+    } catch (error) {
+      if (recorder.activeRun != null) {
+        await recorder.failActiveRun(
+          result: PerformanceBenchmarkResult.failed,
+          error: error,
+          stackTrace: StackTrace.current,
+          step: "targeted-alphabet",
+        );
+      }
+      recorder.diagnostic(
+        "suite-error",
+        values: {
+          "phase": "targeted-alphabet",
+          "errorType": error.runtimeType.toString(),
+        },
+      );
+    } finally {
+      GetIt.instance<KeepScreenOnHelper>().setPerformanceBenchmarkOverride(false);
+      recorder.stopHeartbeat();
+      await recorder.flushHostStream();
+      _running = false;
+    }
   }
 
   Future<void> _runTargetedDownloadDiagnostics() async {
