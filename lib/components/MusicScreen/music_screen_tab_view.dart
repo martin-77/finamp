@@ -199,7 +199,11 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         },
       );
       benchmark.metric("alphabetJumpPagesLoaded", 0);
-      unawaited(scrollToLetter(command.letter));
+      if (command.viaUiTap) {
+        benchmark.dispatchAlphabetUiTap(command);
+      } else {
+        unawaited(scrollToLetter(command.letter));
+      }
     });
 
     super.initState();
@@ -1100,6 +1104,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
               scrollController: controller,
               sortOrder: widget.sortConfig.sortOrder,
               inGridMode: !useListMode,
+              benchmarkContentType: widget.contentType?.name,
               child: tabContent,
             )
           : tabContent,

@@ -66,6 +66,9 @@ if [[ "$alphabet_direct_offset_define" == "true" && "$alphabet_only_define" != "
   echo "FINAMP_BENCH_ALPHABET_DIRECT_OFFSET requires FINAMP_BENCH_ALPHABET_ONLY=true" >&2
   exit 2
 fi
+if [[ "$alphabet_only_define" == "true" && -z "${FINAMP_BENCH_POLL_SECONDS:-}" ]]; then
+  poll_seconds="0.5"
+fi
 if [[ "$smoke_define" == "true" && ( "$targeted_download_define" == "true" || "$targeted_download_1000_define" == "true" ) ]]; then
   echo "Targeted download diagnostics and FINAMP_BENCH_SMOKE are mutually exclusive" >&2
   exit 2
@@ -410,28 +413,28 @@ PY
         sleep 5
       fi
 
-      if grep -q '"name":"targeted-download-complete"' "$delta_file"; then
-        target_alias="$(grep '"name":"targeted-download-complete"' "$delta_file" | tail -1 | sed -n 's/.*"targetAlias":"\([^"]*\)".*/\1/p')"
+      if grep -q '"name":"targeted-download-complete"' "$jsonl"; then
+        target_alias="$(grep '"name":"targeted-download-complete"' "$jsonl" | tail -1 | sed -n 's/.*"targetAlias":"\([^"]*\)".*/\1/p')"
         log "==> Targeted ${target_alias:-download} diagnostics completed"
         generate_summary
         exit 0
       fi
-      if grep -q '"name":"targeted-alphabet-complete"' "$delta_file"; then
+      if grep -q '"name":"targeted-alphabet-complete"' "$jsonl"; then
         log "==> Targeted alphabet diagnostics completed"
         generate_summary
         exit 0
       fi
-      if grep -q '"name":"suite-complete"' "$delta_file"; then
+      if grep -q '"name":"suite-complete"' "$jsonl"; then
         log "==> Benchmark suite completed"
         generate_summary
         exit 0
       fi
-      if grep -q '"name":"suite-blocked"' "$delta_file"; then
+      if grep -q '"name":"suite-blocked"' "$jsonl"; then
         log "ERROR: Benchmark suite blocked; inspect $jsonl"
         generate_summary
         exit 3
       fi
-      if grep -q '"name":"suite-error"' "$delta_file"; then
+      if grep -q '"name":"suite-error"' "$jsonl"; then
         log "ERROR: Benchmark suite reported an error; inspect $jsonl"
         generate_summary
         exit 4

@@ -43,10 +43,12 @@ class PerformanceBenchmarkJumpCommand {
   PerformanceBenchmarkJumpCommand({
     required this.contentType,
     required this.letter,
+    required this.viaUiTap,
   });
 
   final String contentType;
   final String letter;
+  final bool viaUiTap;
   final Completer<void> _completer = Completer<void>();
 
   Future<void> get completed => _completer.future;
@@ -442,6 +444,8 @@ class PerformanceBenchmarkService {
       StreamController<int>.broadcast();
   final StreamController<PerformanceBenchmarkJumpCommand> _jumpController =
       StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
+  final StreamController<PerformanceBenchmarkJumpCommand> _alphabetTapController =
+      StreamController<PerformanceBenchmarkJumpCommand>.broadcast();
   final StreamController<PerformanceBenchmarkTabCommand> _tabController =
       StreamController<PerformanceBenchmarkTabCommand>.broadcast();
   final StreamController<String> _eventNameController =
@@ -455,6 +459,13 @@ class PerformanceBenchmarkService {
 
   Stream<PerformanceBenchmarkJumpCommand> get jumpCommands =>
       _jumpController.stream;
+  Stream<PerformanceBenchmarkJumpCommand> get alphabetTapCommands =>
+      _alphabetTapController.stream;
+
+  void dispatchAlphabetUiTap(PerformanceBenchmarkJumpCommand command) {
+    if (!enabled) return;
+    _alphabetTapController.add(command);
+  }
   Stream<PerformanceBenchmarkTabCommand> get tabCommands =>
       _tabController.stream;
   Stream<PerformanceBenchmarkPageCommand> get pageCommands =>
@@ -1546,15 +1557,21 @@ class PerformanceBenchmarkService {
   Future<void> requestAlphabetJump({
     required String contentType,
     required String letter,
+    bool viaUiTap = false,
     Duration timeout = const Duration(minutes: 30),
   }) async {
     final command = PerformanceBenchmarkJumpCommand(
       contentType: contentType,
       letter: letter,
+      viaUiTap: viaUiTap,
     );
     mark(
       "alphabet-jump-requested",
-      values: {"contentType": contentType, "letter": letter},
+      values: {
+        "contentType": contentType,
+        "letter": letter,
+        "inputMode": viaUiTap ? "ui-tap" : "direct-command",
+      },
     );
     _jumpController.add(command);
     await command.completed.timeout(timeout);

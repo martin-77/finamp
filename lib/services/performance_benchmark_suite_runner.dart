@@ -2130,6 +2130,44 @@ class PerformanceBenchmarkSuiteRunner {
         await _settleUi(schedulerCooldown: const Duration(milliseconds: 750));
       }
 
+      for (final letter in letters) {
+        await recorder.startRun(
+          scenario: "alphabet-jump-$requestedTab-$letter",
+          variant: PerformanceBenchmarkService.variant,
+          mode: PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic
+              ? "warm-ui-tap-direct-offset"
+              : "warm-ui-tap-scroll-to-index",
+          targetType: resolvedTab,
+        );
+        try {
+          recorder.metric("letter", letter);
+          recorder.metric(
+            "alphabetDirectOffsetDiagnostic",
+            PerformanceBenchmarkService.alphabetDirectOffsetDiagnostic,
+          );
+          recorder.metric("alphabetInputMode", "ui-tap");
+          await recorder.runStep(
+            name: "alphabet-ui-tap",
+            timeout: const Duration(minutes: 5),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedTab,
+              letter: letter,
+              viaUiTap: true,
+              timeout: const Duration(minutes: 4, seconds: 30),
+            ),
+          );
+          await recorder.runStep(
+            name: "wait-ui-quiescent",
+            timeout: const Duration(minutes: 16),
+            operation: _waitForUiQuiescence,
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await _settleUi(schedulerCooldown: const Duration(milliseconds: 500));
+      }
+
       recorder.diagnostic(
         "targeted-alphabet-complete",
         values: {
