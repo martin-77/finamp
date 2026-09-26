@@ -361,12 +361,17 @@ class PagedContent extends _$PagedContent {
     final doLoads = state.hasNextPage && (request is! FinampUnpagedDisplayable || preCached.isEmpty);
 
     final queueEndTarget = startingIndex + limit;
-    if (preCached.length >= queueEndTarget) {
-      return (preCached.slice(startingIndex, queueEndTarget), null);
+    final cachedStart = _pageStartOffset;
+    final cachedEnd = cachedStart + preCached.length;
+
+    if (startingIndex >= cachedStart && queueEndTarget <= cachedEnd) {
+      final localStart = startingIndex - cachedStart;
+      return (preCached.slice(localStart, localStart + limit), null);
     }
+
     List<FinampDisplayableOrPlayable> items = [];
-    if (startingIndex < preCached.length) {
-      items = preCached.slice(startingIndex);
+    if (startingIndex >= cachedStart && startingIndex < cachedEnd) {
+      items = preCached.slice(startingIndex - cachedStart);
     }
 
     if (!doLoads) {
@@ -375,6 +380,9 @@ class PagedContent extends _$PagedContent {
 
     final loadStartOffset = startingIndex + items.length;
     final loadSize = queueEndTarget - loadStartOffset;
+    if (loadSize <= 0) {
+      return (items, null);
+    }
 
     // TODO break request up into pages?
     newPage(pageSize: loadSize);
@@ -394,7 +402,8 @@ class PagedContent extends _$PagedContent {
       items,
       Future.sync(() async {
         final fullPage = await waitForPage.future ?? [];
-        return fullPage.safeSliceByLength(startingIndex + items.length, limit);
+        final localStart = startingIndex + items.length - _pageStartOffset;
+        return fullPage.safeSliceByLength(localStart, limit);
       }),
     );
   }
