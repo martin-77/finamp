@@ -24,6 +24,26 @@ bash tool/bootstrap_performance_benchmark_macos.sh
 
 The bootstrap performs the required preflight checks, builds the PROFILE app, installs it on the physical device and collects benchmark output from the app container.
 
+## UI and alphabet fast-scroller coverage
+
+The full benchmark suite includes UI collection and alphabet fast-scroller scenarios for the main music tabs.
+
+Alphabet coverage includes:
+
+- Tracks, Artists, and Albums
+- sequential `# → A → G → M → Z` jumps after a provider refresh
+- a second warm-loaded pass over the same letter sequence
+- an isolated fresh direct `Z` jump for Artists and Albums
+
+The isolated direct-`Z` scenarios are specifically intended to catch regressions where a distant grid jump progressively materializes all preceding pages before reaching the target. They run as:
+
+- `alphabet-direct-z-artists` with mode `fresh-direct`
+- `alphabet-direct-z-albums` with mode `fresh-direct`
+
+Track fast scrolling remains benchmarked by the sequential and warm-loaded scenarios, but it uses a different list/paging path and is not treated as equivalent to the grid-based Album/Artist optimization.
+
+The benchmark also waits for UI quiescence after each measured jump so the result includes completion of the visible navigation work rather than only dispatching the fast-scroller request.
+
 ## Targeted download benchmarks
 
 For the 100-track workload:
