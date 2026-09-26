@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:finamp/extensions/list.dart';
@@ -26,7 +27,10 @@ const homeScreenSectionItemLimit = 25;
 @riverpod
 class PagedContent extends _$PagedContent {
   List<int> _pageSizes = [];
+  int _pageStartOffset = 0;
   List<ProviderBase<AsyncValue<Object?>>> _dependencies = [];
+
+  int get pageStartOffset => _pageStartOffset;
 
   @override
   PagingState<int, FinampDisplayableOrPlayable> build(FinampDisplayable<FinampDisplayableOrPlayable> request) {
@@ -97,7 +101,7 @@ class PagedContent extends _$PagedContent {
         musicRequest = request;
     }
 
-    int offset = 0;
+    int offset = _pageStartOffset;
     for (int i = 0; i < _pageSizes.length; i++) {
       final provider = loadHomeSectionItemsProvider(request: musicRequest, startIndex: offset, limit: _pageSizes[i]);
       providers.add(provider);
@@ -143,6 +147,18 @@ class PagedContent extends _$PagedContent {
       _pageSizes.add(pageSize);
       ref.invalidateSelf();
     }
+  }
+
+  int seekToIndexWindow(
+    int targetIndex, {
+    int leadingItems = 80,
+    int pageSize = 240,
+  }) {
+    final windowStart = max(0, targetIndex - leadingItems);
+    _pageStartOffset = windowStart;
+    _pageSizes = [pageSize];
+    ref.invalidateSelf();
+    return targetIndex - windowStart;
   }
 
   Future<int?> resolveAlphabetTargetIndex(String letter) async {
@@ -278,6 +294,7 @@ class PagedContent extends _$PagedContent {
 
   void refresh() {
     _pageSizes = [];
+    _pageStartOffset = 0;
     ref.invalidateSelf();
     // Delay invalidation of page providers until after we stop depending on them
     // to avoid immediate rebuild of all.
