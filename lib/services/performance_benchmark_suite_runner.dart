@@ -2915,6 +2915,47 @@ class PerformanceBenchmarkSuiteRunner {
     final letters = _smoke ? const <String>["A", "Z"] : const <String>["#", "A", "G", "M", "Z"];
 
     for (final requestedTab in tabs) {
+      // Album and artist grids get an isolated cold distant-jump measurement.
+      // This specifically catches regressions where jumping directly from the
+      // first page to the end of a large collection progressively materializes
+      // every preceding page.
+      if (requestedTab == "artists" || requestedTab == "albums") {
+        final resolvedDirectTab = await recorder.requestUiTab(
+          contentType: requestedTab,
+          refresh: true,
+          timeout: const Duration(minutes: 10),
+        );
+        await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+
+        await recorder.startRun(
+          scenario: "alphabet-direct-z-$requestedTab",
+          variant: PerformanceBenchmarkService.variant,
+          mode: "fresh-direct",
+          targetType: resolvedDirectTab,
+        );
+        try {
+          recorder.metric("letter", "Z");
+          await recorder.runStep(
+            name: "alphabet-jump",
+            timeout: const Duration(minutes: 30),
+            operation: () => recorder.requestAlphabetJump(
+              contentType: resolvedDirectTab,
+              letter: "Z",
+              timeout: const Duration(minutes: 29, seconds: 30),
+            ),
+          );
+          await recorder.runStep(
+            name: "wait-ui-quiescent",
+            timeout: const Duration(minutes: 16),
+            operation: _waitForUiQuiescence,
+          );
+          await recorder.finishRun();
+        } catch (_) {
+          // runStep finalized the failed run.
+        }
+        await _settleUi(schedulerCooldown: const Duration(seconds: 2));
+      }
+
       // Refresh once outside the measured jump runs. The first sequence then
       // exercises the real incremental loading path from a fresh first page.
       final resolvedTab = await recorder.requestUiTab(
