@@ -152,7 +152,7 @@ class PagedContent extends _$PagedContent {
     }
 
     final MusicScreenPlayable? musicRequest = switch (request) {
-      Genre<FinampPlayableDto>() => request.getMusicScreenRequest(),
+      Genre<FinampPlayableDto> genre => genre.getMusicScreenRequest(),
       MusicScreenPlayable<FinampPlayableDto>() => request,
       _ => null,
     };
