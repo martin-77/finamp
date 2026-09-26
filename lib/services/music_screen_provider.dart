@@ -142,21 +142,29 @@ class PagedContent extends _$PagedContent {
     );
   }
 
-  void newPage({int pageSize = musicScreenPageSize}) {
+  bool get _isTrackRequest => switch (request) {
+    MusicScreenPlayable<FinampPlayableDto>(tab: ContentType.tracks) => true,
+    Genre<FinampPlayableDto>(type: GenreChildType.tracks) => true,
+    _ => false,
+  };
+
+  void newPage({int? pageSize}) {
     if (!state.isLoading) {
-      _pageSizes.add(pageSize);
+      _pageSizes.add(pageSize ?? (_isTrackRequest ? 300 : musicScreenPageSize));
       ref.invalidateSelf();
     }
   }
 
   int seekToIndexWindow(
     int targetIndex, {
-    int leadingItems = 80,
-    int pageSize = 240,
+    int? leadingItems,
+    int? pageSize,
   }) {
-    final windowStart = max(0, targetIndex - leadingItems);
+    final resolvedLeadingItems = leadingItems ?? (_isTrackRequest ? 120 : 80);
+    final resolvedPageSize = pageSize ?? (_isTrackRequest ? 500 : 240);
+    final windowStart = max(0, targetIndex - resolvedLeadingItems);
     _pageStartOffset = windowStart;
-    _pageSizes = [pageSize];
+    _pageSizes = [resolvedPageSize];
     ref.invalidateSelf();
     return targetIndex - windowStart;
   }
@@ -224,6 +232,7 @@ class PagedContent extends _$PagedContent {
     Future<QueryResult_BaseItemDto> query({
       String? nameStartsWithOrGreater,
       String? nameLessThan,
+      int? startIndex,
     }) {
       return GetIt.instance<JellyfinApiHelper>().getItemsWithTotalRecordCount(
         libraryFilter: library?.id,
@@ -248,6 +257,7 @@ class PagedContent extends _$PagedContent {
             )
             .nonNulls
             .join(","),
+        startIndex: startIndex,
         limit: 1,
         isFavorite: JellyfinApiHelper.getIsFavoriteFilter(
           musicRequest.tab,
@@ -262,20 +272,52 @@ class PagedContent extends _$PagedContent {
 
     final descending =
         musicRequest.sortConfig.sortOrder == SortOrder.descending;
-    final totalFuture = query();
+    final totalResult = await query();
+    final total = totalResult.totalRecordCount ?? 0;
+    if (total <= 0) return 0;
+
     if (letter == "#") {
-      final total = (await totalFuture).totalRecordCount ?? 0;
-      if (total <= 0) return 0;
       return descending ? total - 1 : 0;
     }
 
-    final boundaryFuture = descending
-        ? query(nameLessThan: letter)
-        : query(nameStartsWithOrGreater: letter);
-    final results = await Future.wait([totalFuture, boundaryFuture]);
-    final total = results[0].totalRecordCount ?? 0;
-    final boundaryCount = results[1].totalRecordCount ?? 0;
-    if (total <= 0) return 0;
+    if (musicRequest.tab == ContentType.tracks) {
+      // Track lists are intentionally sorted by Jellyfin's Name field rather
+      // than SortName. NameStartsWithOrGreater/NameLessThan are not a reliable
+      // way to derive an absolute index for this ordering, so find the boundary
+      // directly in the sorted result set.
+      final target = letter.toLowerCase();
+      var low = 0;
+      var high = total;
+
+      while (low < high) {
+        final middle = low + ((high - low) ~/ 2);
+        final result = await query(startIndex: middle);
+        final item = result.items?.firstOrNull;
+        if (item == null) {
+          high = middle;
+          continue;
+        }
+
+        final name = (item.name ?? "").toLowerCase();
+        final comparison = name.compareTo(target);
+        final isAtOrBeyondTarget = descending
+            ? comparison <= 0
+            : comparison >= 0;
+
+        if (isAtOrBeyondTarget) {
+          high = middle;
+        } else {
+          low = middle + 1;
+        }
+      }
+
+      return low.clamp(0, total - 1).toInt();
+    }
+
+    final boundaryResult = descending
+        ? await query(nameLessThan: letter)
+        : await query(nameStartsWithOrGreater: letter);
+    final boundaryCount = boundaryResult.totalRecordCount ?? 0;
 
     return (total - boundaryCount).clamp(0, total - 1).toInt();
   }
