@@ -239,7 +239,6 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
 
         _alphabetResolvedTargetIndex = targetIndex;
         if (targetIndex != null &&
-            !_useListModeForCurrentContent() &&
             (hasLeadingGap || targetIndex >= itemList.length)) {
           _alphabetResolvedTargetIndex =
               pageNotifier.seekToIndexWindow(targetIndex);
@@ -499,7 +498,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
                                 return TrackListTile(
                                   key: ValueKey(item.item.id),
                                   item: item.item,
-                                  index: index,
+                                  index: pageStartOffset + index,
                                   // when the tabBar was filtered and we only have the tracks tab,
                                   // we can allow Dismiss gestures in the track list
                                   allowDismiss: widget.allowTrackGestures,
