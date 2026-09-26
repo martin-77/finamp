@@ -124,6 +124,9 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     //TODO use binary search to improve performance for already loaded pages
     final state = ref.read(pageControl);
     if (state.isLoading) return;
+    final pageNotifier = ref.read(pageControl.notifier);
+    final pageStartOffset = pageNotifier.pageStartOffset;
+    final hasLeadingGap = pageStartOffset > 0;
     final itemList = state.items ?? [];
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
@@ -168,23 +171,42 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         _alphabetResolvedTargetIndex = null;
         return;
       } else if (reversed ? comparisonResult < 0 : comparisonResult > 0) {
-        // If the letter is before the current item, there was no previous match (letter doesn't seem to exist in library)
-        // scroll to the previous item instead
-        timer?.cancel();
-        await _scrollToTargetIndex(
-          targetIndex: (i - 1).clamp(0, itemList.length - 1),
-          preferPosition: AutoScrollPosition.middle,
-        );
+        // With a seek window, items before this window may not be loaded. Only
+        // treat an overshoot as authoritative when the loaded data starts at
+        // the beginning or when this is already the resolved target window.
+        if (!hasLeadingGap || _alphabetResolvedTargetIndex != null) {
+          timer?.cancel();
+          await _scrollToTargetIndex(
+            targetIndex: (i - 1).clamp(0, itemList.length - 1),
+            preferPosition: AutoScrollPosition.middle,
+          );
 
-        letterToSearch = null;
-        _alphabetSeekAttemptedLetter = null;
-        _alphabetResolvedTargetIndex = null;
-        return;
+          letterToSearch = null;
+          _alphabetSeekAttemptedLetter = null;
+          _alphabetResolvedTargetIndex = null;
+          return;
+        }
+        break;
       }
     }
 
     timer?.cancel();
-    if (!state.hasNextPage) {
+
+    if (letter == '#' &&
+        _alphabetResolvedTargetIndex != null &&
+        _alphabetResolvedTargetIndex! < itemList.length) {
+      await _scrollToTargetIndex(
+        targetIndex: _alphabetResolvedTargetIndex!,
+        preferPosition: AutoScrollPosition.begin,
+      );
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      return;
+    }
+
+    if (!state.hasNextPage &&
+        (!hasLeadingGap || _alphabetResolvedTargetIndex != null)) {
       letterToSearch = null;
       _alphabetSeekAttemptedLetter = null;
       _alphabetResolvedTargetIndex = null;
@@ -216,9 +238,17 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
         }
 
         _alphabetResolvedTargetIndex = targetIndex;
+        if (targetIndex != null &&
+            !_useListModeForCurrentContent() &&
+            (hasLeadingGap || targetIndex >= itemList.length)) {
+          _alphabetResolvedTargetIndex =
+              pageNotifier.seekToIndexWindow(targetIndex);
+          return;
+        }
+
         if (targetIndex != null && targetIndex >= itemList.length) {
           final missingItems = targetIndex - itemList.length + 1;
-          ref.read(pageControl.notifier).newPage(
+          pageNotifier.newPage(
             pageSize: min(missingItems, 5000),
           );
           return;
