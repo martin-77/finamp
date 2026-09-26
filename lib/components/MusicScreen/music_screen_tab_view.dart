@@ -127,6 +127,25 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
     final pageStartOffset = pageNotifier.pageStartOffset;
     final hasLeadingGap = pageStartOffset > 0;
     final itemList = state.items ?? [];
+
+    // A bounded seek window is loaded using the same server-side ordering that
+    // produced the resolved global target index. Once that window is available,
+    // the translated local index is authoritative; do not search the window
+    // again using client-side string normalization.
+    if (hasLeadingGap &&
+        _alphabetResolvedTargetIndex != null &&
+        _alphabetResolvedTargetIndex! < itemList.length) {
+      timer?.cancel();
+      await _scrollToTargetIndex(
+        targetIndex: _alphabetResolvedTargetIndex!,
+        preferPosition: AutoScrollPosition.begin,
+      );
+      letterToSearch = null;
+      _alphabetSeekAttemptedLetter = null;
+      _alphabetResolvedTargetIndex = null;
+      return;
+    }
+
     SortBy? tabSortBy = widget.sortConfig.sortBy;
     bool reversed = widget.sortConfig.sortOrder == SortOrder.descending;
     for (var i = 0; i < itemList.length; i++) {
