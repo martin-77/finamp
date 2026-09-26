@@ -463,6 +463,7 @@ class _MusicScreenTabViewState extends ConsumerState<MusicScreenTabView>
       );
     }
     final itemPadding = calculateItemCollectionCardWidth(ref).$2;
+    final pageStartOffset = ref.read(pageControl.notifier).pageStartOffset;
     final useListMode = widget.contentType == null || widget.contentType == ContentType.tracks
         ? true
         : ref.watch(finampSettingsProvider.perTabContentViewType(widget.contentType!)) != ContentViewType.grid;
