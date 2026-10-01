@@ -14,6 +14,7 @@ on:
     branches:
       - main
       - redesign
+      - test/analyzer-final-ci
 
 # set permission so that actions can modify repo contents, which is needed to add release assets
 permissions:
