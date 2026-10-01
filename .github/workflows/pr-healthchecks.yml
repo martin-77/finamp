@@ -21,10 +21,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build libgtk-3-dev
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -49,10 +45,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build libgtk-3-dev
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
